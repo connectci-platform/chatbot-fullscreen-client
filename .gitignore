@@ -28,3 +28,12 @@ dist-ssr
 .env
 .next/
 next-env.d.ts
+*.tsbuildinfo
+
+# change-factory / phase scratch (not committed)
+.phase2-ledger.md
+.phase2-slice-*-report.md
+
+# Next.js auto-generated agent-rules files (regenerated on `next dev`)
+AGENTS.md
+CLAUDE.md

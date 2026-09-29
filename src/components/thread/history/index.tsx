@@ -62,6 +62,21 @@ function ThreadList({
   );
 }
 
+function ThreadListEmpty() {
+  // The cookie that identifies a signed-in user is HttpOnly, so the client
+  // can't check auth state directly. An empty result from /threads/search is
+  // the closest proxy we have: unauthenticated users always get an empty
+  // list, and a brand-new authed user with no history yet is an acceptable
+  // edge case to also show this prompt to.
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-6 text-center">
+      <p className="text-sm text-muted-foreground">
+        Sign in to see and resume your conversations.
+      </p>
+    </div>
+  );
+}
+
 function ThreadHistoryLoading() {
   return (
     <div className="flex h-full w-full flex-col items-start justify-start gap-2 overflow-y-scroll [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent">
@@ -115,6 +130,8 @@ export default function ThreadHistory() {
         </div>
         {threadsLoading ? (
           <ThreadHistoryLoading />
+        ) : threads.length === 0 ? (
+          <ThreadListEmpty />
         ) : (
           <ThreadList threads={threads} />
         )}
@@ -134,10 +151,14 @@ export default function ThreadHistory() {
             <SheetHeader>
               <SheetTitle>Thread History</SheetTitle>
             </SheetHeader>
-            <ThreadList
-              threads={threads}
-              onThreadClick={() => setChatHistoryOpen((o) => !o)}
-            />
+            {threads.length === 0 ? (
+              <ThreadListEmpty />
+            ) : (
+              <ThreadList
+                threads={threads}
+                onThreadClick={() => setChatHistoryOpen((o) => !o)}
+              />
+            )}
           </SheetContent>
         </Sheet>
       </div>

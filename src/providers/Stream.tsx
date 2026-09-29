@@ -2,12 +2,12 @@ import React, {
   createContext,
   useContext,
   ReactNode,
-  useState,
   useEffect,
   useMemo,
+  useRef,
 } from "react";
 import { useStream } from "@langchain/langgraph-sdk/react";
-import { type Message } from "@langchain/langgraph-sdk";
+import { Client, type Message } from "@langchain/langgraph-sdk";
 import {
   uiMessageReducer,
   isUIMessage,
@@ -16,15 +16,9 @@ import {
   type RemoveUIMessage,
 } from "@langchain/langgraph-sdk/react-ui";
 import { useQueryState } from "nuqs";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { LangGraphLogoSVG } from "@/components/icons/langgraph";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { ArrowRight } from "lucide-react";
-import { PasswordInput } from "@/components/ui/password-input";
-import { getApiKey, setApiKey as storeApiKey } from "@/lib/api-key";
+import { getApiKey } from "@/lib/api-key";
 import { resolveApiUrl } from "@/lib/resolve-api-url";
+import { APP_NAME } from "@/lib/branding";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
 
@@ -63,6 +57,7 @@ async function checkGraphStatus(
 
     const res = await fetch(`${apiUrl}/info`, {
       headers,
+      credentials: "include",
     });
 
     return res.ok;
@@ -70,6 +65,58 @@ async function checkGraphStatus(
     console.error(e);
     return false;
   }
+}
+
+async function exchangeHandoffToken(
+  apiUrl: string,
+  token: string,
+): Promise<string | null> {
+  try {
+    const res = await fetch(`${apiUrl}/handoff/exchange`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ token }),
+    });
+
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as { thread_id?: string };
+    return data.thread_id ?? null;
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
+}
+
+/**
+ * Handles the widget->fullscreen handoff: a one-time `?h=<token>` is
+ * exchanged for a thread_id, which is then seeded into the same
+ * `threadId` query state the rest of the app already uses to resume a
+ * conversation. Runs at most once per token value — the `h` param is
+ * stripped as soon as the exchange settles (success or failure) so a
+ * remount/refresh never retries an already-consumed token.
+ */
+function useHandoffExchange(apiUrl: string | undefined) {
+  const [handoffToken, setHandoffToken] = useQueryState("h");
+  const [, setThreadId] = useQueryState("threadId");
+  const attemptedForToken = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!handoffToken || !apiUrl) return;
+    if (attemptedForToken.current === handoffToken) return;
+    attemptedForToken.current = handoffToken;
+
+    exchangeHandoffToken(apiUrl, handoffToken).then((threadId) => {
+      if (threadId) {
+        setThreadId(threadId);
+      }
+      // Always strip `?h=` once the exchange settles: the token is
+      // single-use on the server regardless of outcome, so leaving it
+      // in the URL would only cause a doomed retry on refresh.
+      setHandoffToken(null);
+    });
+  }, [handoffToken, apiUrl, setThreadId, setHandoffToken]);
 }
 
 const StreamSession = ({
@@ -87,15 +134,29 @@ const StreamSession = ({
 }) => {
   const [threadId, setThreadId] = useQueryState("threadId");
   const { getThreads, setThreads } = useThreads();
+  // useStream's own apiUrl/apiKey/defaultHeaders options don't expose an
+  // onRequest hook (only the underlying Client's ClientConfig does), so we
+  // build the Client ourselves to force `credentials: "include"` on every
+  // fetch (SSE stream + REST) — this is how the SESSaccess_auth cookie
+  // reaches the agent. Passing `client` makes useStream skip its own
+  // internal `new Client(...)` construction, so we replicate that here.
+  const client = useMemo(
+    () =>
+      new Client({
+        apiUrl,
+        apiKey: apiKey ?? undefined,
+        ...(authScheme && {
+          defaultHeaders: {
+            "X-Auth-Scheme": authScheme,
+          },
+        }),
+        onRequest: (_url, init) => ({ ...init, credentials: "include" }),
+      }),
+    [apiUrl, apiKey, authScheme],
+  );
   const streamValue = useTypedStream({
-    apiUrl,
-    apiKey: apiKey ?? undefined,
+    client,
     assistantId,
-    ...(authScheme && {
-      defaultHeaders: {
-        "X-Auth-Scheme": authScheme,
-      },
-    }),
     threadId: threadId ?? null,
     fetchStateHistory: true,
     onCustomEvent: (event, options) => {
@@ -117,7 +178,7 @@ const StreamSession = ({
   useEffect(() => {
     checkGraphStatus(apiUrl, apiKey, authScheme).then((ok) => {
       if (!ok) {
-        toast.error("Failed to connect to LangGraph server", {
+        toast.error(`Failed to connect to ${APP_NAME} server`, {
           description: () => (
             <p>
               Please ensure your graph is running at <code>{apiUrl}</code> and
@@ -139,11 +200,6 @@ const StreamSession = ({
   );
 };
 
-// Default values for the form
-const DEFAULT_API_URL = "http://localhost:2024";
-const DEFAULT_ASSISTANT_ID = "agent";
-const AGENT_BUILDER_AUTH_SCHEME = "langsmith-api-key";
-
 export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
@@ -154,20 +210,15 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   const envAuthScheme: string | undefined = process.env.NEXT_PUBLIC_AUTH_SCHEME;
 
   // Use URL params with env var fallbacks
-  const [apiUrl, setApiUrl] = useQueryState("apiUrl", {
+  const [apiUrl] = useQueryState("apiUrl", {
     defaultValue: envApiUrl || "",
   });
-  const [assistantId, setAssistantId] = useQueryState("assistantId", {
+  const [assistantId] = useQueryState("assistantId", {
     defaultValue: envAssistantId || "",
   });
-  const [authScheme, setAuthScheme] = useQueryState("authScheme", {
+  const [authScheme] = useQueryState("authScheme", {
     defaultValue: envAuthScheme || "",
   });
-  const [isAgentBuilder, setIsAgentBuilder] = useState(
-    () =>
-      (authScheme || envAuthScheme || "").toLowerCase() ===
-      AGENT_BUILDER_AUTH_SCHEME,
-  );
 
   const finalApiUrl = resolveApiUrl(apiUrl, envApiUrl);
   const finalAssistantId = assistantId || envAssistantId;
@@ -175,123 +226,23 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
 
   const apiKey = useMemo(() => getApiKey(finalApiUrl) || "", [finalApiUrl]);
 
-  // Show the form if we: don't have an API URL, or don't have an assistant ID
+  // Exchange a one-time `?h=` handoff token (minted by the widget) for a
+  // thread_id, seeded into `threadId` so useStream resumes that
+  // conversation. Only needs `finalApiUrl` (from env, typically), so this
+  // runs even before the config-check fallback below would otherwise be
+  // satisfied.
+  useHandoffExchange(finalApiUrl || undefined);
+
+  // Deployed app config comes entirely from env (NEXT_PUBLIC_API_URL /
+  // NEXT_PUBLIC_ASSISTANT_ID) and identity from the session cookie — there is
+  // no user-facing setup step. If either is genuinely missing, the deploy is
+  // misconfigured; show a neutral message instead of a form.
   if (!finalApiUrl || !finalAssistantId) {
     return (
       <div className="flex min-h-screen w-full items-center justify-center p-4">
-        <div className="animate-in fade-in-0 zoom-in-95 bg-background flex max-w-3xl flex-col rounded-lg border shadow-lg">
-          <div className="mt-14 flex flex-col gap-2 border-b p-6">
-            <div className="flex flex-col items-start gap-2">
-              <LangGraphLogoSVG className="h-7" />
-              <h1 className="text-xl font-semibold tracking-tight">
-                Agent Chat
-              </h1>
-            </div>
-            <p className="text-muted-foreground">
-              Welcome to Agent Chat! Before you get started, you need to enter
-              the URL of the deployment and the assistant / graph ID.
-            </p>
-          </div>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-
-              const form = e.target as HTMLFormElement;
-              const formData = new FormData(form);
-              const apiUrl = formData.get("apiUrl") as string;
-              const assistantId = formData.get("assistantId") as string;
-              const apiKey = formData.get("apiKey") as string;
-
-              setApiUrl(apiUrl);
-              storeApiKey(apiUrl, apiKey);
-              setAssistantId(assistantId);
-              setAuthScheme(isAgentBuilder ? AGENT_BUILDER_AUTH_SCHEME : "");
-
-              form.reset();
-            }}
-            className="bg-muted/50 flex flex-col gap-6 p-6"
-          >
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="apiUrl">
-                Deployment URL<span className="text-rose-500">*</span>
-              </Label>
-              <p className="text-muted-foreground text-sm">
-                This is the URL of your LangGraph deployment. Can be a local, or
-                production deployment.
-              </p>
-              <Input
-                id="apiUrl"
-                name="apiUrl"
-                className="bg-background"
-                defaultValue={apiUrl || DEFAULT_API_URL}
-                required
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="assistantId">
-                Assistant / Graph ID<span className="text-rose-500">*</span>
-              </Label>
-              <p className="text-muted-foreground text-sm">
-                This is the ID of the graph (can be the graph name), or
-                assistant to fetch threads from, and invoke when actions are
-                taken.
-              </p>
-              <Input
-                id="assistantId"
-                name="assistantId"
-                className="bg-background"
-                defaultValue={assistantId || DEFAULT_ASSISTANT_ID}
-                required
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="apiKey">LangSmith API Key</Label>
-              <p className="text-muted-foreground text-sm">
-                This is <strong>NOT</strong> required if using a local LangGraph
-                server. This value is stored in your browser's local storage and
-                is only used to authenticate requests sent to your LangGraph
-                server.
-              </p>
-              <PasswordInput
-                id="apiKey"
-                name="apiKey"
-                defaultValue={apiKey ?? ""}
-                className="bg-background"
-                placeholder="lsv2_pt_..."
-              />
-            </div>
-
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="agentBuilderEnabled">
-                    Built with Agent Builder
-                  </Label>
-                  <p className="text-muted-foreground text-sm">
-                    Enable this for Agent Builder deployments.
-                  </p>
-                </div>
-                <Switch
-                  id="agentBuilderEnabled"
-                  checked={isAgentBuilder}
-                  onCheckedChange={setIsAgentBuilder}
-                />
-              </div>
-            </div>
-
-            <div className="mt-2 flex justify-end">
-              <Button
-                type="submit"
-                size="lg"
-              >
-                Continue
-                <ArrowRight className="size-5" />
-              </Button>
-            </div>
-          </form>
-        </div>
+        <p className="text-muted-foreground max-w-md text-center">
+          {APP_NAME} is not configured. Please contact support.
+        </p>
       </div>
     );
   }
