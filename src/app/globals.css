@@ -11,9 +11,11 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  /* ACCESS teal #1a5b6e — matches the qa-bot-core widget for brand consistency. */
-  --primary: oklch(0.44 0.07 221.548);
-  --primary-foreground: oklch(0.985 0 0);
+  /* ACCESS gold #fec340 — measured from the live access-ci.org primary CTA button.
+     (A package CSS file suggests teal for this role; that's stale — the live site's
+     primary button is gold. Teal is reserved for structural/header use below.) */
+  --primary: oklch(0.849 0.155 83.103);
+  --primary-foreground: oklch(0 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -22,8 +24,9 @@
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
+  /* ACCESS neutral border gray #ccc — matches live input borders. */
+  --border: oklch(0.845 0 89.876);
+  --input: oklch(0.845 0 89.876);
   /* ACCESS teal #107180 (secondary brand color) — used for focus rings. */
   --ring: oklch(0.505 0.084 211.437);
   --chart-1: oklch(0.646 0.222 41.116);
@@ -31,14 +34,15 @@
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --radius: 0.625rem;
+  /* ACCESS is square — no rounded corners on controls. */
+  --radius: 0rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.44 0.07 221.548);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.849 0.155 83.103);
+  --sidebar-primary-foreground: oklch(0 0 0);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-border: oklch(0.845 0 89.876);
   --sidebar-ring: oklch(0.505 0.084 211.437);
 }
 
@@ -49,10 +53,10 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.145 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  /* ACCESS teal #107180 (secondary brand color) — lighter of the two teals reads better as
-     a fill on a dark background than the darker #1a5b6e primary. */
-  --primary: oklch(0.505 0.084 211.437);
-  --primary-foreground: oklch(0.985 0 0);
+  /* ACCESS gold #fec340 — kept consistent with light mode; the app does not currently
+     mount a theme provider/toggle, so this block is dormant, but keep it in sync. */
+  --primary: oklch(0.849 0.155 83.103);
+  --primary-foreground: oklch(0 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -80,6 +84,8 @@
 }
 
 @theme inline {
+  /* ACCESS brand font — Archivo — loaded via next/font in layout.tsx. */
+  --font-sans: var(--font-archivo);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

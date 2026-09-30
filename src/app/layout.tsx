@@ -1,12 +1,19 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Inter } from "next/font/google";
+import { Archivo } from "next/font/google";
 import React from "react";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { APP_NAME } from "@/lib/branding";
+import { SiteChromeTop, SiteFooter } from "@/components/SiteChrome";
 
-const inter = Inter({
+// The @access-ci/ui chrome's CSS asks for "Archivo". Its components render
+// in shadow DOM (style-isolated from the app), but fonts are not
+// shadow-scoped, so the host document must load Archivo or the chrome falls
+// back to a generic font and looks off-brand. The app body also uses Archivo
+// (via --font-sans in globals.css) to match the ACCESS brand throughout.
+const archivo = Archivo({
   subsets: ["latin"],
+  variable: "--font-archivo",
   preload: true,
   display: "swap",
 });
@@ -23,8 +30,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={`font-sans ${archivo.variable}`}>
+        <SiteChromeTop />
         <NuqsAdapter>{children}</NuqsAdapter>
+        <SiteFooter />
       </body>
     </html>
   );

@@ -19,6 +19,7 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "@access-ci/ui": "0.22.0",
     "@langchain/core": "^1.2.12",
     "@langchain/langgraph": "^1.4.17",
     "@langchain/langgraph-sdk": "^1.11.2",
