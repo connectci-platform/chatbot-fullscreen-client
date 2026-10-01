@@ -21,7 +21,11 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react-hooks/refs": "warn",
       "react-hooks/set-state-in-effect": "warn",
-      "@typescript-eslint/no-explicit-any": 0,
+      // warn, not error: the inherited agent-chat-ui message/interrupt
+      // rendering uses Record<string, any> for genuinely dynamic model/tool
+      // JSON payloads. warn discourages new casual `any` without forcing
+      // low-value typing or disable-comments on that inherited dynamic data.
+      "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-unused-vars": [
         "warn",
         { args: "none", argsIgnorePattern: "^_", varsIgnorePattern: "^_" },

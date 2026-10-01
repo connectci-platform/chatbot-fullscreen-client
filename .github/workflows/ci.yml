@@ -56,6 +56,57 @@ jobs:
       - name: Check linting
         run: pnpm lint
 
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.5.1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22.x"
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install
+      - name: Typecheck
+        run: pnpm typecheck
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.5.1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22.x"
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install
+      - name: Run tests
+        run: pnpm test
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.5.1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22.x"
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install
+      - name: Build
+        run: pnpm build
+
   readme-spelling:
     name: Check README spelling
     runs-on: ubuntu-latest
