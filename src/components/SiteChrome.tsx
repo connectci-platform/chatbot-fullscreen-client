@@ -47,7 +47,10 @@ function SiteChromeTopImpl() {
         loginUrl={LOGIN_URL}
         logoutUrl={LOGOUT_URL}
       />
-      <Header siteName="Assistant" siteUrl="/" />
+      <Header
+        siteName="Assistant"
+        siteUrl="/"
+      />
     </>
   );
 }
@@ -65,7 +68,6 @@ export const SiteChromeTop = dynamicImport(
   () => Promise.resolve(SiteChromeTopImpl),
   { ssr: false },
 );
-export const SiteFooter = dynamicImport(
-  () => Promise.resolve(SiteFooterImpl),
-  { ssr: false },
-);
+export const SiteFooter = dynamicImport(() => Promise.resolve(SiteFooterImpl), {
+  ssr: false,
+});
