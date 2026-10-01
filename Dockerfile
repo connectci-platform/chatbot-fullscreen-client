@@ -1,12 +1,13 @@
 # syntax=docker/dockerfile:1
 
 # Build-time API base URL, inlined into the client bundle by Next (NEXT_PUBLIC_*
-# vars are baked in at build, not read at runtime). The agent mounts the
-# thread/run protocol under /api/v1 (both routers use prefix="/api/v1"), and
-# Caddy fronts both this app and the agent on one host, so a relative /api/v1
-# reaches the agent same-origin with no absolute URL. Override only for a deploy
-# where the agent lives on a different origin.
-ARG NEXT_PUBLIC_API_URL=/api/v1
+# vars are baked in at build, not read at runtime). Must be ABSOLUTE: the
+# LangGraph SDK builds request URLs with `new URL(apiUrl)`, which rejects a
+# relative path. This points at the agent's /api/v1 mount on the deploy host —
+# same origin as this client (Caddy fronts both), so the auth cookie still flows
+# and there's no CORS; absolute only so new URL() works. Override for a deploy on
+# a different host.
+ARG NEXT_PUBLIC_API_URL=https://qa.access-ci.org/api/v1
 
 # Assistant/graph id sent as `assistant_id` to the agent. This is a single-agent
 # deployment, so the agent accepts and ignores the value — it only needs to be
