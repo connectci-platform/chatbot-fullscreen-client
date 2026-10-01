@@ -7,6 +7,12 @@
 # agent lives on a different origin.
 ARG NEXT_PUBLIC_API_URL=/api
 
+# Assistant/graph id sent as `assistant_id` to the agent. This is a single-agent
+# deployment, so the agent accepts and ignores the value — it only needs to be
+# non-empty (the app shows a "not configured" screen otherwise). Baked in at
+# build like the API URL above.
+ARG NEXT_PUBLIC_ASSISTANT_ID=agent
+
 FROM node:22-alpine AS base
 RUN corepack enable
 
@@ -22,6 +28,8 @@ FROM base AS build
 WORKDIR /app
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ARG NEXT_PUBLIC_ASSISTANT_ID
+ENV NEXT_PUBLIC_ASSISTANT_ID=${NEXT_PUBLIC_ASSISTANT_ID}
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
