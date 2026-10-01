@@ -34,16 +34,16 @@ see connection errors in the console — expected).
 
 ## Scripts
 
-| Command | What it does |
-|---|---|
-| `pnpm dev` | Dev server |
-| `pnpm build` | Production build (`next build`) |
-| `pnpm start` | Serve the production build |
-| `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm lint` / `pnpm lint:fix` | ESLint |
-| `pnpm format` / `pnpm format:check` | Prettier |
-| `pnpm test` / `pnpm test:watch` | Vitest |
-| `pnpm test:coverage` | Vitest with a coverage report (no threshold gate) |
+| Command                             | What it does                                      |
+| ----------------------------------- | ------------------------------------------------- |
+| `pnpm dev`                          | Dev server                                        |
+| `pnpm build`                        | Production build (`next build`)                   |
+| `pnpm start`                        | Serve the production build                        |
+| `pnpm typecheck`                    | `tsc --noEmit`                                    |
+| `pnpm lint` / `pnpm lint:fix`       | ESLint                                            |
+| `pnpm format` / `pnpm format:check` | Prettier                                          |
+| `pnpm test` / `pnpm test:watch`     | Vitest                                            |
+| `pnpm test:coverage`                | Vitest with a coverage report (no threshold gate) |
 
 CI (`.github/workflows/ci.yml`) runs format-check, lint, typecheck, test, and
 build on every PR; coverage is reported, not gated.

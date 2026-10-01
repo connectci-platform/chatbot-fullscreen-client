@@ -70,7 +70,7 @@ function ThreadListEmpty() {
   // edge case to also show this prompt to.
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-6 text-center">
-      <p className="text-sm text-muted-foreground">
+      <p className="text-muted-foreground text-sm">
         Sign in to see and resume your conversations.
       </p>
     </div>
