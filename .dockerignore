@@ -1,4 +1,38 @@
+# Dependencies / build output (reinstalled and rebuilt in-image)
 node_modules
 .next
+
+# VCS / CI
 .git
+.github
+
+# Env (secrets; build-time config comes in via --build-arg)
 .env
+.env.*
+!.env.example
+
+# Test / coverage artifacts
+coverage
+playwright-report
+test-results
+
+# Editor / OS cruft
+.vscode
+.idea
+.DS_Store
+
+# Logs
+*.log
+
+# Docs (not needed to build or run)
+*.md
+!README.md
+
+# change-factory / phase scratch
+.phase2-*
+AGENTS.md
+CLAUDE.md
+
+# Misc generated/local-only files
+*.tsbuildinfo
+.langgraph_api
