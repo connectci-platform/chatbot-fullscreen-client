@@ -55,7 +55,10 @@ async function checkGraphStatus(
     if (apiKey) headers.set("X-Api-Key", apiKey);
     if (authScheme) headers.set("X-Auth-Scheme", authScheme);
 
-    const res = await fetch(`${apiUrl}/info`, {
+    // The ACCESS agent is LangGraph-compatible but doesn't implement the
+    // LangGraph-server /info endpoint; it exposes /health instead. apiUrl is
+    // the agent's /api/v1 mount, so this resolves to /api/v1/health.
+    const res = await fetch(`${apiUrl}/health`, {
       headers,
       credentials: "include",
     });
