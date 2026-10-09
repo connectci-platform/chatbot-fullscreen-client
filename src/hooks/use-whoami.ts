@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface WhoamiState {
   authenticated: boolean;
@@ -25,22 +25,28 @@ export function useWhoami(apiUrl: string | undefined): WhoamiState & {
   refresh: () => void;
 } {
   const [state, setState] = useState<WhoamiState>(ANON);
+  const genRef = useRef(0);
 
   const refresh = useCallback(() => {
     if (!apiUrl) {
       setState(ANON);
       return;
     }
+    const myGen = ++genRef.current;
     fetch(`${apiUrl}/whoami`, { credentials: "include" })
       .then((res) => (res.ok ? res.json() : null))
       .then((body: WhoamiState | null) => {
+        if (myGen !== genRef.current) return; // a newer refresh superseded this one
         setState(
           body && body.authenticated
             ? { authenticated: true, user: body.user ?? null }
             : ANON,
         );
       })
-      .catch(() => setState(ANON));
+      .catch(() => {
+        if (myGen !== genRef.current) return; // same guard on the error path
+        setState(ANON);
+      });
   }, [apiUrl]);
 
   useEffect(() => {
