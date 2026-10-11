@@ -17,7 +17,18 @@ import { resolveApiUrl } from "@/lib/resolve-api-url";
 // app to wire.
 const LOGIN_URL = "https://support.access-ci.org/user/login";
 
-const LOGOUT_URL = "https://cilogon.org/logout/?skin=access";
+// Logout routes through support for the same reason login does: the JWT
+// cookie is scoped to .access-ci.org, and CILogon cannot clear it. The
+// package default points straight at cilogon.org/logout, which ends the
+// CILogon session but leaves SESSaccess_auth live for its remaining 18
+// hours — so the agent still reads the user as authenticated and they are
+// not really logged out.
+//
+// Support's own logout does the whole chain: user_logout() destroys the
+// Drupal session, SESSaccesscisso and SESSaccess_auth are expired, and it
+// then redirects on to cilogon.org/logout, so the CILogon session ends too.
+// Navigating there is exactly what logging out at support does.
+const LOGOUT_URL = "https://support.access-ci.org/user/logout";
 
 export function SiteChromeTopImpl() {
   const apiUrl = resolveApiUrl("", process.env.NEXT_PUBLIC_API_URL);
