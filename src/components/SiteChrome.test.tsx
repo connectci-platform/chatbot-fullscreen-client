@@ -75,4 +75,30 @@ describe("SiteChrome auth state", () => {
     expect(lastProps).toHaveProperty("isLoggedIn");
     expect(typeof lastProps.isLoggedIn).toBe("boolean");
   });
+
+  it("logs out via support, not CILogon, so the JWT cookie is actually cleared", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({ authenticated: true, user: "u@access-ci.org" }),
+      } as Response),
+    );
+    const { SiteChromeTopImpl } = await import("./SiteChrome");
+    render(<SiteChromeTopImpl />);
+    await waitFor(() => expect(universalMenusSpy).toHaveBeenCalled());
+
+    const { logoutUrl } = universalMenusSpy.mock.calls.at(-1)![0] as {
+      logoutUrl: string;
+    };
+
+    // SESSaccess_auth is scoped to .access-ci.org, so only support can clear
+    // it. Pointing straight at CILogon ends that session but leaves the JWT
+    // live for its remaining 18 hours, and the agent keeps reading the user
+    // as authenticated. Support's logout clears the cookies and then
+    // redirects on to CILogon, so that session ends too.
+    expect(logoutUrl).toBe("https://support.access-ci.org/user/logout");
+    expect(logoutUrl).not.toContain("cilogon.org");
+  });
 });
