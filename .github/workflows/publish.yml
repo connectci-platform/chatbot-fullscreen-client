@@ -1,7 +1,7 @@
-# Build and publish the container image to GHCR after CI passes on main.
-# Publish-only: the first burrow deploy (adding the compose service + Caddy
-# routing) is done manually; an auto-deploy job can be added here later, once
-# the service exists, mirroring access_mcp's deploy-production.yml.
+# Build and publish the container image to GHCR after CI passes on main, then
+# deploy it to the burrow production host (pull + force-recreate the single
+# `chatbot` service in the access-mcp compose project). Mirrors access_mcp's
+# deploy-production.yml, scoped to this one service.
 
 name: Publish image
 
@@ -62,3 +62,100 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production
+    # Serialize deploys to the single production host so two close-together
+    # merges don't race on force-recreate. A queued deploy WAITS rather than
+    # cancelling the in-flight one.
+    concurrency:
+      group: deploy-chatbot-production
+      cancel-in-progress: false
+
+    steps:
+      - name: Deploy chatbot to production
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/access-mcp
+
+            # Log in to GHCR so the pull can read our (private) image.
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # The image was just pushed by build-and-push; give GHCR a moment to
+            # propagate before pulling.
+            echo "Waiting for registry propagation..."
+            sleep 10
+
+            # Pull the new chatbot image with retry (transient registry errors).
+            echo "Pulling chatbot image..."
+            for i in 1 2 3; do
+              docker compose -f docker-compose.prod.yml pull chatbot && break
+              echo "Pull attempt $i failed, retrying in 10s..."
+              sleep 10
+            done
+
+            # `up -d` alone won't recreate a container when only the image digest
+            # moved under an unchanged `:latest` tag, so force-recreate the
+            # chatbot service specifically. Only the chatbot container is touched;
+            # the agent, MCP servers, Caddy, dashboard, and DBs are left running.
+            echo "Recreating chatbot service..."
+            docker compose -f docker-compose.prod.yml up -d --force-recreate chatbot
+
+            # Clean up the now-dangling old image.
+            docker image prune -f
+
+            echo "chatbot image now:"
+            docker compose -f docker-compose.prod.yml images chatbot
+
+      - name: Smoke test
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            cd ~/access-mcp
+            COMPOSE="docker compose -f docker-compose.prod.yml"
+
+            # 1. The container must be running the image we just pulled, not a
+            #    stale one (a running container alone doesn't prove the recreate
+            #    picked up the new :latest digest). Compare running vs expected id.
+            RUNNING_IMG=$(docker inspect --format '{{.Image}}' access-mcp-chatbot-1 2>/dev/null)
+            RUNNING_IMG=${RUNNING_IMG#sha256:}
+            EXPECTED_IMG=$($COMPOSE images -q chatbot 2>/dev/null | head -1)
+            EXPECTED_IMG=${EXPECTED_IMG#sha256:}
+            if [ -z "$RUNNING_IMG" ]; then
+              echo "FAIL: chatbot container not running"
+              exit 1
+            fi
+            if [ -n "$EXPECTED_IMG" ] && [ "$RUNNING_IMG" != "$EXPECTED_IMG" ]; then
+              echo "FAIL: chatbot is running a stale image (did not recreate onto the pulled :latest)"
+              exit 1
+            fi
+
+            # 2. The chatbot must actually serve. It's a Next standalone server on
+            #    :3000 inside the container (exposed, not host-published), so poll
+            #    it from inside via wget (confirmed present at /usr/bin/wget in the
+            #    node:22-alpine image; no curl). Cold start after recreate, so retry.
+            #    Use 127.0.0.1, NOT localhost: the server binds IPv4 0.0.0.0, but
+            #    `localhost` resolves to IPv6 ::1 inside this container where nothing
+            #    listens — `wget localhost:3000` returns Connection refused on a
+            #    perfectly healthy container (verified live on burrow). 127.0.0.1
+            #    forces IPv4 and works.
+            echo "Waiting for chatbot to serve..."
+            for i in $(seq 1 30); do
+              if docker exec access-mcp-chatbot-1 wget -q -O /dev/null http://127.0.0.1:3000/ 2>/dev/null; then
+                echo "OK: chatbot is serving"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "FAIL: chatbot did not serve on :3000 after ~60s"
+            exit 1
