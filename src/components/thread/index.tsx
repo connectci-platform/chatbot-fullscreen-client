@@ -38,6 +38,7 @@ import {
   TooltipTrigger,
 } from "../ui/tooltip";
 import { useFileUpload } from "@/hooks/use-file-upload";
+import { useInitialQuestion } from "@/hooks/use-initial-question";
 import { ContentBlocksPreview } from "./ContentBlocksPreview";
 import {
   useArtifactOpen,
@@ -194,18 +195,15 @@ export function Thread() {
     prevMessageLength.current = messages.length;
   }, [messages]);
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if ((input.trim().length === 0 && contentBlocks.length === 0) || isLoading)
-      return;
+  const submitMessage = (text: string, blocks: typeof contentBlocks) => {
     setFirstTokenReceived(false);
 
     const newHumanMessage: Message = {
       id: uuidv4(),
       type: "human",
       content: [
-        ...(input.trim().length > 0 ? [{ type: "text", text: input }] : []),
-        ...contentBlocks,
+        ...(text.trim().length > 0 ? [{ type: "text", text }] : []),
+        ...blocks,
       ] as Message["content"],
     };
 
@@ -231,10 +229,18 @@ export function Thread() {
         }),
       },
     );
+  };
 
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if ((input.trim().length === 0 && contentBlocks.length === 0) || isLoading)
+      return;
+    submitMessage(input, contentBlocks);
     setInput("");
     setContentBlocks([]);
   };
+
+  useInitialQuestion((question) => submitMessage(question, []));
 
   const handleRegenerate = (
     parentCheckpoint: Checkpoint | null | undefined,
