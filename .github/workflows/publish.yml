@@ -106,7 +106,7 @@ jobs:
             # chatbot service specifically. Only the chatbot container is touched;
             # the agent, MCP servers, Caddy, dashboard, and DBs are left running.
             echo "Recreating chatbot service..."
-            docker compose -f docker-compose.prod.yml up -d --force-recreate chatbot
+            docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate chatbot
 
             # Clean up the now-dangling old image.
             docker image prune -f
