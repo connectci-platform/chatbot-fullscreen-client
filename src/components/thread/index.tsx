@@ -14,6 +14,7 @@ import {
 } from "@/lib/ensure-tool-responses";
 import { ChatBubbleIcon } from "../icons/chat-bubble";
 import { APP_NAME } from "@/lib/branding";
+import { hideToolCallsParser } from "@/lib/hide-tool-calls";
 import { TooltipIconButton } from "./tooltip-icon-button";
 import {
   ArrowDown,
@@ -123,7 +124,7 @@ export function Thread() {
   );
   const [hideToolCalls, setHideToolCalls] = useQueryState(
     "hideToolCalls",
-    parseAsBoolean.withDefault(false),
+    hideToolCallsParser,
   );
   const [input, setInput] = useState("");
   const {
@@ -494,7 +495,7 @@ export function Thread() {
                           <div className="flex items-center space-x-2">
                             <Switch
                               id="render-tool-calls"
-                              checked={hideToolCalls ?? false}
+                              checked={hideToolCalls}
                               onCheckedChange={setHideToolCalls}
                             />
                             <Label
