@@ -48,10 +48,6 @@ type StreamContextType = ReturnType<typeof useTypedStream> & {
 };
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
 
-async function sleep(ms = 4000) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function checkGraphStatus(
   apiUrl: string,
   apiKey: string | null,
@@ -157,9 +153,13 @@ const StreamSession = ({
     },
     onThreadId: (id) => {
       setThreadId(id);
-      // Refetch threads list when thread ID changes.
-      // Wait for some seconds before fetching so we're able to get the new thread that was created.
-      sleep().then(() => getThreads().then(setThreads).catch(console.error));
+    },
+    // The agent lists a user's threads from turn reports written when a turn
+    // ends, so a new thread only shows up in the sidebar once its run finishes.
+    // Zero-arity on purpose: declaring a parameter makes useStream refetch the
+    // thread state after every run.
+    onFinish: () => {
+      getThreads().then(setThreads).catch(console.error);
     },
   });
 
