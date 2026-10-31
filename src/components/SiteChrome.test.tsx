@@ -18,87 +18,95 @@ vi.mock("@access-ci/ui/react", () => ({
   Footer: () => <div data-testid="footer" />,
 }));
 
+function mintResponse(status: number, body: unknown = {}) {
+  return vi.fn().mockResolvedValue({
+    ok: status >= 200 && status < 300,
+    status,
+    headers: new Headers(),
+    json: () => Promise.resolve(body),
+  } as Response);
+}
+
+const MINTED = { access_token: "t1", token_type: "Bearer", expires_in: 900 };
+const LOGIN_REQUIRED = { error: "login_required", error_description: "x" };
+
+async function renderChrome() {
+  const { SiteChromeTopImpl } = await import("./SiteChrome");
+  render(<SiteChromeTopImpl />);
+}
+
+function loggedIn() {
+  return screen.getByTestId("universal-menus").getAttribute("data-logged-in");
+}
+
 describe("SiteChrome auth state", () => {
   beforeEach(() => {
     universalMenusSpy.mockClear();
     vi.restoreAllMocks();
-    vi.stubEnv("NEXT_PUBLIC_API_URL", "https://x/api/v1");
+    // A fresh page token source per test.
+    vi.resetModules();
   });
 
-  it("passes isLoggedIn=true to UniversalMenus when whoami is authenticated", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({ authenticated: true, user: "u@access-ci.org" }),
-      } as Response),
-    );
-    const { SiteChromeTopImpl } = await import("./SiteChrome");
-    render(<SiteChromeTopImpl />);
-    await waitFor(() =>
-      expect(
-        screen.getByTestId("universal-menus").getAttribute("data-logged-in"),
-      ).toBe("true"),
+  it("passes isLoggedIn=true when support mints a token", async () => {
+    const fetchMock = mintResponse(200, MINTED);
+    vi.stubGlobal("fetch", fetchMock);
+    await renderChrome();
+    await waitFor(() => expect(loggedIn()).toBe("true"));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://support.access-ci.org/api/agent-token",
+      expect.objectContaining({ method: "POST", credentials: "include" }),
     );
   });
 
-  it("passes isLoggedIn=false when whoami is anonymous", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ authenticated: false, user: null }),
-      } as Response),
-    );
-    const { SiteChromeTopImpl } = await import("./SiteChrome");
-    render(<SiteChromeTopImpl />);
+  it("passes isLoggedIn=false when the mint says login_required", async () => {
+    vi.stubGlobal("fetch", mintResponse(401, LOGIN_REQUIRED));
+    await renderChrome();
     await waitFor(() =>
-      expect(
-        screen.getByTestId("universal-menus").getAttribute("data-logged-in"),
-      ).toBe("false"),
+      expect(universalMenusSpy.mock.calls.length).toBeGreaterThan(0),
     );
+    await waitFor(() => expect(loggedIn()).toBe("false"));
   });
 
   it("always passes isLoggedIn explicitly (never undefined) so UniversalMenus never self-detects the cookie", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ authenticated: false, user: null }),
-      } as Response),
-    );
-    const { SiteChromeTopImpl } = await import("./SiteChrome");
-    render(<SiteChromeTopImpl />);
+    vi.stubGlobal("fetch", mintResponse(401, LOGIN_REQUIRED));
+    await renderChrome();
     await waitFor(() => expect(universalMenusSpy).toHaveBeenCalled());
     const lastProps = universalMenusSpy.mock.calls.at(-1)![0];
     expect(lastProps).toHaveProperty("isLoggedIn");
     expect(typeof lastProps.isLoggedIn).toBe("boolean");
   });
 
-  it("logs out via support, not CILogon, so the JWT cookie is actually cleared", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({ authenticated: true, user: "u@access-ci.org" }),
-      } as Response),
-    );
-    const { SiteChromeTopImpl } = await import("./SiteChrome");
-    render(<SiteChromeTopImpl />);
+  it("logs in and out via support, not CILogon", async () => {
+    vi.stubGlobal("fetch", mintResponse(200, MINTED));
+    await renderChrome();
     await waitFor(() => expect(universalMenusSpy).toHaveBeenCalled());
 
-    const { logoutUrl } = universalMenusSpy.mock.calls.at(-1)![0] as {
+    const { loginUrl, logoutUrl } = universalMenusSpy.mock.calls.at(-1)![0] as {
+      loginUrl: string;
       logoutUrl: string;
     };
 
-    // SESSaccess_auth is scoped to .access-ci.org, so only support can clear
-    // it. Pointing straight at CILogon ends that session but leaves the JWT
-    // live for its remaining 18 hours, and the agent keeps reading the user
-    // as authenticated. Support's logout clears the cookies and then
-    // redirects on to CILogon, so that session ends too.
+    // Support mints the agent tokens, so the sign-in that counts is
+    // support's. Its logout ends the Drupal session and the SSO cookies and
+    // then redirects on to CILogon, so that session ends too.
+    expect(loginUrl).toBe("https://support.access-ci.org/user/login");
     expect(logoutUrl).toBe("https://support.access-ci.org/user/logout");
     expect(logoutUrl).not.toContain("cilogon.org");
+  });
+
+  it("uses NEXT_PUBLIC_SUPPORT_URL for the mint and the login links", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_URL", "https://accessmatch.ddev.site");
+    const fetchMock = mintResponse(200, MINTED);
+    vi.stubGlobal("fetch", fetchMock);
+    await renderChrome();
+    await waitFor(() => expect(loggedIn()).toBe("true"));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://accessmatch.ddev.site/api/agent-token",
+      expect.anything(),
+    );
+    expect(universalMenusSpy.mock.calls.at(-1)![0].loginUrl).toBe(
+      "https://accessmatch.ddev.site/user/login",
+    );
+    vi.unstubAllEnvs();
   });
 });
