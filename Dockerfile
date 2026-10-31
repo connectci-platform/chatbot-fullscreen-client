@@ -4,9 +4,8 @@
 # vars are baked in at build, not read at runtime). Must be ABSOLUTE: the
 # LangGraph SDK builds request URLs with `new URL(apiUrl)`, which rejects a
 # relative path. This points at the agent's /api/v1 mount on the deploy host —
-# same origin as this client (Caddy fronts both), so the auth cookie still flows
-# and there's no CORS; absolute only so new URL() works. Override for a deploy on
-# a different host.
+# same origin as this client (Caddy fronts both), so there's no CORS; absolute
+# only so new URL() works. Override for a deploy on a different host.
 ARG NEXT_PUBLIC_API_URL=https://qa.access-ci.org/api/v1
 
 # Assistant/graph id sent as `assistant_id` to the agent. This is a single-agent
@@ -14,6 +13,10 @@ ARG NEXT_PUBLIC_API_URL=https://qa.access-ci.org/api/v1
 # non-empty (the app shows a "not configured" screen otherwise). Baked in at
 # build like the API URL above.
 ARG NEXT_PUBLIC_ASSISTANT_ID=agent
+
+# Support site that mints agent tokens and hosts login and logout. Baked in at
+# build like the API URL above.
+ARG NEXT_PUBLIC_SUPPORT_URL=https://support.access-ci.org
 
 FROM node:22-alpine AS base
 RUN corepack enable
@@ -32,6 +35,8 @@ ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ARG NEXT_PUBLIC_ASSISTANT_ID
 ENV NEXT_PUBLIC_ASSISTANT_ID=${NEXT_PUBLIC_ASSISTANT_ID}
+ARG NEXT_PUBLIC_SUPPORT_URL
+ENV NEXT_PUBLIC_SUPPORT_URL=${NEXT_PUBLIC_SUPPORT_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

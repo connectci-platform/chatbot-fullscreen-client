@@ -3,36 +3,18 @@
 import { useCallback } from "react";
 import dynamicImport from "next/dynamic";
 import { Header, UniversalMenus, Footer } from "@access-ci/ui/react";
-import { useWhoami } from "@/hooks/use-whoami";
-import { resolveApiUrl } from "@/lib/resolve-api-url";
+import { useAgentAuth } from "@/hooks/use-agent-auth";
+import { loginUrl, logoutUrl, openSignIn } from "@/lib/sign-in";
 
-// The ACCESS JWT is minted only by support.access-ci.org (not by CILogon
-// directly), so login routes through support rather than the package's
-// default CILogon-skin URL. Login opens in a popup (see the click
-// interception below) so the user never leaves this tab; the minted
-// SESSaccess_auth JWT cookie is scoped to .access-ci.org and is sent on the
-// agent's whoami request via `credentials: "include"`. useWhoami re-checks
-// on window focus, so completing login in the popup and returning focus to
-// this tab is what flips isLoggedIn — there is no redirect back into this
-// app to wire.
-const LOGIN_URL = "https://support.access-ci.org/user/login";
-
-// Logout routes through support for the same reason login does: the JWT
-// cookie is scoped to .access-ci.org, and CILogon cannot clear it. The
-// package default points straight at cilogon.org/logout, which ends the
-// CILogon session but leaves SESSaccess_auth live for its remaining 18
-// hours — so the agent still reads the user as authenticated and they are
-// not really logged out.
-//
-// Support's own logout does the whole chain: user_logout() destroys the
-// Drupal session, SESSaccesscisso and SESSaccess_auth are expired, and it
-// then redirects on to cilogon.org/logout, so the CILogon session ends too.
-// Navigating there is exactly what logging out at support does.
-const LOGOUT_URL = "https://support.access-ci.org/user/logout";
+// Login and logout both go through support. Support mints the agent tokens,
+// so signing in there is what makes the next mint succeed, and its logout
+// ends the Drupal session, the SSO cookies and the CILogon session together.
+// Login opens in a popup so the user never leaves this tab; useAgentAuth
+// mints again when the popup closes or this window regains focus.
 
 export function SiteChromeTopImpl() {
-  const apiUrl = resolveApiUrl("", process.env.NEXT_PUBLIC_API_URL);
-  const { authenticated } = useWhoami(apiUrl || undefined);
+  const authenticated = useAgentAuth() === "signed_in";
+  const login = loginUrl();
 
   // UniversalMenus is a shadow-DOM web component and only takes a loginUrl
   // string (no onClick), so there's no prop-level way to open a popup
@@ -46,21 +28,14 @@ export function SiteChromeTopImpl() {
         .composedPath()
         .find(
           (el): el is HTMLAnchorElement =>
-            el instanceof HTMLAnchorElement && el.href === LOGIN_URL,
+            el instanceof HTMLAnchorElement && el.href === login,
         );
       if (!anchor) return;
 
       event.preventDefault();
-      const popup = window.open(
-        LOGIN_URL,
-        "_blank",
-        "popup,width=480,height=720",
-      );
-      if (!popup) {
-        window.open(LOGIN_URL, "_blank");
-      }
+      openSignIn();
     },
-    [],
+    [login],
   );
 
   return (
@@ -68,8 +43,8 @@ export function SiteChromeTopImpl() {
       <UniversalMenus
         siteName="Assistant"
         isLoggedIn={authenticated}
-        loginUrl={LOGIN_URL}
-        logoutUrl={LOGOUT_URL}
+        loginUrl={login}
+        logoutUrl={logoutUrl()}
       />
       <Header
         siteName="Assistant"

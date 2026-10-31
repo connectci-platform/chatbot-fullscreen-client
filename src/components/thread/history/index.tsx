@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { useThreads } from "@/providers/Thread";
 import { Thread } from "@langchain/langgraph-sdk";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { getContentString } from "../utils";
 import { useQueryState, parseAsBoolean } from "nuqs";
@@ -14,6 +14,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { PanelRightOpen, PanelRightClose } from "lucide-react";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useAuthStatus } from "@/hooks/use-agent-auth";
 
 function ThreadList({
   threads,
@@ -100,14 +101,29 @@ export default function ThreadHistory() {
   const { getThreads, threads, setThreads, threadsLoading, setThreadsLoading } =
     useThreads();
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+  const loadThreads = () => {
     setThreadsLoading(true);
     getThreads()
       .then(setThreads)
       .catch(console.error)
       .finally(() => setThreadsLoading(false));
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    loadThreads();
   }, []);
+
+  // Signing in from the page (the popup) makes the user's own threads
+  // visible, so load them again.
+  const authStatus = useAuthStatus();
+  const prevAuthStatus = useRef(authStatus);
+  useEffect(() => {
+    if (prevAuthStatus.current === "signed_out" && authStatus === "signed_in") {
+      loadThreads();
+    }
+    prevAuthStatus.current = authStatus;
+  }, [authStatus]);
 
   return (
     <>
