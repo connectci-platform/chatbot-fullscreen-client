@@ -149,6 +149,12 @@ export function Thread() {
     prevMessageLength.current = messages.length;
   }, [messages]);
 
+  // A tool has started, so the indicator comes back even if the model already
+  // wrote text this turn.
+  useEffect(() => {
+    if (stream.runStatus) setFirstTokenReceived(false);
+  }, [stream.runStatus]);
+
   const submitMessage = (text: string, blocks: typeof contentBlocks) => {
     setFirstTokenReceived(false);
 
@@ -361,7 +367,7 @@ export function Thread() {
                     />
                   )}
                   {isLoading && !firstTokenReceived && (
-                    <AssistantMessageLoading />
+                    <AssistantMessageLoading status={stream.runStatus} />
                   )}
                 </>
               }

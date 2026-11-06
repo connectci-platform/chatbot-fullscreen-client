@@ -28,6 +28,7 @@ import {
 } from "@/lib/requires-auth";
 import { useAuthStatus } from "@/hooks/use-agent-auth";
 import { shouldReloadAfterSignIn } from "@/lib/run-errors";
+import { isRunStatusEvent, type RunStatusEvent } from "@/lib/run-status";
 import { createClient } from "./client";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
@@ -42,12 +43,14 @@ const useTypedStream = useStream<
       ui?: (UIMessage | RemoveUIMessage)[] | UIMessage | RemoveUIMessage;
       context?: Record<string, unknown>;
     };
-    CustomEventType: UIMessage | RemoveUIMessage | RequiresAuthEvent;
+    CustomEventType:
+      UIMessage | RemoveUIMessage | RequiresAuthEvent | RunStatusEvent;
   }
 >;
 
 type StreamContextType = ReturnType<typeof useTypedStream> & {
   apiUrl: string;
+  runStatus: string | null;
 };
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
 
@@ -139,6 +142,7 @@ const StreamSession = ({
 }) => {
   const [threadId, setThreadId] = useQueryState("threadId");
   const { getThreads, setThreads } = useThreads();
+  const [runStatus, setRunStatus] = useState<string | null>(null);
   // A Client of our own rather than useStream's apiUrl/apiKey options, so the
   // stream and history requests carry the Bearer token (see createClient).
   const client = useMemo(
@@ -153,6 +157,10 @@ const StreamSession = ({
     onCustomEvent: (event, options) => {
       if (isRequiresAuthEvent(event)) {
         showRequiresAuth(event);
+        return;
+      }
+      if (isRunStatusEvent(event)) {
+        setRunStatus(event.message);
         return;
       }
       if (isUIMessage(event) || isRemoveUIMessage(event)) {
@@ -192,6 +200,11 @@ const StreamSession = ({
     prevAuthStatus.current = authStatus;
   }, [authStatus, streamValue.error]);
 
+  // Covers every way a run ends: finished, failed or cancelled.
+  useEffect(() => {
+    if (!streamValue.isLoading) setRunStatus(null);
+  }, [streamValue.isLoading]);
+
   useEffect(() => {
     checkGraphStatus(apiUrl, apiKey, authScheme).then((ok) => {
       if (!ok) {
@@ -207,7 +220,7 @@ const StreamSession = ({
   }, [apiKey, apiUrl, authScheme]);
 
   return (
-    <StreamContext.Provider value={{ ...streamValue, apiUrl }}>
+    <StreamContext.Provider value={{ ...streamValue, apiUrl, runStatus }}>
       {children}
     </StreamContext.Provider>
   );

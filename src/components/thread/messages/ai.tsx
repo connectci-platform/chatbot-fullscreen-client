@@ -133,18 +133,25 @@ export function AssistantMessage({
   );
 }
 
-export function AssistantMessageLoading() {
+export function AssistantMessageLoading({
+  status,
+}: {
+  status?: string | null;
+}) {
   return (
     <div
       role="status"
-      className="mr-auto flex items-start gap-2"
+      className="mr-auto flex items-center gap-3"
     >
-      <span className="sr-only">Writing an answer…</span>
+      {!status && <span className="sr-only">Writing an answer…</span>}
       <div className="bg-muted flex h-8 items-center gap-1 rounded-lg px-4 py-2">
         <div className="bg-foreground/50 h-1.5 w-1.5 animate-[pulse_1.5s_ease-in-out_infinite] rounded-full"></div>
         <div className="bg-foreground/50 h-1.5 w-1.5 animate-[pulse_1.5s_ease-in-out_0.5s_infinite] rounded-full"></div>
         <div className="bg-foreground/50 h-1.5 w-1.5 animate-[pulse_1.5s_ease-in-out_1s_infinite] rounded-full"></div>
       </div>
+      {status && (
+        <span className="text-muted-foreground text-sm">{status}</span>
+      )}
     </div>
   );
 }
