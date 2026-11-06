@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "@langchain/langgraph-sdk";
 import { AssistantMessage } from "./ai";
 
@@ -11,15 +11,26 @@ const toolMessage: Message = {
   content: "secret tool output",
 };
 
+const aiMessage: Message = {
+  id: "ai-1",
+  type: "ai",
+  content: "Hello from the assistant",
+};
+
+const stream: {
+  messages: Message[];
+  interrupt: unknown;
+} = { messages: [], interrupt: undefined };
+
 vi.mock("@/providers/Stream", () => ({
   useStreamContext: () => ({
-    messages: [toolMessage],
+    messages: stream.messages,
     values: {},
-    interrupt: undefined,
-    getMessagesMetadata: () => undefined,
-    setBranch: vi.fn(),
+    interrupt: stream.interrupt,
   }),
 }));
+
+vi.mock("../artifact", () => ({ useArtifact: () => [null, vi.fn()] }));
 
 function renderMessage(message: Message, searchParams = "") {
   return render(
@@ -27,15 +38,33 @@ function renderMessage(message: Message, searchParams = "") {
       <AssistantMessage
         message={message}
         isLoading={false}
-        handleRegenerate={vi.fn()}
       />
     </NuqsTestingAdapter>,
   );
 }
 
 describe("AssistantMessage", () => {
+  beforeEach(() => {
+    stream.messages = [toolMessage];
+    stream.interrupt = undefined;
+  });
+
   it("keeps tool messages hidden with ?hideToolCalls=false", () => {
     renderMessage(toolMessage, "?hideToolCalls=false");
     expect(screen.queryByText("secret tool output")).toBeNull();
+  });
+
+  it("offers Copy but not Regenerate", () => {
+    stream.messages = [aiMessage];
+    renderMessage(aiMessage);
+    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Copy content" })).toBeTruthy();
+  });
+
+  it("still renders an interrupt for the last AI message", () => {
+    stream.messages = [aiMessage];
+    stream.interrupt = { value: { reason: "needs approval" } };
+    renderMessage(aiMessage);
+    expect(screen.getByText(/needs approval/)).toBeTruthy();
   });
 });

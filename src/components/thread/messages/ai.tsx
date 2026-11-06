@@ -1,8 +1,8 @@
 import { useStreamContext } from "@/providers/Stream";
-import { Checkpoint, Message } from "@langchain/langgraph-sdk";
+import { Message } from "@langchain/langgraph-sdk";
 import { useStream } from "@langchain/langgraph-sdk/react";
 import { getContentString } from "../utils";
-import { BranchSwitcher, CommandBar } from "./shared";
+import { CommandBar } from "./shared";
 import { MarkdownText } from "../markdown-text";
 import { LoadExternalComponent } from "@langchain/langgraph-sdk/react-ui";
 import { cn } from "@/lib/utils";
@@ -74,11 +74,9 @@ function Interrupt({
 export function AssistantMessage({
   message,
   isLoading,
-  handleRegenerate,
 }: {
   message: Message | undefined;
   isLoading: boolean;
-  handleRegenerate: (parentCheckpoint: Checkpoint | null | undefined) => void;
 }) {
   const content = message?.content ?? [];
   const contentString = getContentString(content);
@@ -89,10 +87,7 @@ export function AssistantMessage({
   const hasNoAIOrToolMessages = !thread.messages.find(
     (m) => m.type === "ai" || m.type === "tool",
   );
-  const meta = message ? thread.getMessagesMetadata(message) : undefined;
   const threadInterrupt = thread.interrupt;
-
-  const parentCheckpoint = meta?.firstSeenState?.parent_checkpoint;
 
   if (message?.type === "tool") {
     return null;
@@ -101,44 +96,34 @@ export function AssistantMessage({
   return (
     <div className="group mr-auto flex w-full items-start gap-2">
       <div className="flex w-full flex-col gap-2">
-        <>
-          {contentString.length > 0 && (
-            <div className="py-1">
-              <MarkdownText>{contentString}</MarkdownText>
-            </div>
-          )}
-
-          {message && (
-            <CustomComponent
-              message={message}
-              thread={thread}
-            />
-          )}
-          <Interrupt
-            interrupt={threadInterrupt}
-            isLastMessage={isLastMessage}
-            hasNoAIOrToolMessages={hasNoAIOrToolMessages}
-          />
-          <div
-            className={cn(
-              "mr-auto flex items-center gap-2 transition-opacity",
-              "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
-            )}
-          >
-            <BranchSwitcher
-              branch={meta?.branch}
-              branchOptions={meta?.branchOptions}
-              onSelect={(branch) => thread.setBranch(branch)}
-              isLoading={isLoading}
-            />
-            <CommandBar
-              content={contentString}
-              isLoading={isLoading}
-              isAiMessage={true}
-              handleRegenerate={() => handleRegenerate(parentCheckpoint)}
-            />
+        {contentString.length > 0 && (
+          <div className="py-1">
+            <MarkdownText>{contentString}</MarkdownText>
           </div>
-        </>
+        )}
+
+        {message && (
+          <CustomComponent
+            message={message}
+            thread={thread}
+          />
+        )}
+        <Interrupt
+          interrupt={threadInterrupt}
+          isLastMessage={isLastMessage}
+          hasNoAIOrToolMessages={hasNoAIOrToolMessages}
+        />
+        <div
+          className={cn(
+            "mr-auto flex items-center gap-2 transition-opacity",
+            "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
+          )}
+        >
+          <CommandBar
+            content={contentString}
+            isLoading={isLoading}
+          />
+        </div>
       </div>
     </div>
   );
