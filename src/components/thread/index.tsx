@@ -15,7 +15,6 @@ import {
 import { ChatBubbleIcon } from "../icons/chat-bubble";
 import { program } from "@/config/program";
 import { ChatDisclaimer } from "./chat-disclaimer";
-import { hideToolCallsParser } from "@/lib/hide-tool-calls";
 import { TooltipIconButton } from "./tooltip-icon-button";
 import {
   ArrowDown,
@@ -32,13 +31,6 @@ import ThreadHistory from "./history";
 import { toast } from "sonner";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Label } from "../ui/label";
-import { Switch } from "../ui/switch";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../ui/tooltip";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { useInitialQuestion } from "@/hooks/use-initial-question";
 import { ContentBlocksPreview } from "./ContentBlocksPreview";
@@ -90,30 +82,6 @@ function ScrollToBottom(props: { className?: string }) {
   );
 }
 
-function ConnectedHost({ apiUrl }: { apiUrl: string }) {
-  let host: string;
-  try {
-    host = new URL(apiUrl).host;
-  } catch {
-    host = apiUrl;
-  }
-
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="text-muted-foreground hidden max-w-40 truncate text-xs sm:inline">
-            {host}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          <p>Connected to {apiUrl}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
 export function Thread() {
   const [artifactContext, setArtifactContext] = useArtifactContext();
   const [artifactOpen, closeArtifact] = useArtifactOpen();
@@ -122,10 +90,6 @@ export function Thread() {
   const [chatHistoryOpen, setChatHistoryOpen] = useQueryState(
     "chatHistoryOpen",
     parseAsBoolean.withDefault(false),
-  );
-  const [hideToolCalls, setHideToolCalls] = useQueryState(
-    "hideToolCalls",
-    hideToolCallsParser,
   );
   const [input, setInput] = useState("");
   const {
@@ -374,7 +338,6 @@ export function Thread() {
                     {program.name}
                   </span>
                 </motion.button>
-                <ConnectedHost apiUrl={stream.apiUrl} />
               </div>
 
               <div className="flex items-center gap-4">
@@ -493,21 +456,6 @@ export function Thread() {
                         />
 
                         <div className="flex items-center gap-6 p-2 pt-4">
-                          <div>
-                            <div className="flex items-center space-x-2">
-                              <Switch
-                                id="render-tool-calls"
-                                checked={hideToolCalls}
-                                onCheckedChange={setHideToolCalls}
-                              />
-                              <Label
-                                htmlFor="render-tool-calls"
-                                className="text-sm text-gray-600"
-                              >
-                                Hide Tool Calls
-                              </Label>
-                            </div>
-                          </div>
                           <Label
                             htmlFor="file-input"
                             className="flex cursor-pointer items-center gap-2"
