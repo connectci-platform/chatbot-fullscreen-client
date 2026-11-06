@@ -1,6 +1,5 @@
 // Retained for the (now form-less) apiKey plumbing still threaded through
-// Stream.tsx / Thread.tsx's Client construction — see
-// .phase2-slice-reskin-report.md for what's left of this to clean up.
+// Stream.tsx / Thread.tsx's Client construction.
 const API_KEY_STORAGE_KEY = "lg:chat:apiKey";
 const API_KEY_HOST_STORAGE_KEY = "lg:chat:apiKeyHost";
 

@@ -13,10 +13,12 @@ export const SUPPORTED_FILE_TYPES = [
 
 interface UseFileUploadOptions {
   initialBlocks?: ContentBlock.Multimodal.Data[];
+  enabled?: boolean;
 }
 
 export function useFileUpload({
   initialBlocks = [],
+  enabled = true,
 }: UseFileUploadOptions = {}) {
   const [contentBlocks, setContentBlocks] =
     useState<ContentBlock.Multimodal.Data[]>(initialBlocks);
@@ -79,9 +81,22 @@ export function useFileUpload({
     e.target.value = "";
   };
 
+  // With uploads off, still cancel window drags so a dropped file can't
+  // navigate the page away from the chat.
+  useEffect(() => {
+    if (enabled) return;
+    const cancel = (e: DragEvent) => e.preventDefault();
+    window.addEventListener("dragover", cancel);
+    window.addEventListener("drop", cancel);
+    return () => {
+      window.removeEventListener("dragover", cancel);
+      window.removeEventListener("drop", cancel);
+    };
+  }, [enabled]);
+
   // Drag and drop handlers
   useEffect(() => {
-    if (!dropRef.current) return;
+    if (!enabled || !dropRef.current) return;
 
     // Global drag events with counter for robust dragOver state
     const handleWindowDragEnter = (e: DragEvent) => {
@@ -185,7 +200,7 @@ export function useFileUpload({
       window.removeEventListener("dragover", handleWindowDragOver);
       dragCounter.current = 0;
     };
-  }, [contentBlocks]);
+  }, [contentBlocks, enabled]);
 
   const removeBlock = (idx: number) => {
     setContentBlocks((prev) => prev.filter((_, i) => i !== idx));
@@ -200,6 +215,7 @@ export function useFileUpload({
   const handlePaste = async (
     e: React.ClipboardEvent<HTMLTextAreaElement | HTMLInputElement>,
   ) => {
+    if (!enabled) return;
     const items = e.clipboardData.items;
     if (!items) return;
     const files: File[] = [];

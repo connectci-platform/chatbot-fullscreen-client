@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { useThreads } from "@/providers/Thread";
 import { Thread } from "@langchain/langgraph-sdk";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { getContentString } from "../utils";
 import { useQueryState, parseAsBoolean } from "nuqs";
@@ -63,17 +63,20 @@ function ThreadList({
   );
 }
 
-function ThreadListEmpty() {
-  // The cookie that identifies a signed-in user is HttpOnly, so the client
-  // can't check auth state directly. An empty result from /threads/search is
-  // the closest proxy we have: unauthenticated users always get an empty
-  // list, and a brand-new authed user with no history yet is an acceptable
-  // edge case to also show this prompt to.
+function ThreadListEmpty({ loadFailed }: { loadFailed: boolean }) {
+  const authStatus = useAuthStatus();
+  // While the sign-in state is unknown, show neither message.
+  const message = loadFailed
+    ? "Couldn't load your conversations."
+    : authStatus === "signed_in"
+      ? "No conversations yet."
+      : authStatus === "signed_out"
+        ? "Sign in to see and resume your conversations."
+        : null;
+
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-6 text-center">
-      <p className="text-muted-foreground text-sm">
-        Sign in to see and resume your conversations.
-      </p>
+      {message && <p className="text-muted-foreground text-sm">{message}</p>}
     </div>
   );
 }
@@ -101,11 +104,19 @@ export default function ThreadHistory() {
   const { getThreads, threads, setThreads, threadsLoading, setThreadsLoading } =
     useThreads();
 
+  const [loadFailed, setLoadFailed] = useState(false);
+
   const loadThreads = () => {
     setThreadsLoading(true);
     getThreads()
-      .then(setThreads)
-      .catch(console.error)
+      .then((loaded) => {
+        setLoadFailed(false);
+        setThreads(loaded);
+      })
+      .catch((error) => {
+        console.error(error);
+        setLoadFailed(true);
+      })
       .finally(() => setThreadsLoading(false));
   };
 
@@ -127,11 +138,14 @@ export default function ThreadHistory() {
 
   return (
     <>
-      <div className="shadow-inner-right hidden h-screen w-[300px] shrink-0 flex-col items-start justify-start gap-6 border-r-[1px] border-slate-300 lg:flex">
+      <div className="shadow-inner-right hidden h-full w-[300px] shrink-0 flex-col items-start justify-start gap-6 border-r-[1px] border-slate-300 lg:flex">
         <div className="flex w-full items-center justify-between px-4 pt-1.5">
           <Button
             className="hover:bg-gray-100"
             variant="ghost"
+            aria-label={
+              chatHistoryOpen ? "Hide conversations" : "Show conversations"
+            }
             onClick={() => setChatHistoryOpen((p) => !p)}
           >
             {chatHistoryOpen ? (
@@ -140,14 +154,14 @@ export default function ThreadHistory() {
               <PanelRightClose className="size-5" />
             )}
           </Button>
-          <h1 className="text-xl font-semibold tracking-tight">
-            Thread History
-          </h1>
+          <h2 className="text-xl font-semibold tracking-tight">
+            Conversations
+          </h2>
         </div>
         {threadsLoading ? (
           <ThreadHistoryLoading />
         ) : threads.length === 0 ? (
-          <ThreadListEmpty />
+          <ThreadListEmpty loadFailed={loadFailed} />
         ) : (
           <ThreadList threads={threads} />
         )}
@@ -165,10 +179,12 @@ export default function ThreadHistory() {
             className="flex lg:hidden"
           >
             <SheetHeader>
-              <SheetTitle>Thread History</SheetTitle>
+              <SheetTitle>Conversations</SheetTitle>
             </SheetHeader>
-            {threads.length === 0 ? (
-              <ThreadListEmpty />
+            {threadsLoading ? (
+              <ThreadHistoryLoading />
+            ) : threads.length === 0 ? (
+              <ThreadListEmpty loadFailed={loadFailed} />
             ) : (
               <ThreadList
                 threads={threads}

@@ -7,7 +7,7 @@
 }
 
 .markdown-content a {
-  color: #0070f3;
+  color: var(--brand-teal);
   text-decoration: none;
 }
 

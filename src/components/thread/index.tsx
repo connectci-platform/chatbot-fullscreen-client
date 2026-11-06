@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { useStreamContext } from "@/providers/Stream";
 import { useState, FormEvent } from "react";
 import { Button } from "../ui/button";
-import { Checkpoint, Message } from "@langchain/langgraph-sdk";
+import { Message } from "@langchain/langgraph-sdk";
 import { AssistantMessage, AssistantMessageLoading } from "./messages/ai";
 import { HumanMessage } from "./messages/human";
 import {
@@ -13,8 +13,8 @@ import {
   ensureToolCallsHaveResponses,
 } from "@/lib/ensure-tool-responses";
 import { ChatBubbleIcon } from "../icons/chat-bubble";
-import { APP_NAME } from "@/lib/branding";
-import { hideToolCallsParser } from "@/lib/hide-tool-calls";
+import { program } from "@/config/program";
+import { ChatDisclaimer } from "./chat-disclaimer";
 import { TooltipIconButton } from "./tooltip-icon-button";
 import {
   ArrowDown,
@@ -29,15 +29,9 @@ import { useQueryState, parseAsBoolean } from "nuqs";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import ThreadHistory from "./history";
 import { toast } from "sonner";
+import { runErrorMessage } from "@/lib/run-errors";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Label } from "../ui/label";
-import { Switch } from "../ui/switch";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../ui/tooltip";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { useInitialQuestion } from "@/hooks/use-initial-question";
 import { ContentBlocksPreview } from "./ContentBlocksPreview";
@@ -89,30 +83,6 @@ function ScrollToBottom(props: { className?: string }) {
   );
 }
 
-function ConnectedHost({ apiUrl }: { apiUrl: string }) {
-  let host: string;
-  try {
-    host = new URL(apiUrl).host;
-  } catch {
-    host = apiUrl;
-  }
-
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="text-muted-foreground hidden max-w-40 truncate text-xs sm:inline">
-            {host}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          <p>Connected to {apiUrl}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
 export function Thread() {
   const [artifactContext, setArtifactContext] = useArtifactContext();
   const [artifactOpen, closeArtifact] = useArtifactOpen();
@@ -121,10 +91,6 @@ export function Thread() {
   const [chatHistoryOpen, setChatHistoryOpen] = useQueryState(
     "chatHistoryOpen",
     parseAsBoolean.withDefault(false),
-  );
-  const [hideToolCalls, setHideToolCalls] = useQueryState(
-    "hideToolCalls",
-    hideToolCallsParser,
   );
   const [input, setInput] = useState("");
   const {
@@ -136,7 +102,7 @@ export function Thread() {
     resetBlocks: _resetBlocks,
     dragOver,
     handlePaste,
-  } = useFileUpload();
+  } = useFileUpload({ enabled: program.features.fileUploads });
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
 
@@ -159,27 +125,14 @@ export function Thread() {
       lastError.current = undefined;
       return;
     }
-    try {
-      const message = (stream.error as any).message;
-      if (!message || lastError.current === message) {
-        // Message has already been logged. do not modify ref, return early.
-        return;
-      }
+    const { name, message } = stream.error as Error;
+    const key = `${name}:${message}`;
+    if (lastError.current === key) return;
+    lastError.current = key;
 
-      // Message is defined, and it has not been logged yet. Save it, and send the error
-      lastError.current = message;
-      toast.error("An error occurred. Please try again.", {
-        description: (
-          <p>
-            <strong>Error:</strong> <code>{message}</code>
-          </p>
-        ),
-        richColors: true,
-        closeButton: true,
-      });
-    } catch {
-      // no-op
-    }
+    console.error(stream.error);
+    const text = runErrorMessage(stream.error);
+    if (text) toast.error(text, { richColors: true, closeButton: true });
   }, [stream.error]);
 
   // TODO: this should be part of the useStream hook
@@ -243,27 +196,13 @@ export function Thread() {
 
   useInitialQuestion((question) => submitMessage(question, []));
 
-  const handleRegenerate = (
-    parentCheckpoint: Checkpoint | null | undefined,
-  ) => {
-    // Do this so the loading state is correct
-    prevMessageLength.current = prevMessageLength.current - 1;
-    setFirstTokenReceived(false);
-    stream.submit(undefined, {
-      checkpoint: parentCheckpoint,
-      streamMode: ["values"],
-      streamSubgraphs: true,
-      streamResumable: true,
-    });
-  };
-
   const chatStarted = !!threadId || !!messages.length;
   const hasNoAIOrToolMessages = !messages.find(
     (m) => m.type === "ai" || m.type === "tool",
   );
 
   return (
-    <div className="flex h-screen w-full overflow-hidden">
+    <div className="flex h-full w-full overflow-hidden">
       <div className="relative hidden lg:flex">
         <motion.div
           className="absolute z-20 h-full overflow-hidden border-r bg-white"
@@ -322,6 +261,11 @@ export function Thread() {
                   <Button
                     className="hover:bg-gray-100"
                     variant="ghost"
+                    aria-label={
+                      chatHistoryOpen
+                        ? "Hide conversations"
+                        : "Show conversations"
+                    }
                     onClick={() => setChatHistoryOpen((p) => !p)}
                   >
                     {chatHistoryOpen ? (
@@ -342,6 +286,11 @@ export function Thread() {
                     <Button
                       className="hover:bg-gray-100"
                       variant="ghost"
+                      aria-label={
+                        chatHistoryOpen
+                          ? "Hide conversations"
+                          : "Show conversations"
+                      }
                       onClick={() => setChatHistoryOpen((p) => !p)}
                     >
                       {chatHistoryOpen ? (
@@ -367,20 +316,19 @@ export function Thread() {
                   <ChatBubbleIcon
                     width={32}
                     height={32}
-                    className="text-[#1a5b6e]"
+                    className="text-brand"
                   />
                   <span className="text-xl font-semibold tracking-tight">
-                    {APP_NAME}
+                    {program.name}
                   </span>
                 </motion.button>
-                <ConnectedHost apiUrl={stream.apiUrl} />
               </div>
 
               <div className="flex items-center gap-4">
                 <TooltipIconButton
                   size="lg"
                   className="p-4"
-                  tooltip="New thread"
+                  tooltip="New conversation"
                   variant="ghost"
                   onClick={() => setThreadId(null)}
                 >
@@ -396,7 +344,7 @@ export function Thread() {
             <StickyToBottomContent
               className={cn(
                 "absolute inset-0 overflow-y-scroll px-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent",
-                !chatStarted && "mt-[25vh] flex flex-col items-stretch",
+                !chatStarted && "flex flex-col items-stretch pt-[25vh]",
                 chatStarted && "grid grid-rows-[1fr_auto]",
               )}
               contentClassName="pt-8 pb-16 max-w-3xl mx-auto flex flex-col gap-4 w-full"
@@ -416,7 +364,6 @@ export function Thread() {
                           key={message.id || `${message.type}-${index}`}
                           message={message}
                           isLoading={isLoading}
-                          handleRegenerate={handleRegenerate}
                         />
                       ),
                     )}
@@ -427,7 +374,6 @@ export function Thread() {
                       key="interrupt-msg"
                       message={undefined}
                       isLoading={isLoading}
-                      handleRegenerate={handleRegenerate}
                     />
                   )}
                   {isLoading && !firstTokenReceived && (
@@ -442,122 +388,121 @@ export function Thread() {
                       <ChatBubbleIcon
                         width={32}
                         height={32}
-                        className="flex-shrink-0 text-[#1a5b6e]"
+                        className="text-brand flex-shrink-0"
                       />
                       <h1 className="text-2xl font-semibold tracking-tight">
-                        {APP_NAME}
+                        {program.name}
                       </h1>
                     </div>
                   )}
 
                   <ScrollToBottom className="animate-in fade-in-0 zoom-in-95 absolute bottom-full left-1/2 mb-4 -translate-x-1/2" />
 
-                  <div
-                    ref={dropRef}
-                    className={cn(
-                      "relative z-10 mx-auto mb-8 w-full max-w-3xl bg-white shadow-xs transition-all",
-                      dragOver
-                        ? "border-primary border-2 border-dotted"
-                        : "border border-solid border-[#cccccc]",
-                    )}
-                  >
-                    <form
-                      onSubmit={handleSubmit}
-                      className="mx-auto grid max-w-3xl grid-rows-[1fr_auto] gap-2"
+                  <div className="mx-auto mb-8 w-full max-w-3xl">
+                    <div
+                      ref={dropRef}
+                      className={cn(
+                        "relative z-10 w-full bg-white shadow-xs transition-all",
+                        dragOver
+                          ? "border-primary border-2 border-dotted"
+                          : "border-input border border-solid",
+                      )}
                     >
-                      <ContentBlocksPreview
-                        blocks={contentBlocks}
-                        onRemove={removeBlock}
-                      />
-                      <textarea
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onPaste={handlePaste}
-                        onKeyDown={(e) => {
-                          if (
-                            e.key === "Enter" &&
-                            !e.shiftKey &&
-                            !e.metaKey &&
-                            !e.nativeEvent.isComposing
-                          ) {
-                            e.preventDefault();
-                            const el = e.target as HTMLElement | undefined;
-                            const form = el?.closest("form");
-                            form?.requestSubmit();
-                          }
-                        }}
-                        placeholder="Type your message..."
-                        className="field-sizing-content resize-none border-none bg-transparent p-3.5 pb-0 text-base text-black shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
-                      />
-
-                      <div className="flex items-center gap-6 p-2 pt-4">
-                        <div>
-                          <div className="flex items-center space-x-2">
-                            <Switch
-                              id="render-tool-calls"
-                              checked={hideToolCalls}
-                              onCheckedChange={setHideToolCalls}
-                            />
-                            <Label
-                              htmlFor="render-tool-calls"
-                              className="text-sm text-gray-600"
-                            >
-                              Hide Tool Calls
-                            </Label>
-                          </div>
-                        </div>
-                        <Label
-                          htmlFor="file-input"
-                          className="flex cursor-pointer items-center gap-2"
-                        >
-                          <Plus className="size-5 text-gray-600" />
-                          <span className="text-sm text-gray-600">
-                            Upload PDF or Image
-                          </span>
-                        </Label>
-                        <input
-                          id="file-input"
-                          type="file"
-                          onChange={handleFileUpload}
-                          multiple
-                          accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
-                          className="hidden"
+                      <form
+                        onSubmit={handleSubmit}
+                        className="mx-auto grid max-w-3xl grid-rows-[1fr_auto] gap-2"
+                      >
+                        <ContentBlocksPreview
+                          blocks={contentBlocks}
+                          onRemove={removeBlock}
                         />
-                        {stream.isLoading ? (
-                          <Button
-                            key="stop"
-                            onClick={() => stream.stop()}
-                            className="ml-auto"
-                          >
-                            <LoaderCircle className="h-4 w-4 animate-spin" />
-                            Cancel
-                          </Button>
-                        ) : (
-                          <Button
-                            type="submit"
-                            className="ml-auto shadow-md transition-all"
-                            disabled={
-                              isLoading ||
-                              (!input.trim() && contentBlocks.length === 0)
+                        <textarea
+                          value={input}
+                          onChange={(e) => setInput(e.target.value)}
+                          onPaste={handlePaste}
+                          onKeyDown={(e) => {
+                            if (
+                              e.key === "Enter" &&
+                              !e.shiftKey &&
+                              !e.metaKey &&
+                              !e.nativeEvent.isComposing
+                            ) {
+                              e.preventDefault();
+                              const el = e.target as HTMLElement | undefined;
+                              const form = el?.closest("form");
+                              form?.requestSubmit();
                             }
-                          >
-                            Send
-                          </Button>
-                        )}
-                      </div>
-                    </form>
+                          }}
+                          aria-label="Message"
+                          placeholder="Type your message..."
+                          className="field-sizing-content resize-none border-none bg-transparent p-3.5 pb-0 text-base text-black shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
+                        />
+
+                        <div className="flex items-center gap-6 p-2 pt-4">
+                          {program.features.fileUploads && (
+                            <>
+                              <Label
+                                htmlFor="file-input"
+                                className="flex cursor-pointer items-center gap-2"
+                              >
+                                <Plus className="size-5 text-gray-600" />
+                                <span className="text-sm text-gray-600">
+                                  Upload PDF or Image
+                                </span>
+                              </Label>
+                              <input
+                                id="file-input"
+                                type="file"
+                                onChange={handleFileUpload}
+                                multiple
+                                accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+                                className="hidden"
+                              />
+                            </>
+                          )}
+                          {stream.isLoading ? (
+                            <Button
+                              key="stop"
+                              onClick={() => stream.stop()}
+                              className="ml-auto"
+                            >
+                              <LoaderCircle className="h-4 w-4 animate-spin" />
+                              Cancel
+                            </Button>
+                          ) : (
+                            <Button
+                              type="submit"
+                              className="ml-auto shadow-md transition-all"
+                              disabled={
+                                isLoading ||
+                                (!input.trim() && contentBlocks.length === 0)
+                              }
+                            >
+                              Send
+                            </Button>
+                          )}
+                        </div>
+                      </form>
+                    </div>
+                    <ChatDisclaimer />
                   </div>
                 </div>
               }
             />
           </StickToBottom>
         </motion.div>
-        <div className="relative flex flex-col border-l">
+        <div
+          className={cn(
+            "relative flex flex-col border-l",
+            !artifactOpen && "hidden",
+          )}
+        >
           <div className="absolute inset-0 flex min-w-[30vw] flex-col">
             <div className="grid grid-cols-[1fr_auto] border-b p-4">
               <ArtifactTitle className="truncate overflow-hidden" />
               <button
                 onClick={closeArtifact}
+                aria-label="Close panel"
                 className="cursor-pointer"
               >
                 <XIcon className="size-5" />

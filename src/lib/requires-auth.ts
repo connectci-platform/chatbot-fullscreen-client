@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { program } from "@/config/program";
 import { openSignIn } from "./sign-in";
 
 /**
@@ -27,7 +28,7 @@ export function showRequiresAuth(event: RequiresAuthEvent) {
     return;
   }
   toast.info("Sign in to continue", {
-    description: "This needs your ACCESS account.",
+    description: `This needs your ${program.accountName}.`,
     action: { label: "Sign in", onClick: () => openSignIn() },
     duration: 15000,
     closeButton: true,

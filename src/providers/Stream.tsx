@@ -5,6 +5,7 @@ import React, {
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import { useStream } from "@langchain/langgraph-sdk/react";
 import { type Message } from "@langchain/langgraph-sdk";
@@ -18,13 +19,15 @@ import {
 import { useQueryState } from "nuqs";
 import { getApiKey } from "@/lib/api-key";
 import { resolveApiUrl } from "@/lib/resolve-api-url";
-import { APP_NAME } from "@/lib/branding";
+import { program } from "@/config/program";
 import { exchangeHandoffToken } from "@/lib/handoff";
 import {
   isRequiresAuthEvent,
   showRequiresAuth,
   type RequiresAuthEvent,
 } from "@/lib/requires-auth";
+import { useAuthStatus } from "@/hooks/use-agent-auth";
+import { shouldReloadAfterSignIn } from "@/lib/run-errors";
 import { createClient } from "./client";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
@@ -104,10 +107,18 @@ function useHandoffExchange(apiUrl: string | undefined) {
       }
       if (result.threadId) {
         setThreadId(result.threadId);
+      } else {
+        toast.error(
+          "We couldn't open that conversation. Please start a new one.",
+          {
+            richColors: true,
+            closeButton: true,
+          },
+        );
       }
-      // Always strip `?h=` once the exchange settles: the token is
-      // single-use on the server regardless of outcome, so leaving it
-      // in the URL would only cause a doomed retry on refresh.
+      // Strip `?h=` once the exchange is settled: the agent may have spent
+      // the token, so leaving it in the URL would only cause a doomed retry
+      // on refresh. A signed-out refusal ("not_sent") returned above keeps it.
       setHandoffToken(null);
     });
   }, [handoffToken, apiUrl, threadId, setThreadId, setHandoffToken]);
@@ -163,16 +174,30 @@ const StreamSession = ({
     },
   });
 
+  // A conversation that 404ed while signed out may be the person's own. When
+  // they sign in, reload: the URL keeps ?threadId=, so it opens signed in.
+  // No loop: after the reload auth goes unknown -> signed_in.
+  const authStatus = useAuthStatus();
+  const prevAuthStatus = useRef(authStatus);
+  useEffect(() => {
+    if (
+      shouldReloadAfterSignIn(
+        prevAuthStatus.current,
+        authStatus,
+        streamValue.error,
+      )
+    ) {
+      window.location.reload();
+    }
+    prevAuthStatus.current = authStatus;
+  }, [authStatus, streamValue.error]);
+
   useEffect(() => {
     checkGraphStatus(apiUrl, apiKey, authScheme).then((ok) => {
       if (!ok) {
-        toast.error(`Failed to connect to ${APP_NAME} server`, {
-          description: () => (
-            <p>
-              Please ensure your graph is running at <code>{apiUrl}</code> and
-              your API key is correctly set (if connecting to a deployed graph).
-            </p>
-          ),
+        console.error(`Failed to connect to ${apiUrl}`);
+        toast.error(`${program.name} isn't available right now`, {
+          description: "Please try again in a few minutes.",
           duration: 10000,
           richColors: true,
           closeButton: true,
@@ -227,9 +252,9 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   // misconfigured; show a neutral message instead of a form.
   if (!finalApiUrl || !finalAssistantId) {
     return (
-      <div className="flex min-h-screen w-full items-center justify-center p-4">
+      <div className="flex h-full w-full items-center justify-center p-4">
         <p className="text-muted-foreground max-w-md text-center">
-          {APP_NAME} is not configured. Please contact support.
+          {program.name} is not configured. Please contact support.
         </p>
       </div>
     );

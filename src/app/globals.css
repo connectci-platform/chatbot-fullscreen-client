@@ -36,6 +36,8 @@
   --chart-5: oklch(0.769 0.188 70.08);
   /* ACCESS is square — no rounded corners on controls. */
   --radius: 0rem;
+  /* ACCESS teal #107180, exposed as text-brand. A program overrides it under [data-program]. */
+  --brand-teal: #107180;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.849 0.155 83.103);
@@ -92,6 +94,7 @@
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+  --color-brand: var(--brand-teal);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);

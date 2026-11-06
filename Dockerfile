@@ -18,6 +18,10 @@ ARG NEXT_PUBLIC_ASSISTANT_ID=agent
 # build like the API URL above.
 ARG NEXT_PUBLIC_SUPPORT_URL=https://support.access-ci.org
 
+# Which program this deployment serves (a key in src/config/programs). Baked in
+# at build like the values above.
+ARG NEXT_PUBLIC_PROGRAM=access
+
 FROM node:22-alpine AS base
 RUN corepack enable
 
@@ -37,6 +41,8 @@ ARG NEXT_PUBLIC_ASSISTANT_ID
 ENV NEXT_PUBLIC_ASSISTANT_ID=${NEXT_PUBLIC_ASSISTANT_ID}
 ARG NEXT_PUBLIC_SUPPORT_URL
 ENV NEXT_PUBLIC_SUPPORT_URL=${NEXT_PUBLIC_SUPPORT_URL}
+ARG NEXT_PUBLIC_PROGRAM
+ENV NEXT_PUBLIC_PROGRAM=${NEXT_PUBLIC_PROGRAM}
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

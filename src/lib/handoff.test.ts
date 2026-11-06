@@ -66,6 +66,22 @@ describe("exchangeHandoffToken", () => {
     expect(call(fetchMock, 0)[0]).toBe(MINT_URL);
   });
 
+  it("doesn't spend the token when the agent refuses a signed-out exchange", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url === MINT_URL
+          ? json(401, { error: "login_required" })
+          : json(401, {}),
+      ),
+    );
+    expect(await exchange()).toEqual({
+      status: "not_sent",
+      message:
+        "We couldn't open that conversation. Sign in and use the link again.",
+    });
+  });
+
   it("reports a refused exchange as no thread", async () => {
     vi.stubGlobal(
       "fetch",

@@ -39,6 +39,14 @@ export async function exchangeHandoffToken(
       `${apiUrl}/handoff/exchange`,
       init,
     );
+    // The agent refuses a signed-out exchange before spending the token.
+    if (res.status === 401) {
+      return {
+        status: "not_sent",
+        message:
+          "We couldn't open that conversation. Sign in and use the link again.",
+      };
+    }
     if (!res.ok) return { status: "exchanged", threadId: null };
     const data = (await res.json()) as { thread_id?: string };
     return { status: "exchanged", threadId: data.thread_id ?? null };
