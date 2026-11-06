@@ -29,6 +29,7 @@ import { useQueryState, parseAsBoolean } from "nuqs";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import ThreadHistory from "./history";
 import { toast } from "sonner";
+import { runErrorMessage } from "@/lib/run-errors";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Label } from "../ui/label";
 import { useFileUpload } from "@/hooks/use-file-upload";
@@ -124,27 +125,14 @@ export function Thread() {
       lastError.current = undefined;
       return;
     }
-    try {
-      const message = (stream.error as any).message;
-      if (!message || lastError.current === message) {
-        // Message has already been logged. do not modify ref, return early.
-        return;
-      }
+    const { name, message } = stream.error as Error;
+    const key = `${name}:${message}`;
+    if (lastError.current === key) return;
+    lastError.current = key;
 
-      // Message is defined, and it has not been logged yet. Save it, and send the error
-      lastError.current = message;
-      toast.error("An error occurred. Please try again.", {
-        description: (
-          <p>
-            <strong>Error:</strong> <code>{message}</code>
-          </p>
-        ),
-        richColors: true,
-        closeButton: true,
-      });
-    } catch {
-      // no-op
-    }
+    console.error(stream.error);
+    const text = runErrorMessage(stream.error);
+    if (text) toast.error(text, { richColors: true, closeButton: true });
   }, [stream.error]);
 
   // TODO: this should be part of the useStream hook

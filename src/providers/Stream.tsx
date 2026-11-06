@@ -166,13 +166,9 @@ const StreamSession = ({
   useEffect(() => {
     checkGraphStatus(apiUrl, apiKey, authScheme).then((ok) => {
       if (!ok) {
-        toast.error(`Failed to connect to ${program.name} server`, {
-          description: () => (
-            <p>
-              Please ensure your graph is running at <code>{apiUrl}</code> and
-              your API key is correctly set (if connecting to a deployed graph).
-            </p>
-          ),
+        console.error(`Failed to connect to ${apiUrl}`);
+        toast.error(`${program.name} isn't available right now`, {
+          description: "Please try again in a few minutes.",
           duration: 10000,
           richColors: true,
           closeButton: true,
