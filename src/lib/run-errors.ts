@@ -30,7 +30,7 @@ export function runErrorMessage(error: unknown): string | null {
   // A 404 comes from opening a thread the caller can't read (signed out, or
   // a stale ?threadId=).
   if (isNotFound(error)) {
-    return "That conversation isn't available. Sign in, or start a new conversation.";
+    return "That conversation isn't available. Start a new one, or sign in if it was yours.";
   }
   const name = error instanceof Error ? error.name : "";
   if (SILENT.has(name)) return null;

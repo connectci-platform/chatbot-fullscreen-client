@@ -29,7 +29,7 @@ async function sdkNotFound(): Promise<unknown> {
 describe("runErrorMessage", () => {
   it("says an unreadable conversation isn't available on a 404", async () => {
     expect(runErrorMessage(await sdkNotFound())).toBe(
-      "That conversation isn't available. Sign in, or start a new conversation.",
+      "That conversation isn't available. Start a new one, or sign in if it was yours.",
     );
   });
 
