@@ -6,7 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
-import { FC, memo, useState } from "react";
+import { FC, isValidElement, memo, useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { SyntaxHighlighter } from "@/components/thread/syntax-highlighter";
 
@@ -193,54 +193,35 @@ const defaultComponents: any = {
       {...props}
     />
   ),
-  pre: ({ className, ...props }: { className?: string }) => (
-    <pre
-      className={cn(
-        "max-w-4xl overflow-x-auto rounded-lg bg-black text-white",
-        className,
-      )}
+  pre: ({ children }: { children?: React.ReactNode }) => {
+    const { className, children: text } = (
+      isValidElement(children) ? children.props : {}
+    ) as { className?: string; children?: React.ReactNode };
+    const label = /language-(\w+)/.exec(className || "")?.[1];
+    const code = String(text ?? "").replace(/\n$/, "");
+
+    return (
+      <div className="max-w-4xl overflow-x-auto rounded-lg bg-black text-white">
+        <CodeHeader
+          language={label ?? "code"}
+          code={code}
+        />
+        {/* Answers here are mostly commands, so unlabeled blocks are shell. */}
+        <SyntaxHighlighter
+          language={label ?? "bash"}
+          className={className}
+        >
+          {code}
+        </SyntaxHighlighter>
+      </div>
+    );
+  },
+  code: ({ className, ...props }: { className?: string }) => (
+    <code
+      className={cn("rounded font-semibold", className)}
       {...props}
     />
   ),
-  code: ({
-    className,
-    children,
-    ...props
-  }: {
-    className?: string;
-    children: React.ReactNode;
-  }) => {
-    const match = /language-(\w+)/.exec(className || "");
-
-    if (match) {
-      const language = match[1];
-      const code = String(children).replace(/\n$/, "");
-
-      return (
-        <>
-          <CodeHeader
-            language={language}
-            code={code}
-          />
-          <SyntaxHighlighter
-            language={language}
-            className={className}
-          >
-            {code}
-          </SyntaxHighlighter>
-        </>
-      );
-    }
-
-    return (
-      <code
-        className={cn("rounded font-semibold", className)}
-        {...props}
-      >
-        {children}
-      </code>
-    );
-  },
 };
 
 const MarkdownTextImpl: FC<{ children: string }> = ({ children }) => {
