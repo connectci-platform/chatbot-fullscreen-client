@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { useThreads } from "@/providers/Thread";
 import { Thread } from "@langchain/langgraph-sdk";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { getContentString } from "../utils";
 import { useQueryState, parseAsBoolean } from "nuqs";
@@ -63,11 +63,12 @@ function ThreadList({
   );
 }
 
-function ThreadListEmpty() {
+function ThreadListEmpty({ loadFailed }: { loadFailed: boolean }) {
   const authStatus = useAuthStatus();
   // While the sign-in state is unknown, show neither message.
-  const message =
-    authStatus === "signed_in"
+  const message = loadFailed
+    ? "Couldn't load your conversations."
+    : authStatus === "signed_in"
       ? "No conversations yet."
       : authStatus === "signed_out"
         ? "Sign in to see and resume your conversations."
@@ -103,11 +104,19 @@ export default function ThreadHistory() {
   const { getThreads, threads, setThreads, threadsLoading, setThreadsLoading } =
     useThreads();
 
+  const [loadFailed, setLoadFailed] = useState(false);
+
   const loadThreads = () => {
     setThreadsLoading(true);
     getThreads()
-      .then(setThreads)
-      .catch(console.error)
+      .then((loaded) => {
+        setLoadFailed(false);
+        setThreads(loaded);
+      })
+      .catch((error) => {
+        console.error(error);
+        setLoadFailed(true);
+      })
       .finally(() => setThreadsLoading(false));
   };
 
@@ -152,7 +161,7 @@ export default function ThreadHistory() {
         {threadsLoading ? (
           <ThreadHistoryLoading />
         ) : threads.length === 0 ? (
-          <ThreadListEmpty />
+          <ThreadListEmpty loadFailed={loadFailed} />
         ) : (
           <ThreadList threads={threads} />
         )}
@@ -175,7 +184,7 @@ export default function ThreadHistory() {
             {threadsLoading ? (
               <ThreadHistoryLoading />
             ) : threads.length === 0 ? (
-              <ThreadListEmpty />
+              <ThreadListEmpty loadFailed={loadFailed} />
             ) : (
               <ThreadList
                 threads={threads}

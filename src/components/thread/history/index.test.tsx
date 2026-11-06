@@ -1,10 +1,13 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthStatus } from "@/lib/agent-token";
 import ThreadHistory from ".";
 
 const auth: { status: AuthStatus } = { status: "unknown" };
+const threadsApi = {
+  getThreads: (): Promise<unknown[]> => Promise.resolve([]),
+};
 
 vi.mock("@/hooks/use-agent-auth", () => ({
   useAuthStatus: () => auth.status,
@@ -12,7 +15,7 @@ vi.mock("@/hooks/use-agent-auth", () => ({
 
 vi.mock("@/providers/Thread", () => ({
   useThreads: () => ({
-    getThreads: () => Promise.resolve([]),
+    getThreads: () => threadsApi.getThreads(),
     threads: [],
     setThreads: vi.fn(),
     threadsLoading: false,
@@ -31,6 +34,7 @@ function renderHistory(searchParams = "") {
 describe("ThreadHistory", () => {
   beforeEach(() => {
     auth.status = "unknown";
+    threadsApi.getThreads = () => Promise.resolve([]);
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
       matches: true,
       media: query,
@@ -46,6 +50,19 @@ describe("ThreadHistory", () => {
     expect(
       screen.queryByText("Sign in to see and resume your conversations."),
     ).toBeNull();
+  });
+
+  it("says the load failed instead of claiming there are no conversations", async () => {
+    auth.status = "signed_in";
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    threadsApi.getThreads = () => Promise.reject(new Error("boom"));
+    renderHistory();
+    await waitFor(() =>
+      expect(
+        screen.getByText("Couldn't load your conversations."),
+      ).toBeTruthy(),
+    );
+    expect(screen.queryByText("No conversations yet.")).toBeNull();
   });
 
   it("asks a signed-out person to sign in", () => {
