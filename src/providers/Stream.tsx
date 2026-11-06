@@ -18,7 +18,7 @@ import {
 import { useQueryState } from "nuqs";
 import { getApiKey } from "@/lib/api-key";
 import { resolveApiUrl } from "@/lib/resolve-api-url";
-import { APP_NAME } from "@/lib/branding";
+import { program } from "@/config/program";
 import { exchangeHandoffToken } from "@/lib/handoff";
 import {
   isRequiresAuthEvent,
@@ -166,7 +166,7 @@ const StreamSession = ({
   useEffect(() => {
     checkGraphStatus(apiUrl, apiKey, authScheme).then((ok) => {
       if (!ok) {
-        toast.error(`Failed to connect to ${APP_NAME} server`, {
+        toast.error(`Failed to connect to ${program.name} server`, {
           description: () => (
             <p>
               Please ensure your graph is running at <code>{apiUrl}</code> and
@@ -229,7 +229,7 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
     return (
       <div className="flex min-h-screen w-full items-center justify-center p-4">
         <p className="text-muted-foreground max-w-md text-center">
-          {APP_NAME} is not configured. Please contact support.
+          {program.name} is not configured. Please contact support.
         </p>
       </div>
     );

@@ -2,7 +2,7 @@
 // /api/agent-token, which authenticates the browser with its support session
 // cookie. Rules follow the agent-token contract's browser consumer rules.
 
-export const DEFAULT_SUPPORT_URL = "https://support.access-ci.org";
+import { program } from "@/config/program";
 
 // Mint again before a request when less than this remains. The agent refuses
 // tokens with less than its turn timeout plus 30 seconds (150s) left.
@@ -198,7 +198,7 @@ export function getAgentTokenSource(): AgentTokenSource {
 }
 
 export function getSupportUrl(): string {
-  return (process.env.NEXT_PUBLIC_SUPPORT_URL || DEFAULT_SUPPORT_URL).replace(
+  return (process.env.NEXT_PUBLIC_SUPPORT_URL || program.supportUrl).replace(
     /\/$/,
     "",
   );

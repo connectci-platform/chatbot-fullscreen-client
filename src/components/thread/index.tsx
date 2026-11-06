@@ -13,7 +13,7 @@ import {
   ensureToolCallsHaveResponses,
 } from "@/lib/ensure-tool-responses";
 import { ChatBubbleIcon } from "../icons/chat-bubble";
-import { APP_NAME } from "@/lib/branding";
+import { program } from "@/config/program";
 import { hideToolCallsParser } from "@/lib/hide-tool-calls";
 import { TooltipIconButton } from "./tooltip-icon-button";
 import {
@@ -370,7 +370,7 @@ export function Thread() {
                     className="text-[#1a5b6e]"
                   />
                   <span className="text-xl font-semibold tracking-tight">
-                    {APP_NAME}
+                    {program.name}
                   </span>
                 </motion.button>
                 <ConnectedHost apiUrl={stream.apiUrl} />
@@ -445,7 +445,7 @@ export function Thread() {
                         className="flex-shrink-0 text-[#1a5b6e]"
                       />
                       <h1 className="text-2xl font-semibold tracking-tight">
-                        {APP_NAME}
+                        {program.name}
                       </h1>
                     </div>
                   )}

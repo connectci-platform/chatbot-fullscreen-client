@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import dynamicImport from "next/dynamic";
 import { Header, UniversalMenus, Footer } from "@access-ci/ui/react";
+import { program } from "@/config/program";
 import { useAgentAuth } from "@/hooks/use-agent-auth";
 import { loginUrl, logoutUrl, openSignIn } from "@/lib/sign-in";
 
@@ -41,13 +42,13 @@ export function SiteChromeTopImpl() {
   return (
     <div onClickCapture={handleCaptureClick}>
       <UniversalMenus
-        siteName="Assistant"
+        siteName={program.siteName}
         isLoggedIn={authenticated}
         loginUrl={login}
         logoutUrl={logoutUrl()}
       />
       <Header
-        siteName="Assistant"
+        siteName={program.siteName}
         siteUrl="/"
       />
     </div>
