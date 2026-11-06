@@ -101,7 +101,7 @@ export function Thread() {
     resetBlocks: _resetBlocks,
     dragOver,
     handlePaste,
-  } = useFileUpload();
+  } = useFileUpload({ enabled: program.features.fileUploads });
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
 
@@ -440,23 +440,27 @@ export function Thread() {
                         />
 
                         <div className="flex items-center gap-6 p-2 pt-4">
-                          <Label
-                            htmlFor="file-input"
-                            className="flex cursor-pointer items-center gap-2"
-                          >
-                            <Plus className="size-5 text-gray-600" />
-                            <span className="text-sm text-gray-600">
-                              Upload PDF or Image
-                            </span>
-                          </Label>
-                          <input
-                            id="file-input"
-                            type="file"
-                            onChange={handleFileUpload}
-                            multiple
-                            accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
-                            className="hidden"
-                          />
+                          {program.features.fileUploads && (
+                            <>
+                              <Label
+                                htmlFor="file-input"
+                                className="flex cursor-pointer items-center gap-2"
+                              >
+                                <Plus className="size-5 text-gray-600" />
+                                <span className="text-sm text-gray-600">
+                                  Upload PDF or Image
+                                </span>
+                              </Label>
+                              <input
+                                id="file-input"
+                                type="file"
+                                onChange={handleFileUpload}
+                                multiple
+                                accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+                                className="hidden"
+                              />
+                            </>
+                          )}
                           {stream.isLoading ? (
                             <Button
                               key="stop"
