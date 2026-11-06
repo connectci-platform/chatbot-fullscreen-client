@@ -12,7 +12,7 @@ import {
   DO_NOT_RENDER_ID_PREFIX,
   ensureToolCallsHaveResponses,
 } from "@/lib/ensure-tool-responses";
-import { ChatBubbleIcon } from "../icons/chat-bubble";
+import { ProgramLogo } from "./program-logo";
 import { program } from "@/config/program";
 import { ChatDisclaimer } from "./chat-disclaimer";
 import { TooltipIconButton } from "./tooltip-icon-button";
@@ -279,7 +279,7 @@ export function Thread() {
             </div>
           )}
           {chatStarted && (
-            <div className="relative z-10 flex items-center justify-between gap-3 p-2">
+            <div className="relative z-10 flex items-center justify-between gap-3 p-2 xl:absolute xl:inset-x-0 xl:top-0">
               <div className="relative flex items-center justify-start gap-2">
                 <div className="absolute left-0 z-10">
                   {(!chatHistoryOpen || !isLargeScreen) && (
@@ -301,27 +301,6 @@ export function Thread() {
                     </Button>
                   )}
                 </div>
-                <motion.button
-                  className="flex cursor-pointer items-center gap-2"
-                  onClick={() => setThreadId(null)}
-                  animate={{
-                    marginLeft: !chatHistoryOpen ? 48 : 0,
-                  }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 300,
-                    damping: 30,
-                  }}
-                >
-                  <ChatBubbleIcon
-                    width={32}
-                    height={32}
-                    className="text-brand"
-                  />
-                  <span className="text-xl font-semibold tracking-tight">
-                    {program.name}
-                  </span>
-                </motion.button>
               </div>
 
               <div className="flex items-center gap-4">
@@ -336,7 +315,7 @@ export function Thread() {
                 </TooltipIconButton>
               </div>
 
-              <div className="from-background to-background/0 absolute inset-x-0 top-full h-5 bg-gradient-to-b" />
+              <div className="from-background to-background/0 absolute inset-x-0 top-full h-5 bg-gradient-to-b xl:hidden" />
             </div>
           )}
 
@@ -344,12 +323,17 @@ export function Thread() {
             <StickyToBottomContent
               className={cn(
                 "absolute inset-0 overflow-y-scroll px-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent",
-                !chatStarted && "flex flex-col items-stretch pt-[25vh]",
+                !chatStarted && "flex flex-col items-stretch pt-[16vh]",
                 chatStarted && "grid grid-rows-[1fr_auto]",
               )}
               contentClassName="pt-8 pb-16 max-w-3xl mx-auto flex flex-col gap-4 w-full"
               content={
                 <>
+                  {chatStarted && (
+                    <h1 className="flex pb-2">
+                      <ProgramLogo size="small" />
+                    </h1>
+                  )}
                   {messages
                     .filter((m) => !m.id?.startsWith(DO_NOT_RENDER_ID_PREFIX))
                     .map((message, index) =>
@@ -384,16 +368,9 @@ export function Thread() {
               footer={
                 <div className="sticky bottom-0 flex flex-col items-center gap-8 bg-white">
                   {!chatStarted && (
-                    <div className="flex items-center gap-3">
-                      <ChatBubbleIcon
-                        width={32}
-                        height={32}
-                        className="text-brand flex-shrink-0"
-                      />
-                      <h1 className="text-2xl font-semibold tracking-tight">
-                        {program.name}
-                      </h1>
-                    </div>
+                    <h1 className="mb-4">
+                      <ProgramLogo />
+                    </h1>
                   )}
 
                   <ScrollToBottom className="animate-in fade-in-0 zoom-in-95 absolute bottom-full left-1/2 mb-4 -translate-x-1/2" />
