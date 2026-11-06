@@ -13,7 +13,7 @@ const buttonVariants = cva(
         // inverts to white-on-hover. Values measured from the live access-ci.org
         // primary button (see globals.css --primary for the source-of-truth hex).
         default:
-          "bg-[#fec340] text-black border-2 border-[#fec340] uppercase font-bold rounded-none shadow-none focus-visible:ring-0 focus-visible:border-[#232323] disabled:bg-gray-200 disabled:text-gray-400 disabled:border-gray-200 hover:bg-white hover:text-black hover:border-[#232323]",
+          "bg-primary text-black border-2 border-primary uppercase font-bold rounded-none shadow-none focus-visible:ring-0 focus-visible:border-[#232323] disabled:bg-gray-200 disabled:text-gray-400 disabled:border-gray-200 hover:bg-white hover:text-black hover:border-[#232323]",
         destructive:
           "bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40",
         outline:

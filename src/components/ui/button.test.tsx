@@ -7,7 +7,7 @@ describe("Button", () => {
     render(<Button>Click me</Button>);
     const button = screen.getByRole("button", { name: "Click me" });
 
-    expect(button.className).toContain("bg-[#fec340]");
+    expect(button.className).toContain("bg-primary");
     expect(button.className).toContain("uppercase");
     expect(button.className).toContain("border-2");
   });

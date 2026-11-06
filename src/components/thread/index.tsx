@@ -202,7 +202,7 @@ export function Thread() {
   );
 
   return (
-    <div className="flex h-screen w-full overflow-hidden">
+    <div className="flex h-full w-full overflow-hidden">
       <div className="relative hidden lg:flex">
         <motion.div
           className="absolute z-20 h-full overflow-hidden border-r bg-white"
@@ -306,7 +306,7 @@ export function Thread() {
                   <ChatBubbleIcon
                     width={32}
                     height={32}
-                    className="text-[#1a5b6e]"
+                    className="text-brand"
                   />
                   <span className="text-xl font-semibold tracking-tight">
                     {program.name}
@@ -318,7 +318,7 @@ export function Thread() {
                 <TooltipIconButton
                   size="lg"
                   className="p-4"
-                  tooltip="New thread"
+                  tooltip="New conversation"
                   variant="ghost"
                   onClick={() => setThreadId(null)}
                 >
@@ -378,7 +378,7 @@ export function Thread() {
                       <ChatBubbleIcon
                         width={32}
                         height={32}
-                        className="flex-shrink-0 text-[#1a5b6e]"
+                        className="text-brand flex-shrink-0"
                       />
                       <h1 className="text-2xl font-semibold tracking-tight">
                         {program.name}
@@ -395,7 +395,7 @@ export function Thread() {
                         "relative z-10 w-full bg-white shadow-xs transition-all",
                         dragOver
                           ? "border-primary border-2 border-dotted"
-                          : "border border-solid border-[#cccccc]",
+                          : "border-input border border-solid",
                       )}
                     >
                       <form

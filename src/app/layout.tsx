@@ -34,8 +34,12 @@ export default function RootLayout({
       data-program={program.id}
     >
       <body className={`font-sans ${archivo.variable}`}>
-        <SiteChromeTop />
-        <NuqsAdapter>{children}</NuqsAdapter>
+        <div className="flex h-dvh flex-col">
+          <SiteChromeTop />
+          <main className="min-h-0 flex-1">
+            <NuqsAdapter>{children}</NuqsAdapter>
+          </main>
+        </div>
         <SiteFooter />
       </body>
     </html>
