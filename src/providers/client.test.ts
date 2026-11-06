@@ -47,25 +47,6 @@ describe("createClient", () => {
     expect(init.credentials).toBeUndefined();
   });
 
-  it("changes its config key after a sign-in so useStream reloads history", async () => {
-    const fetchMock = vi.fn(async (url: string) =>
-      url === MINT_URL ? minted("t1") : json(200, []),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const { createClient } = await import("./client");
-    const url = "https://agent.example/api/v1";
-
-    const first = createClient(url, undefined, undefined);
-    const same = createClient(url, undefined, undefined);
-    const afterSignIn = createClient(url, undefined, undefined, 1);
-
-    expect(first["~configHash"]).toBe(same["~configHash"]);
-    expect(afterSignIn["~configHash"]).not.toBe(first["~configHash"]);
-    await afterSignIn.threads.search({ limit: 1 });
-    const [[, init]] = agentCalls(fetchMock);
-    expect(new Headers(init.headers).get("X-Sign-In-Epoch")).toBe("1");
-  });
-
   it("re-mints once on a 401 and replays the request", async () => {
     let agentCount = 0;
     let mintCount = 0;

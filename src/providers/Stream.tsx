@@ -27,6 +27,7 @@ import {
   type RequiresAuthEvent,
 } from "@/lib/requires-auth";
 import { useAuthStatus } from "@/hooks/use-agent-auth";
+import { shouldReloadAfterSignIn } from "@/lib/run-errors";
 import { createClient } from "./client";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
@@ -130,24 +131,11 @@ const StreamSession = ({
 }) => {
   const [threadId, setThreadId] = useQueryState("threadId");
   const { getThreads, setThreads } = useThreads();
-  // A conversation that was unreadable while signed out (404) loads after
-  // signing in: each signed_out -> signed_in change makes a new client, which
-  // makes useStream fetch the history again. Token refreshes don't change the
-  // status, and useStream skips the refetch for a thread that is mid-run.
-  const authStatus = useAuthStatus();
-  const prevAuthStatus = useRef(authStatus);
-  const [signInEpoch, setSignInEpoch] = useState(0);
-  useEffect(() => {
-    if (prevAuthStatus.current === "signed_out" && authStatus === "signed_in") {
-      setSignInEpoch((n) => n + 1);
-    }
-    prevAuthStatus.current = authStatus;
-  }, [authStatus]);
   // A Client of our own rather than useStream's apiUrl/apiKey options, so the
   // stream and history requests carry the Bearer token (see createClient).
   const client = useMemo(
-    () => createClient(apiUrl, apiKey ?? undefined, authScheme, signInEpoch),
-    [apiUrl, apiKey, authScheme, signInEpoch],
+    () => createClient(apiUrl, apiKey ?? undefined, authScheme),
+    [apiUrl, apiKey, authScheme],
   );
   const streamValue = useTypedStream({
     client,
@@ -177,6 +165,24 @@ const StreamSession = ({
       getThreads().then(setThreads).catch(console.error);
     },
   });
+
+  // A conversation that 404ed while signed out may be the person's own. When
+  // they sign in, reload: the URL keeps ?threadId=, so it opens signed in.
+  // No loop: after the reload auth goes unknown -> signed_in.
+  const authStatus = useAuthStatus();
+  const prevAuthStatus = useRef(authStatus);
+  useEffect(() => {
+    if (
+      shouldReloadAfterSignIn(
+        prevAuthStatus.current,
+        authStatus,
+        streamValue.error,
+      )
+    ) {
+      window.location.reload();
+    }
+    prevAuthStatus.current = authStatus;
+  }, [authStatus, streamValue.error]);
 
   useEffect(() => {
     checkGraphStatus(apiUrl, apiKey, authScheme).then((ok) => {
