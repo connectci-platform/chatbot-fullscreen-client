@@ -107,10 +107,18 @@ function useHandoffExchange(apiUrl: string | undefined) {
       }
       if (result.threadId) {
         setThreadId(result.threadId);
+      } else {
+        toast.error(
+          "We couldn't open that conversation. Please start a new one.",
+          {
+            richColors: true,
+            closeButton: true,
+          },
+        );
       }
-      // Always strip `?h=` once the exchange settles: the token is
-      // single-use on the server regardless of outcome, so leaving it
-      // in the URL would only cause a doomed retry on refresh.
+      // Strip `?h=` once the exchange is settled: the agent may have spent
+      // the token, so leaving it in the URL would only cause a doomed retry
+      // on refresh. A signed-out refusal ("not_sent") returned above keeps it.
       setHandoffToken(null);
     });
   }, [handoffToken, apiUrl, threadId, setThreadId, setHandoffToken]);
