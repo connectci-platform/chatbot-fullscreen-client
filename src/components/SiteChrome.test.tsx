@@ -47,6 +47,14 @@ describe("SiteChrome auth state", () => {
     vi.resetModules();
   });
 
+  it("keeps the menu bar and leaves out the large logo band", async () => {
+    vi.stubGlobal("fetch", mintResponse(401, LOGIN_REQUIRED));
+    await renderChrome();
+    await waitFor(() => expect(universalMenusSpy).toHaveBeenCalled());
+    expect(screen.getByTestId("universal-menus")).toBeTruthy();
+    expect(screen.queryByTestId("header")).toBeNull();
+  });
+
   it("passes isLoggedIn=true when support mints a token", async () => {
     const fetchMock = mintResponse(200, MINTED);
     vi.stubGlobal("fetch", fetchMock);

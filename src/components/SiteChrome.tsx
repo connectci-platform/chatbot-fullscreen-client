@@ -47,10 +47,12 @@ export function SiteChromeTopImpl() {
         loginUrl={login}
         logoutUrl={logoutUrl()}
       />
-      <Header
-        siteName={program.siteName}
-        siteUrl="/"
-      />
+      {program.features.siteHeader && (
+        <Header
+          siteName={program.siteName}
+          siteUrl="/"
+        />
+      )}
     </div>
   );
 }

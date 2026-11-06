@@ -4,12 +4,13 @@ export type ProgramConfig = {
   id: string;
   name: string;
   siteName: string;
+  logo: { src: string; alt: string; width: number; height: number };
   description: string;
   accountName: string;
   supportUrl: string;
   privacyUrl: string;
   disclaimer: string;
-  features: { fileUploads: boolean };
+  features: { fileUploads: boolean; siteHeader: boolean };
 };
 
 const programs: Record<string, ProgramConfig> = { access };
