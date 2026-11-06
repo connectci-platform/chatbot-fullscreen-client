@@ -5,6 +5,7 @@ import React, {
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import { useStream } from "@langchain/langgraph-sdk/react";
 import { type Message } from "@langchain/langgraph-sdk";
@@ -25,6 +26,7 @@ import {
   showRequiresAuth,
   type RequiresAuthEvent,
 } from "@/lib/requires-auth";
+import { useAuthStatus } from "@/hooks/use-agent-auth";
 import { createClient } from "./client";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
@@ -128,11 +130,24 @@ const StreamSession = ({
 }) => {
   const [threadId, setThreadId] = useQueryState("threadId");
   const { getThreads, setThreads } = useThreads();
+  // A conversation that was unreadable while signed out (404) loads after
+  // signing in: each signed_out -> signed_in change makes a new client, which
+  // makes useStream fetch the history again. Token refreshes don't change the
+  // status, and useStream skips the refetch for a thread that is mid-run.
+  const authStatus = useAuthStatus();
+  const prevAuthStatus = useRef(authStatus);
+  const [signInEpoch, setSignInEpoch] = useState(0);
+  useEffect(() => {
+    if (prevAuthStatus.current === "signed_out" && authStatus === "signed_in") {
+      setSignInEpoch((n) => n + 1);
+    }
+    prevAuthStatus.current = authStatus;
+  }, [authStatus]);
   // A Client of our own rather than useStream's apiUrl/apiKey options, so the
   // stream and history requests carry the Bearer token (see createClient).
   const client = useMemo(
-    () => createClient(apiUrl, apiKey ?? undefined, authScheme),
-    [apiUrl, apiKey, authScheme],
+    () => createClient(apiUrl, apiKey ?? undefined, authScheme, signInEpoch),
+    [apiUrl, apiKey, authScheme, signInEpoch],
   );
   const streamValue = useTypedStream({
     client,
