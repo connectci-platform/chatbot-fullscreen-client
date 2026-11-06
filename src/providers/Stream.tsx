@@ -223,7 +223,7 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   // misconfigured; show a neutral message instead of a form.
   if (!finalApiUrl || !finalAssistantId) {
     return (
-      <div className="flex min-h-screen w-full items-center justify-center p-4">
+      <div className="flex h-full w-full items-center justify-center p-4">
         <p className="text-muted-foreground max-w-md text-center">
           {program.name} is not configured. Please contact support.
         </p>

@@ -491,7 +491,12 @@ export function Thread() {
             />
           </StickToBottom>
         </motion.div>
-        <div className="relative flex flex-col border-l">
+        <div
+          className={cn(
+            "relative flex flex-col border-l",
+            !artifactOpen && "hidden",
+          )}
+        >
           <div className="absolute inset-0 flex min-w-[30vw] flex-col">
             <div className="grid grid-cols-[1fr_auto] border-b p-4">
               <ArtifactTitle className="truncate overflow-hidden" />
