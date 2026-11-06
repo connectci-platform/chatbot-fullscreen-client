@@ -64,16 +64,18 @@ function ThreadList({
 }
 
 function ThreadListEmpty() {
-  // The cookie that identifies a signed-in user is HttpOnly, so the client
-  // can't check auth state directly. An empty result from /threads/search is
-  // the closest proxy we have: unauthenticated users always get an empty
-  // list, and a brand-new authed user with no history yet is an acceptable
-  // edge case to also show this prompt to.
+  const authStatus = useAuthStatus();
+  // While the sign-in state is unknown, show neither message.
+  const message =
+    authStatus === "signed_in"
+      ? "No conversations yet."
+      : authStatus === "signed_out"
+        ? "Sign in to see and resume your conversations."
+        : null;
+
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-6 text-center">
-      <p className="text-muted-foreground text-sm">
-        Sign in to see and resume your conversations.
-      </p>
+      {message && <p className="text-muted-foreground text-sm">{message}</p>}
     </div>
   );
 }
@@ -132,6 +134,9 @@ export default function ThreadHistory() {
           <Button
             className="hover:bg-gray-100"
             variant="ghost"
+            aria-label={
+              chatHistoryOpen ? "Hide conversations" : "Show conversations"
+            }
             onClick={() => setChatHistoryOpen((p) => !p)}
           >
             {chatHistoryOpen ? (
@@ -140,9 +145,9 @@ export default function ThreadHistory() {
               <PanelRightClose className="size-5" />
             )}
           </Button>
-          <h1 className="text-xl font-semibold tracking-tight">
+          <h2 className="text-xl font-semibold tracking-tight">
             Conversations
-          </h1>
+          </h2>
         </div>
         {threadsLoading ? (
           <ThreadHistoryLoading />
@@ -167,7 +172,9 @@ export default function ThreadHistory() {
             <SheetHeader>
               <SheetTitle>Conversations</SheetTitle>
             </SheetHeader>
-            {threads.length === 0 ? (
+            {threadsLoading ? (
+              <ThreadHistoryLoading />
+            ) : threads.length === 0 ? (
               <ThreadListEmpty />
             ) : (
               <ThreadList

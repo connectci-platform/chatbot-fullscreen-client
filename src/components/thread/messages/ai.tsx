@@ -116,7 +116,7 @@ export function AssistantMessage({
         <div
           className={cn(
             "mr-auto flex items-center gap-2 transition-opacity",
-            "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
+            "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
           )}
         >
           <CommandBar
@@ -131,7 +131,11 @@ export function AssistantMessage({
 
 export function AssistantMessageLoading() {
   return (
-    <div className="mr-auto flex items-start gap-2">
+    <div
+      role="status"
+      className="mr-auto flex items-start gap-2"
+    >
+      <span className="sr-only">Writing an answer…</span>
       <div className="bg-muted flex h-8 items-center gap-1 rounded-lg px-4 py-2">
         <div className="bg-foreground/50 h-1.5 w-1.5 animate-[pulse_1.5s_ease-in-out_infinite] rounded-full"></div>
         <div className="bg-foreground/50 h-1.5 w-1.5 animate-[pulse_1.5s_ease-in-out_0.5s_infinite] rounded-full"></div>

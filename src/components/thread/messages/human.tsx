@@ -42,7 +42,7 @@ export function HumanMessage({
           ) : null}
         </div>
 
-        <div className="ml-auto flex items-center gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+        <div className="ml-auto flex items-center gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
           <CommandBar
             isLoading={isLoading}
             content={contentString}

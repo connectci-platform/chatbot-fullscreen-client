@@ -261,6 +261,11 @@ export function Thread() {
                   <Button
                     className="hover:bg-gray-100"
                     variant="ghost"
+                    aria-label={
+                      chatHistoryOpen
+                        ? "Hide conversations"
+                        : "Show conversations"
+                    }
                     onClick={() => setChatHistoryOpen((p) => !p)}
                   >
                     {chatHistoryOpen ? (
@@ -281,6 +286,11 @@ export function Thread() {
                     <Button
                       className="hover:bg-gray-100"
                       variant="ghost"
+                      aria-label={
+                        chatHistoryOpen
+                          ? "Hide conversations"
+                          : "Show conversations"
+                      }
                       onClick={() => setChatHistoryOpen((p) => !p)}
                     >
                       {chatHistoryOpen ? (
@@ -423,6 +433,7 @@ export function Thread() {
                               form?.requestSubmit();
                             }
                           }}
+                          aria-label="Message"
                           placeholder="Type your message..."
                           className="field-sizing-content resize-none border-none bg-transparent p-3.5 pb-0 text-base text-black shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
                         />
@@ -486,6 +497,7 @@ export function Thread() {
               <ArtifactTitle className="truncate overflow-hidden" />
               <button
                 onClick={closeArtifact}
+                aria-label="Close panel"
                 className="cursor-pointer"
               >
                 <XIcon className="size-5" />

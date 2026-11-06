@@ -24,6 +24,7 @@ function ContentCopyable({
       onClick={(e) => handleCopy(e)}
       variant="ghost"
       tooltip="Copy content"
+      className="[@media(hover:none)]:size-11"
       disabled={disabled}
     >
       <AnimatePresence
