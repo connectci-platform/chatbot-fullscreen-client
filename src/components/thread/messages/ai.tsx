@@ -113,17 +113,21 @@ export function AssistantMessage({
           isLastMessage={isLastMessage}
           hasNoAIOrToolMessages={hasNoAIOrToolMessages}
         />
-        <div
-          className={cn(
-            "mr-auto flex items-center gap-2 transition-opacity",
-            "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
-          )}
-        >
-          <CommandBar
-            content={contentString}
-            isLoading={isLoading}
-          />
-        </div>
+        {/* Tool-calling messages are stored with empty content; there is
+            nothing to copy. */}
+        {contentString.length > 0 && (
+          <div
+            className={cn(
+              "mr-auto flex items-center gap-2 transition-opacity",
+              "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
+            )}
+          >
+            <CommandBar
+              content={contentString}
+              isLoading={isLoading}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

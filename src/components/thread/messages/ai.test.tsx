@@ -61,6 +61,13 @@ describe("AssistantMessage", () => {
     expect(screen.getByRole("button", { name: "Copy content" })).toBeTruthy();
   });
 
+  it("has no Copy button when the message has no text", () => {
+    const toolCallMessage: Message = { id: "ai-2", type: "ai", content: "" };
+    stream.messages = [toolCallMessage];
+    renderMessage(toolCallMessage);
+    expect(screen.queryByRole("button", { name: "Copy content" })).toBeNull();
+  });
+
   it("still renders an interrupt for the last AI message", () => {
     stream.messages = [aiMessage];
     stream.interrupt = { value: { reason: "needs approval" } };
