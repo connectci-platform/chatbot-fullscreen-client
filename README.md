@@ -31,6 +31,9 @@ Configuration is via environment variables (see `.env.example`):
 - `NEXT_PUBLIC_SUPPORT_URL` — the support site that mints agent tokens and
   hosts login and logout. Defaults to the program's `supportUrl`
   (`https://support.access-ci.org` for ACCESS).
+- `NEXT_PUBLIC_AUTH_SCHEME` — optional. Sent to the agent as the
+  `X-Auth-Scheme` header, for deployments that need one. Leave it empty
+  otherwise.
 - `NEXT_PUBLIC_PROGRAM` — the program whose settings this build uses, a key in
   `src/config/programs` (names, URLs, disclaimer, feature flags). Defaults to
   `access`.
@@ -70,9 +73,10 @@ calls to the agent, and on a 401 it mints once and retries the request once.
 The agent never needs the support cookie.
 
 Sign-in opens support's login page in a popup (`src/lib/sign-in.ts`), so the
-user stays on the chat. When the popup closes, or the window regains focus, the
-client mints again and picks up the new session. If the browser blocks the
-popup, login opens in a new tab and the focus re-mint covers it. The header's
+user stays on the chat. When the popup closes, or the window regains focus
+while signed out, the client mints again and picks up the new session. If the
+browser blocks the popup, login opens in a new tab and the focus re-mint covers
+it. The header's
 sign-in and sign-out links come from `@access-ci/ui` and point at support
 (`src/components/SiteChrome.tsx`).
 
