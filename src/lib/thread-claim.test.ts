@@ -65,6 +65,62 @@ describe("thread claim key", () => {
     expect(getClaimKey()).not.toBe(key);
   });
 
+  describe("a sign-out this page didn't see", () => {
+    it("clears the key when a later load finds the person signed out", async () => {
+      const before = await import("./thread-claim");
+      const key = before.getClaimKey();
+      before.noteAuthStatus("signed_in");
+
+      vi.resetModules();
+      const after = await import("./thread-claim");
+      after.noteAuthStatus("signed_out");
+
+      expect(after.getClaimKey()).not.toBe(key);
+    });
+
+    it("keeps the key for someone who was never signed in", async () => {
+      const { getClaimKey, noteAuthStatus } = await import("./thread-claim");
+      const key = getClaimKey();
+
+      noteAuthStatus("signed_out");
+
+      expect(getClaimKey()).toBe(key);
+    });
+
+    it("keeps the key while the sign-in state is unknown", async () => {
+      const { getClaimKey, noteAuthStatus } = await import("./thread-claim");
+      const key = getClaimKey();
+      noteAuthStatus("signed_in");
+
+      noteAuthStatus("unknown");
+
+      expect(getClaimKey()).toBe(key);
+    });
+
+    it("clears once, so a new anonymous key survives later checks", async () => {
+      const { getClaimKey, noteAuthStatus } = await import("./thread-claim");
+      noteAuthStatus("signed_in");
+      noteAuthStatus("signed_out");
+      const anonymousKey = getClaimKey();
+
+      noteAuthStatus("signed_out");
+
+      expect(getClaimKey()).toBe(anonymousKey);
+    });
+
+    it("forgets the sign-in when the logout link cleared the key", async () => {
+      const { clearClaimKey, getClaimKey, noteAuthStatus } =
+        await import("./thread-claim");
+      noteAuthStatus("signed_in");
+      clearClaimKey();
+      const anonymousKey = getClaimKey();
+
+      noteAuthStatus("signed_out");
+
+      expect(getClaimKey()).toBe(anonymousKey);
+    });
+  });
+
   describe("with storage unavailable", () => {
     beforeEach(() => {
       const blocked = () => {
@@ -80,6 +136,16 @@ describe("thread claim key", () => {
     it("keeps a stable key for the page", async () => {
       const { getClaimKey } = await import("./thread-claim");
       expect(getClaimKey()).toBe(getClaimKey());
+    });
+
+    it("still clears the key when this page sees the sign-out", async () => {
+      const { getClaimKey, noteAuthStatus } = await import("./thread-claim");
+      const key = getClaimKey();
+      noteAuthStatus("signed_in");
+
+      noteAuthStatus("signed_out");
+
+      expect(getClaimKey()).not.toBe(key);
     });
 
     it("still clears the key on sign-out", async () => {

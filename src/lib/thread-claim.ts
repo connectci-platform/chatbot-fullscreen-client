@@ -1,25 +1,35 @@
 import { authorize, createAgentFetch } from "./agent-fetch";
-import { getAgentTokenSource } from "./agent-token";
+import { getAgentTokenSource, type AuthStatus } from "./agent-token";
 
 const STORAGE_KEY = "thread-claim-key";
+const SIGNED_IN_KEY = "thread-claim-signed-in";
 
 // Only used when local storage is unavailable.
 let memoryKey: string | null = null;
+let memorySignedIn = false;
 
-function readStored(): string | null {
+function read(name: string): string | null {
   try {
-    return localStorage.getItem(STORAGE_KEY);
+    return localStorage.getItem(name);
   } catch {
     return null;
   }
 }
 
-function store(key: string): boolean {
+function write(name: string, value: string): boolean {
   try {
-    localStorage.setItem(STORAGE_KEY, key);
+    localStorage.setItem(name, value);
     return true;
   } catch {
     return false;
+  }
+}
+
+function remove(name: string) {
+  try {
+    localStorage.removeItem(name);
+  } catch {
+    // Blocked storage holds nothing to remove.
   }
 }
 
@@ -36,10 +46,10 @@ function newKey(): string {
  * blocked the key lasts until the page unloads, and so does access.
  */
 export function getClaimKey(): string {
-  const stored = readStored();
+  const stored = read(STORAGE_KEY);
   if (stored) return stored;
   const key = memoryKey ?? newKey();
-  memoryKey = store(key) ? null : key;
+  memoryKey = write(STORAGE_KEY, key) ? null : key;
   return key;
 }
 
@@ -49,10 +59,21 @@ export function getClaimKey(): string {
  */
 export function clearClaimKey() {
   memoryKey = null;
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Blocked storage holds no key to remove.
+  memorySignedIn = false;
+  remove(STORAGE_KEY);
+  remove(SIGNED_IN_KEY);
+}
+
+/**
+ * Clears the key after a sign-out this page didn't see, such as logging out on
+ * support or a session expiring, by remembering across loads that someone was
+ * signed in. Someone who never was keeps their key.
+ */
+export function noteAuthStatus(status: AuthStatus) {
+  if (status === "signed_in") {
+    memorySignedIn = !write(SIGNED_IN_KEY, "1");
+  } else if (status === "signed_out") {
+    if (memorySignedIn || read(SIGNED_IN_KEY)) clearClaimKey();
   }
 }
 

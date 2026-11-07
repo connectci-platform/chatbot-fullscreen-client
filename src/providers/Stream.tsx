@@ -29,7 +29,7 @@ import {
 import { useAuthStatus } from "@/hooks/use-agent-auth";
 import { shouldReloadAfterSignIn } from "@/lib/run-errors";
 import { isRunStatusEvent, type RunStatusEvent } from "@/lib/run-status";
-import { claimThread, clearClaimKey } from "@/lib/thread-claim";
+import { claimThread, noteAuthStatus } from "@/lib/thread-claim";
 import { createClient } from "./client";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
@@ -207,18 +207,13 @@ const StreamSession = ({
   // that run's turn report exists to be linked. Not for threads started while
   // signed in: those already belong to the user.
   const claimOnSignIn = useRef(true);
-  const wasSignedIn = useRef(false);
   useEffect(() => {
+    noteAuthStatus(authStatus);
     if (authStatus === "signed_out") {
-      // Also covers a session that ended without the logout link being used.
-      if (wasSignedIn.current) clearClaimKey();
-      wasSignedIn.current = false;
       claimOnSignIn.current = true;
       return;
     }
-    if (authStatus !== "signed_in") return;
-    wasSignedIn.current = true;
-    if (streamValue.isLoading) return;
+    if (authStatus !== "signed_in" || streamValue.isLoading) return;
     if (!claimOnSignIn.current) return;
     claimOnSignIn.current = false;
     if (!threadId) return;

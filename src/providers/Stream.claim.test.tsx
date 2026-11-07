@@ -2,13 +2,13 @@ import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 import type { AuthStatus } from "@/lib/agent-token";
+import { getClaimKey, noteAuthStatus } from "@/lib/thread-claim";
 import { StreamProvider } from "./Stream";
 
 const state = vi.hoisted(() => ({
   auth: "unknown" as AuthStatus,
   isLoading: false,
   claimThread: vi.fn(),
-  clearClaimKey: vi.fn(),
   getThreads: vi.fn(),
   setThreads: vi.fn(),
 }));
@@ -30,9 +30,9 @@ vi.mock("./client", () => ({ createClient: vi.fn() }));
 vi.mock("@/hooks/use-agent-auth", () => ({
   useAuthStatus: () => state.auth,
 }));
-vi.mock("@/lib/thread-claim", () => ({
+vi.mock("@/lib/thread-claim", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/thread-claim")>()),
   claimThread: state.claimThread,
-  clearClaimKey: state.clearClaimKey,
 }));
 
 function setup(searchParams: string) {
@@ -59,7 +59,7 @@ describe("claiming the open conversation on sign-in", () => {
     state.auth = "signed_out";
     state.isLoading = false;
     state.claimThread.mockReset().mockResolvedValue(true);
-    state.clearClaimKey.mockReset();
+    localStorage.clear();
     state.getThreads.mockReset().mockResolvedValue([{ thread_id: "t1" }]);
     state.setThreads.mockReset();
   });
@@ -122,22 +122,33 @@ describe("claiming the open conversation on sign-in", () => {
     expect(state.getThreads).not.toHaveBeenCalled();
   });
 
-  it("clears the key when a signed-in session ends", async () => {
+  it("clears the key when a session ends on this page", () => {
     state.auth = "signed_in";
+    const key = getClaimKey();
     const { rerender } = setup("");
-    expect(state.clearClaimKey).not.toHaveBeenCalled();
 
     state.auth = "signed_out";
     rerender();
 
-    expect(state.clearClaimKey).toHaveBeenCalledTimes(1);
+    expect(getClaimKey()).not.toBe(key);
+  });
+
+  it("clears the key on a fresh load after a sign-out elsewhere", () => {
+    const key = getClaimKey();
+    noteAuthStatus("signed_in"); // an earlier page load
+
+    state.auth = "signed_out";
+    setup("");
+
+    expect(getClaimKey()).not.toBe(key);
   });
 
   it("keeps the key for someone who was never signed in", () => {
+    const key = getClaimKey();
     const { rerender } = setup("?threadId=t1");
     rerender();
 
-    expect(state.clearClaimKey).not.toHaveBeenCalled();
+    expect(getClaimKey()).toBe(key);
   });
 
   it("claims only once while signed in", async () => {
