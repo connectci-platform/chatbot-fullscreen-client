@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
+import { Client } from "@langchain/langgraph-sdk";
 import { authorize, createAgentFetch } from "./agent-fetch";
 import type { AgentTokenSource } from "./agent-token";
+import { TurnstileChallenge } from "./run-errors";
 
 function fakeSource(token: string | null, refreshed: string | null = "t2") {
   return {
@@ -112,5 +114,72 @@ describe("createAgentFetch", () => {
     });
     expect(source.refresh).not.toHaveBeenCalled();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("createAgentFetch run challenges", () => {
+  const RUN_URL = "https://agent.test/api/v1/threads/t-1/runs/stream";
+  const json = (body: unknown) =>
+    new Response(JSON.stringify(body), {
+      headers: { "Content-Type": "application/json" },
+    });
+  const challenge = () =>
+    json({ requires_turnstile: true, site_key: "site-key" });
+
+  it("turns the agent's challenge into a TurnstileChallenge", async () => {
+    const agentFetch = createAgentFetch(fakeSource(null), async () =>
+      challenge(),
+    );
+    await expect(agentFetch(RUN_URL)).rejects.toMatchObject({
+      name: "TurnstileChallenge",
+      siteKey: "site-key",
+    });
+  });
+
+  it("reaches the caller of a real SDK stream unchanged", async () => {
+    const client = new Client({
+      apiUrl: "https://agent.test/api/v1",
+      callerOptions: {
+        maxRetries: 0,
+        fetch: createAgentFetch(fakeSource(null), async () => challenge()),
+      },
+    });
+    const consume = async () => {
+      for await (const _ of client.runs.stream("t-1", "agent")) void _;
+    };
+    await expect(consume()).rejects.toBeInstanceOf(TurnstileChallenge);
+  });
+
+  it("leaves an event stream unread", async () => {
+    const res = new Response("event: metadata\n\n", {
+      headers: { "Content-Type": "text/event-stream" },
+    });
+    const agentFetch = createAgentFetch(fakeSource(null), async () => res);
+    expect(await agentFetch(RUN_URL)).toBe(res);
+    expect(res.bodyUsed).toBe(false);
+  });
+
+  it("returns other JSON from the run route, still readable", async () => {
+    const agentFetch = createAgentFetch(fakeSource(null), async () =>
+      json({ detail: "A run is already active on this thread" }),
+    );
+    const res = await agentFetch(RUN_URL);
+    expect(await res.json()).toEqual({
+      detail: "A run is already active on this thread",
+    });
+  });
+
+  it("returns a JSON body that can't be parsed", async () => {
+    const res = new Response("not json", {
+      headers: { "Content-Type": "application/json" },
+    });
+    const agentFetch = createAgentFetch(fakeSource(null), async () => res);
+    expect(await agentFetch(RUN_URL)).toBe(res);
+  });
+
+  it("doesn't read responses from other routes", async () => {
+    const res = challenge();
+    const agentFetch = createAgentFetch(fakeSource(null), async () => res);
+    expect(await agentFetch("https://agent.test/api/v1/threads")).toBe(res);
   });
 });

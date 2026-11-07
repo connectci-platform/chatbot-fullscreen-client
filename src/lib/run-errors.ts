@@ -5,6 +5,24 @@ const GENERIC = "Something went wrong. Please try again.";
 // Names the SDK reports when the user stopped the run on purpose.
 const SILENT = new Set(["cancelled", "AbortError"]);
 
+/**
+ * The agent wants a signed-out person to pass a Turnstile check before it
+ * answers. Shows no error toast, because the challenge panel explains it.
+ */
+export class TurnstileChallenge extends Error {
+  override name = "TurnstileChallenge";
+
+  constructor(readonly siteKey: string) {
+    super("Turnstile check required");
+  }
+}
+
+export function isTurnstileChallenge(
+  error: unknown,
+): error is TurnstileChallenge {
+  return error instanceof TurnstileChallenge;
+}
+
 /** True for the SDK's HTTPError with status 404. */
 export function isNotFound(error: unknown): boolean {
   return (
@@ -40,6 +58,23 @@ export function runErrorToastOptions(error: unknown, startNew: () => void) {
   };
 }
 
+/**
+ * Signing in lifts the limit, so a challenged question goes out again as the
+ * signed-in person. Only on the change of status, so a repeat challenge can't
+ * loop.
+ */
+export function shouldResendAfterSignIn(
+  previous: AuthStatus,
+  next: AuthStatus,
+  error: unknown,
+): boolean {
+  return (
+    previous === "signed_out" &&
+    next === "signed_in" &&
+    isTurnstileChallenge(error)
+  );
+}
+
 /** Plain text for a failed run, or null when nothing should be shown. */
 export function runErrorMessage(
   error: unknown,
@@ -53,7 +88,7 @@ export function runErrorMessage(
       : "That conversation isn't available. Start a new one, or sign in if it was yours.";
   }
   const name = error instanceof Error ? error.name : "";
-  if (SILENT.has(name)) return null;
+  if (SILENT.has(name) || isTurnstileChallenge(error)) return null;
   if (name === "timeout") return "That took too long. Please try again.";
   return GENERIC;
 }

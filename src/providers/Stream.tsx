@@ -27,7 +27,10 @@ import {
   type RequiresAuthEvent,
 } from "@/lib/requires-auth";
 import { useAuthStatus } from "@/hooks/use-agent-auth";
-import { shouldReloadAfterSignIn } from "@/lib/run-errors";
+import {
+  shouldReloadAfterSignIn,
+  shouldResendAfterSignIn,
+} from "@/lib/run-errors";
 import { isRunStatusEvent, type RunStatusEvent } from "@/lib/run-status";
 import { claimThread, noteAuthStatus } from "@/lib/thread-claim";
 import { createClient } from "./client";
@@ -49,9 +52,13 @@ const useTypedStream = useStream<
   }
 >;
 
-type StreamContextType = ReturnType<typeof useTypedStream> & {
+type TypedStream = ReturnType<typeof useTypedStream>;
+
+type StreamContextType = TypedStream & {
   apiUrl: string;
   runStatus: RunStatusEvent | null;
+  /** Sends the challenged question again with a passed Turnstile token. */
+  resendWithToken: (token: string) => void;
 };
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
 
@@ -184,6 +191,27 @@ const StreamSession = ({
     },
   });
 
+  // Every submit, however it started, so a challenged run can go out again.
+  const lastSubmit = useRef<Parameters<TypedStream["submit"]> | null>(null);
+  const submit: TypedStream["submit"] = (...args) => {
+    lastSubmit.current = args;
+    return streamValue.submit(...args);
+  };
+
+  // The question is still on screen from the first try, so no optimistic
+  // values: running them again would show it twice.
+  const resend = (token?: string) => {
+    if (!lastSubmit.current) return;
+    const [values, options] = lastSubmit.current;
+    void streamValue.submit(values, {
+      ...options,
+      optimisticValues: undefined,
+      ...(token && {
+        context: { ...options?.context, turnstile_token: token },
+      }),
+    });
+  };
+
   // A conversation that 404ed while signed out may be the person's own. When
   // they sign in, reload: the URL keeps ?threadId=, so it opens signed in.
   // No loop: after the reload auth goes unknown -> signed_in.
@@ -199,7 +227,18 @@ const StreamSession = ({
     ) {
       window.location.reload();
     }
+    if (
+      shouldResendAfterSignIn(
+        prevAuthStatus.current,
+        authStatus,
+        streamValue.error,
+      )
+    ) {
+      resend();
+    }
     prevAuthStatus.current = authStatus;
+    // resend is new each render and only needs the latest submit when this runs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authStatus, streamValue.error]);
 
   // The sidebar lists conversations linked to the account, so link the open
@@ -249,7 +288,15 @@ const StreamSession = ({
   }, [apiKey, apiUrl, authScheme]);
 
   return (
-    <StreamContext.Provider value={{ ...streamValue, apiUrl, runStatus }}>
+    <StreamContext.Provider
+      value={{
+        ...streamValue,
+        submit,
+        apiUrl,
+        runStatus,
+        resendWithToken: resend,
+      }}
+    >
       {children}
     </StreamContext.Provider>
   );
