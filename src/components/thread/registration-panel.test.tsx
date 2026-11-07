@@ -51,6 +51,11 @@ describe("RegistrationDetails", () => {
     expect(screen.getByText("Online")).toBeTruthy();
     expect(screen.getByText("A seat is available")).toBeTruthy();
     expect(
+      screen.getByText(
+        "The organizer reviews each registration. You'll get an email once you're approved.",
+      ),
+    ).toBeTruthy();
+    expect(
       screen.getByText("Nothing is submitted until you confirm."),
     ).toBeTruthy();
   });
@@ -84,9 +89,16 @@ describe("RegistrationDetails", () => {
   it("shows a finished registration with no button", () => {
     show({ ...preview, status: "registered", outcome: null });
 
+    expect(screen.getByText("Awaiting approval")).toBeTruthy();
     expect(screen.getByRole("status").textContent).toContain(
+      "Registration submitted",
+    );
+    expect(screen.getByRole("status").textContent).not.toContain(
       "You are registered",
     );
+    expect(
+      screen.getByText("○ The organizer reviews your registration"),
+    ).toBeTruthy();
     expect(screen.queryByRole("button")).toBeNull();
     expect(
       screen
@@ -99,7 +111,7 @@ describe("RegistrationDetails", () => {
     show({ ...preview, status: "waitlisted", outcome: null });
 
     expect(screen.getByRole("status").textContent).toContain(
-      "You are on the waitlist",
+      "Added to the waitlist",
     );
   });
 
@@ -121,7 +133,7 @@ describe("RegistrationDetails", () => {
     });
 
     expect(screen.getByRole("status").textContent).toContain(
-      "You are already registered",
+      "You've already registered for this event",
     );
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByText("When")).toBeNull();

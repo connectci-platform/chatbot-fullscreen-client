@@ -17,29 +17,34 @@ function outcomeText(registration: Registration) {
   if (registration.outcome === "waitlist") {
     return {
       title: "This event is full",
-      body: "You would join the waitlist.",
+      body: "You would join the waitlist. The organizer reviews it, and you'll get an email if you're approved.",
       cta: "Join waitlist",
     };
   }
   return {
     title: "A seat is available",
-    body: "You get a seat as soon as you confirm.",
+    body: "The organizer reviews each registration. You'll get an email once you're approved.",
     cta: "Confirm registration",
   };
 }
 
 const BADGE: Record<RegistrationStatus, string> = {
   preview: "Not registered yet",
-  registered: "Registered",
-  waitlisted: "Waitlisted",
-  already_registered: "Registered",
+  registered: "Awaiting approval",
+  waitlisted: "On the waitlist",
+  already_registered: "Already submitted",
 };
 
 const DONE_TITLE: Record<string, string> = {
-  registered: "You are registered",
-  waitlisted: "You are on the waitlist",
-  already_registered: "You are already registered",
+  registered: "Registration submitted",
+  waitlisted: "Added to the waitlist",
+  already_registered: "You've already registered for this event",
 };
+
+const NEXT_STEPS = [
+  "The organizer reviews your registration",
+  "You get a confirmation email with the details",
+];
 
 export function RegistrationDetails({
   registration,
@@ -114,7 +119,15 @@ export function RegistrationDetails({
           role="status"
           className="bg-muted rounded-md border p-4"
         >
-          <p className="font-semibold">{DONE_TITLE[status]}</p>
+          <p className="font-semibold">✓ {DONE_TITLE[status]}</p>
+          <ol
+            aria-label="What happens next"
+            className="mt-2 flex flex-col gap-1 text-sm"
+          >
+            {NEXT_STEPS.map((step) => (
+              <li key={step}>○ {step}</li>
+            ))}
+          </ol>
           {event?.url && (
             <a
               href={event.url}
