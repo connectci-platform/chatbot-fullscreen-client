@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the shared chrome so we can assert the props we pass it, without
@@ -11,7 +11,9 @@ vi.mock("@access-ci/ui/react", () => ({
       <div
         data-testid="universal-menus"
         data-logged-in={String(props.isLoggedIn)}
-      />
+      >
+        <a href={String(props.logoutUrl)}>Log out</a>
+      </div>
     );
   },
   Header: () => <div data-testid="header" />,
@@ -100,6 +102,19 @@ describe("SiteChrome auth state", () => {
     expect(loginUrl).toBe("https://support.access-ci.org/user/login");
     expect(logoutUrl).toBe("https://support.access-ci.org/user/logout");
     expect(logoutUrl).not.toContain("cilogon.org");
+  });
+
+  it("clears the claim key when the logout link is used, and still navigates", async () => {
+    vi.stubGlobal("fetch", mintResponse(200, MINTED));
+    const { getClaimKey } = await import("@/lib/thread-claim");
+    const key = getClaimKey();
+    await renderChrome();
+    await waitFor(() => expect(loggedIn()).toBe("true"));
+
+    const notBlocked = fireEvent.click(screen.getByText("Log out"));
+
+    expect(notBlocked).toBe(true);
+    expect(getClaimKey()).not.toBe(key);
   });
 
   it("uses NEXT_PUBLIC_SUPPORT_URL for the mint and the login links", async () => {

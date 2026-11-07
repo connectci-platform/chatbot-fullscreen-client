@@ -47,7 +47,7 @@ describe("createClient", () => {
     expect(init.credentials).toBeUndefined();
   });
 
-  it("sends the tab's claim key on SDK requests", async () => {
+  it("sends the browser's claim key on SDK requests", async () => {
     const fetchMock = vi.fn(async (url: string) =>
       url === MINT_URL ? minted("t1") : json(200, []),
     );

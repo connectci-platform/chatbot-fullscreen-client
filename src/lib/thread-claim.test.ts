@@ -21,41 +21,75 @@ function stubAgent(status: number | Error) {
 describe("thread claim key", () => {
   beforeEach(() => {
     vi.resetModules();
-    sessionStorage.clear();
+    localStorage.clear();
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it("makes one random key per tab and keeps it across reloads", async () => {
+  it("makes one random key per browser and keeps it across restarts", async () => {
     const first = await import("./thread-claim");
     const key = first.getClaimKey();
     expect(key).toMatch(/^[0-9a-f]{64}$/);
     expect(first.getClaimKey()).toBe(key);
 
     vi.resetModules();
-    const reloaded = await import("./thread-claim");
-    expect(reloaded.getClaimKey()).toBe(key);
+    const restarted = await import("./thread-claim");
+    expect(restarted.getClaimKey()).toBe(key);
   });
 
-  it("makes a different key in another tab", async () => {
+  it("shares the key with another tab", async () => {
+    const tab = await import("./thread-claim");
+    const key = tab.getClaimKey();
+
+    vi.resetModules();
+    const otherTab = await import("./thread-claim");
+
+    expect(otherTab.getClaimKey()).toBe(key);
+  });
+
+  it("makes a new key after sign-out clears it", async () => {
+    const { clearClaimKey, getClaimKey } = await import("./thread-claim");
+    const key = getClaimKey();
+
+    clearClaimKey();
+
+    expect(localStorage.length).toBe(0);
+    expect(getClaimKey()).not.toBe(key);
+  });
+
+  it("notices a sign-out in another tab", async () => {
     const { getClaimKey } = await import("./thread-claim");
     const key = getClaimKey();
-    sessionStorage.clear();
-    vi.resetModules();
-    const other = await import("./thread-claim");
-    expect(other.getClaimKey()).not.toBe(key);
+
+    localStorage.clear();
+
+    expect(getClaimKey()).not.toBe(key);
   });
 
-  it("still has a stable key when session storage is blocked", async () => {
-    vi.stubGlobal("sessionStorage", {
-      getItem: () => {
+  describe("with storage unavailable", () => {
+    beforeEach(() => {
+      const blocked = () => {
         throw new Error("blocked");
-      },
-      setItem: () => {
-        throw new Error("blocked");
-      },
+      };
+      vi.stubGlobal("localStorage", {
+        getItem: blocked,
+        setItem: blocked,
+        removeItem: blocked,
+      });
     });
-    const { getClaimKey } = await import("./thread-claim");
-    expect(getClaimKey()).toBe(getClaimKey());
+
+    it("keeps a stable key for the page", async () => {
+      const { getClaimKey } = await import("./thread-claim");
+      expect(getClaimKey()).toBe(getClaimKey());
+    });
+
+    it("still clears the key on sign-out", async () => {
+      const { clearClaimKey, getClaimKey } = await import("./thread-claim");
+      const key = getClaimKey();
+
+      clearClaimKey();
+
+      expect(getClaimKey()).not.toBe(key);
+    });
   });
 
   it("adds the key to a request's headers", async () => {
@@ -70,7 +104,7 @@ describe("thread claim key", () => {
 describe("claimThread", () => {
   beforeEach(() => {
     vi.resetModules();
-    sessionStorage.clear();
+    localStorage.clear();
   });
   afterEach(() => vi.unstubAllGlobals());
 

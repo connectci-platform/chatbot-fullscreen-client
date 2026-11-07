@@ -6,7 +6,7 @@ import { withClaimKey } from "@/lib/thread-claim";
 /**
  * The one way this app builds an SDK client, so every agent call (the run
  * stream, history, and the sidebar's /threads/search) carries the Bearer
- * token and the tab's claim key, and gets the single re-mint on a 401.
+ * token and the browser's claim key, and gets the single re-mint on a 401.
  */
 export function createClient(
   apiUrl: string,

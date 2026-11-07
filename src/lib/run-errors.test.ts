@@ -1,8 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { Client } from "@langchain/langgraph-sdk";
 import {
   isNotFound,
   runErrorMessage,
+  runErrorToastOptions,
   shouldReloadAfterSignIn,
 } from "./run-errors";
 
@@ -26,40 +27,72 @@ async function sdkNotFound(): Promise<unknown> {
   );
 }
 
+describe("runErrorToastOptions", () => {
+  it("offers a new conversation on a 404 and stays until used", async () => {
+    const startNew = vi.fn();
+
+    const options = runErrorToastOptions(await sdkNotFound(), startNew);
+
+    expect(options.duration).toBe(Infinity);
+    expect(options.action?.label).toBe("New conversation");
+    options.action?.onClick();
+    expect(startNew).toHaveBeenCalledOnce();
+  });
+
+  it("offers nothing extra for other errors", () => {
+    const options = runErrorToastOptions(err("timeout"), vi.fn());
+
+    expect(options.action).toBeUndefined();
+    expect(options.duration).toBeUndefined();
+  });
+});
+
 describe("runErrorMessage", () => {
-  it("says an unreadable conversation isn't available on a 404", async () => {
-    expect(runErrorMessage(await sdkNotFound())).toBe(
+  it("suggests signing in when a signed-out person gets a 404", async () => {
+    expect(runErrorMessage(await sdkNotFound(), "signed_out")).toBe(
+      "That conversation isn't available. Start a new one, or sign in if it was yours.",
+    );
+  });
+
+  it("doesn't suggest signing in to someone already signed in", async () => {
+    expect(runErrorMessage(await sdkNotFound(), "signed_in")).toBe(
+      "This conversation isn't available. Start a new one.",
+    );
+  });
+
+  it("treats an unknown sign-in state like signed out", async () => {
+    expect(runErrorMessage(await sdkNotFound(), "unknown")).toBe(
       "That conversation isn't available. Start a new one, or sign in if it was yours.",
     );
   });
 
   it("explains a timeout", () => {
-    expect(runErrorMessage(err("timeout"))).toBe(
+    expect(runErrorMessage(err("timeout"), "signed_in")).toBe(
       "That took too long. Please try again.",
     );
   });
 
   it("uses the generic message for agent errors", () => {
-    expect(runErrorMessage(err("agent_error"))).toBe(
+    expect(runErrorMessage(err("agent_error"), "signed_in")).toBe(
       "Something went wrong. Please try again.",
     );
   });
 
   it("does not expose the raw message", () => {
-    expect(runErrorMessage(err("StreamError", "boom"))).toBe(
+    expect(runErrorMessage(err("StreamError", "boom"), "signed_in")).toBe(
       "Something went wrong. Please try again.",
     );
   });
 
   it("uses the generic message for non-Error values", () => {
-    expect(runErrorMessage("boom")).toBe(
+    expect(runErrorMessage("boom", "signed_in")).toBe(
       "Something went wrong. Please try again.",
     );
   });
 
   it("shows nothing when the user cancelled", () => {
-    expect(runErrorMessage(err("cancelled"))).toBeNull();
-    expect(runErrorMessage(err("AbortError"))).toBeNull();
+    expect(runErrorMessage(err("cancelled"), "signed_in")).toBeNull();
+    expect(runErrorMessage(err("AbortError"), "signed_in")).toBeNull();
   });
 });
 

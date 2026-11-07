@@ -3,41 +3,57 @@ import { getAgentTokenSource } from "./agent-token";
 
 const STORAGE_KEY = "thread-claim-key";
 
+// Only used when local storage is unavailable.
 let memoryKey: string | null = null;
 
 function readStored(): string | null {
   try {
-    return sessionStorage.getItem(STORAGE_KEY);
+    return localStorage.getItem(STORAGE_KEY);
   } catch {
     return null;
   }
 }
 
-function store(key: string) {
+function store(key: string): boolean {
   try {
-    sessionStorage.setItem(STORAGE_KEY, key);
+    localStorage.setItem(STORAGE_KEY, key);
+    return true;
   } catch {
-    // Blocked storage: the key lasts until this page unloads.
+    return false;
   }
 }
 
+function newKey(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 /**
- * This tab's secret for claiming conversations it started signed out. The
- * thread id is in the URL, so anyone with a shared link has it; this key never
- * leaves the tab except to the agent, which is how the agent tells the person
- * who started a conversation from someone who was sent the link. Session
- * storage, not local, so the next person on a shared computer doesn't get it.
+ * This browser's secret for the conversations it started signed out. The
+ * thread id is in the URL, so it proves nothing; the agent reads, continues or
+ * links an unclaimed conversation only for the key that started it. Read fresh
+ * each time so a sign-out in another tab takes effect here too. With storage
+ * blocked the key lasts until the page unloads, and so does access.
  */
 export function getClaimKey(): string {
-  memoryKey ??= readStored();
-  if (!memoryKey) {
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
-    memoryKey = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(
-      "",
-    );
-    store(memoryKey);
+  const stored = readStored();
+  if (stored) return stored;
+  const key = memoryKey ?? newKey();
+  memoryKey = store(key) ? null : key;
+  return key;
+}
+
+/**
+ * Forgets the key at sign-out, so the next person on this browser can't reach
+ * or link the conversations it started. Any still unclaimed are lost for good.
+ */
+export function clearClaimKey() {
+  memoryKey = null;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Blocked storage holds no key to remove.
   }
-  return memoryKey;
 }
 
 export function withClaimKey(init: RequestInit): RequestInit {

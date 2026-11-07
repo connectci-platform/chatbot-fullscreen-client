@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   auth: "unknown" as AuthStatus,
   isLoading: false,
   claimThread: vi.fn(),
+  clearClaimKey: vi.fn(),
   getThreads: vi.fn(),
   setThreads: vi.fn(),
 }));
@@ -29,7 +30,10 @@ vi.mock("./client", () => ({ createClient: vi.fn() }));
 vi.mock("@/hooks/use-agent-auth", () => ({
   useAuthStatus: () => state.auth,
 }));
-vi.mock("@/lib/thread-claim", () => ({ claimThread: state.claimThread }));
+vi.mock("@/lib/thread-claim", () => ({
+  claimThread: state.claimThread,
+  clearClaimKey: state.clearClaimKey,
+}));
 
 function setup(searchParams: string) {
   vi.stubEnv("NEXT_PUBLIC_API_URL", "http://agent.test/api/v1");
@@ -55,6 +59,7 @@ describe("claiming the open conversation on sign-in", () => {
     state.auth = "signed_out";
     state.isLoading = false;
     state.claimThread.mockReset().mockResolvedValue(true);
+    state.clearClaimKey.mockReset();
     state.getThreads.mockReset().mockResolvedValue([{ thread_id: "t1" }]);
     state.setThreads.mockReset();
   });
@@ -115,6 +120,24 @@ describe("claiming the open conversation on sign-in", () => {
     await waitFor(() => expect(state.claimThread).toHaveBeenCalledTimes(1));
     await act(async () => {});
     expect(state.getThreads).not.toHaveBeenCalled();
+  });
+
+  it("clears the key when a signed-in session ends", async () => {
+    state.auth = "signed_in";
+    const { rerender } = setup("");
+    expect(state.clearClaimKey).not.toHaveBeenCalled();
+
+    state.auth = "signed_out";
+    rerender();
+
+    expect(state.clearClaimKey).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the key for someone who was never signed in", () => {
+    const { rerender } = setup("?threadId=t1");
+    rerender();
+
+    expect(state.clearClaimKey).not.toHaveBeenCalled();
   });
 
   it("claims only once while signed in", async () => {
