@@ -11,9 +11,29 @@ export type ProgramConfig = {
   privacyUrl: string;
   disclaimer: string;
   features: { fileUploads: boolean; siteHeader: boolean };
+  colors: {
+    /** Primary buttons and calls to action. */
+    primary: string;
+    primaryForeground: string;
+    /** Structural brand color: links, toasts. */
+    brand: string;
+    brandForeground: string;
+  };
 };
 
 const programs: Record<string, ProgramConfig> = { access };
+
+/** A program's colors as the CSS variables the app styles from. */
+export function colorVariables({
+  colors,
+}: Pick<ProgramConfig, "colors">): Record<string, string> {
+  return {
+    "--primary": colors.primary,
+    "--primary-foreground": colors.primaryForeground,
+    "--brand-teal": colors.brand,
+    "--brand-foreground": colors.brandForeground,
+  };
+}
 
 export function getProgram(id: string = "access"): ProgramConfig {
   const found = programs[id];
