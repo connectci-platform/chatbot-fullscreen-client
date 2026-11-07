@@ -35,6 +35,7 @@ import {
   runErrorToastOptions,
 } from "@/lib/run-errors";
 import { useAuthStatus } from "@/hooks/use-agent-auth";
+import { useRestoreQuestion } from "@/hooks/use-restore-question";
 import { TurnstileChallengePanel } from "./turnstile-challenge";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Label } from "../ui/label";
@@ -121,6 +122,15 @@ export function Thread() {
   );
   const isLoading = stream.isLoading;
   const challenge = isTurnstileChallenge(stream.error) ? stream.error : null;
+  const awaitingCheck = !!challenge && !stream.turnstileFailed;
+
+  useRestoreQuestion({
+    failed: stream.turnstileFailed,
+    input,
+    getQuestion: stream.challengedQuestion,
+    setInput,
+    setBlocks: setContentBlocks,
+  });
 
   const lastError = useRef<string | undefined>(undefined);
 
@@ -198,7 +208,7 @@ export function Thread() {
     if (
       (input.trim().length === 0 && contentBlocks.length === 0) ||
       isLoading ||
-      challenge
+      awaitingCheck
     )
       return;
     submitMessage(input, contentBlocks);
@@ -393,7 +403,9 @@ export function Thread() {
                     {challenge && (
                       <TurnstileChallengePanel
                         siteKey={challenge.siteKey}
+                        failed={stream.turnstileFailed}
                         onVerified={stream.resendWithToken}
+                        onFailed={stream.failChallenge}
                       />
                     )}
                     <div
@@ -472,7 +484,7 @@ export function Thread() {
                               className="ml-auto shadow-md transition-all"
                               disabled={
                                 isLoading ||
-                                !!challenge ||
+                                awaitingCheck ||
                                 (!input.trim() && contentBlocks.length === 0)
                               }
                             >

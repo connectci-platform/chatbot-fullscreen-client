@@ -60,8 +60,8 @@ export function runErrorToastOptions(error: unknown, startNew: () => void) {
 
 /**
  * Signing in lifts the limit, so a challenged question goes out again as the
- * signed-in person. Only on the change of status, so a repeat challenge can't
- * loop.
+ * signed-in person. Only on the change to signed in, from any other status (a
+ * failed first mint leaves it unknown), so a repeat challenge can't loop.
  */
 export function shouldResendAfterSignIn(
   previous: AuthStatus,
@@ -69,7 +69,7 @@ export function shouldResendAfterSignIn(
   error: unknown,
 ): boolean {
   return (
-    previous === "signed_out" &&
+    previous !== "signed_in" &&
     next === "signed_in" &&
     isTurnstileChallenge(error)
   );

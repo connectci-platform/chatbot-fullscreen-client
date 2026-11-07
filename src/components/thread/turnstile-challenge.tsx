@@ -25,52 +25,64 @@ declare global {
   }
 }
 
-/**
- * Shown when the agent wants a signed-out person to pass a Turnstile check.
- * Passing it, or signing in, sends the question again.
- */
-export function TurnstileChallengePanel({
-  siteKey,
-  onVerified,
-}: {
+type WidgetProps = {
   siteKey: string;
   onVerified: (token: string) => void;
-}) {
-  const container = useRef<HTMLDivElement>(null);
-  const widgetId = useRef<string | null>(null);
-  const [failed, setFailed] = useState(!siteKey);
+  onFailed: () => void;
+};
 
-  // The widget keeps the callback it was rendered with, and the person may
-  // take a while, so it calls through a ref to reach the current handler.
-  const verified = useRef(onVerified);
+function TurnstileWidget({ siteKey, onVerified, onFailed }: WidgetProps) {
+  const container = useRef<HTMLDivElement>(null);
+  const [scriptReady, setScriptReady] = useState(false);
+
+  // The widget keeps the callbacks it was rendered with, and the person may
+  // take a while, so it calls through a ref to reach the current handlers.
+  const handlers = useRef({ onVerified, onFailed });
   useEffect(() => {
-    verified.current = onVerified;
+    handlers.current = { onVerified, onFailed };
   });
 
-  useEffect(
-    () => () => {
-      if (widgetId.current) window.turnstile?.remove(widgetId.current);
-    },
-    [],
-  );
-
-  const renderWidget = () => {
-    if (widgetId.current || !container.current) return;
+  // An effect, not onReady directly: Next calls onReady once, so a widget it
+  // rendered wouldn't come back after Strict Mode's simulated unmount.
+  useEffect(() => {
+    if (!scriptReady || !container.current) return;
     if (!window.turnstile) {
-      setFailed(true);
+      handlers.current.onFailed();
       return;
     }
-    widgetId.current = window.turnstile.render(container.current, {
+    const widgetId = window.turnstile.render(container.current, {
       sitekey: siteKey,
-      callback: (token) => verified.current(token),
+      callback: (token) => handlers.current.onVerified(token),
       "error-callback": () => {
-        setFailed(true);
+        handlers.current.onFailed();
         // Tells Turnstile the error is handled, or it retries forever.
         return true;
       },
     });
-  };
+    return () => window.turnstile?.remove(widgetId);
+  }, [scriptReady, siteKey]);
 
+  return (
+    <>
+      <Script
+        src={SCRIPT_URL}
+        onReady={() => setScriptReady(true)}
+        onError={() => handlers.current.onFailed()}
+      />
+      <div ref={container} />
+    </>
+  );
+}
+
+/**
+ * Shown when the agent wants a signed-out person to pass a Turnstile check.
+ * Passing it, or signing in, sends the question again. Once failed it shows no
+ * widget: a widget can pass by itself, and only the person may start a retry.
+ */
+export function TurnstileChallengePanel({
+  failed,
+  ...widget
+}: WidgetProps & { failed: boolean }) {
   return (
     <div
       role="alert"
@@ -78,22 +90,10 @@ export function TurnstileChallengePanel({
     >
       <p>
         {failed
-          ? `We couldn't run the check. Reload the page to try again, or sign in with your ${program.accountName}.`
+          ? `We couldn't confirm the check. Your question is back in the message box, so you can send it to try again, or sign in with your ${program.accountName}.`
           : `Confirm you're human to get your answer, or sign in with your ${program.accountName}.`}
       </p>
-      {siteKey && (
-        <>
-          <Script
-            src={SCRIPT_URL}
-            onReady={renderWidget}
-            onError={() => setFailed(true)}
-          />
-          <div
-            ref={container}
-            hidden={failed}
-          />
-        </>
-      )}
+      {!failed && <TurnstileWidget {...widget} />}
       <Button
         type="button"
         variant="outline"

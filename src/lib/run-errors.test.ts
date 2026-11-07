@@ -168,6 +168,12 @@ describe("shouldResendAfterSignIn", () => {
     );
   });
 
+  it("resends when the status was unknown after a failed first mint", () => {
+    expect(shouldResendAfterSignIn("unknown", "signed_in", challenge)).toBe(
+      true,
+    );
+  });
+
   it("doesn't resend without a sign-in, so a repeat challenge can't loop", () => {
     expect(shouldResendAfterSignIn("signed_in", "signed_in", challenge)).toBe(
       false,
