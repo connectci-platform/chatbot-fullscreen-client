@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "@langchain/langgraph-sdk";
-import { AssistantMessage } from "./ai";
+import { AssistantMessage, AssistantMessageLoading } from "./ai";
 
 const toolMessage: Message = {
   id: "tool-1",
@@ -73,5 +73,19 @@ describe("AssistantMessage", () => {
     stream.interrupt = { value: { reason: "needs approval" } };
     renderMessage(aiMessage);
     expect(screen.getByText(/needs approval/)).toBeTruthy();
+  });
+
+  it("shows the agent's status while it works", () => {
+    render(<AssistantMessageLoading status="Searching software..." />);
+    expect(screen.getByRole("status").textContent).toContain(
+      "Searching software...",
+    );
+  });
+
+  it("announces a default when there is no status yet", () => {
+    render(<AssistantMessageLoading />);
+    expect(screen.getByRole("status").textContent).toContain(
+      "Writing an answer…",
+    );
   });
 });
