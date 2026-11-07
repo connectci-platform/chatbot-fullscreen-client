@@ -1,6 +1,7 @@
 import type { Message } from "@langchain/langgraph-sdk";
 
 const REGISTER_TOOL = "register_for_event";
+const CANCEL_TOOL = "cancel_registration";
 const EVENT_TOOLS = new Set(["search_events", "get_event"]);
 
 export type RegistrationStatus =
@@ -20,6 +21,8 @@ export interface Registration {
   status: RegistrationStatus;
   outcome: "seat" | "waitlist" | null;
   event: RegistrationEvent | null;
+  /** Whether a preview can still be confirmed from the panel. */
+  actionable: boolean;
 }
 
 const STATUSES = new Set<string>([
@@ -94,26 +97,47 @@ function findEvent(
 /**
  * The conversation's latest registration step, read from the tool results it
  * already holds, so the panel comes back when a thread is reopened. A refused
- * or failed call shows nothing new.
+ * or failed call adds no step, but it does end a preview: the conversation has
+ * moved on, and "yes" could now mean something else.
  */
 export function latestRegistration(messages: Message[]): Registration | null {
+  let actionable = true;
   for (const message of [...messages].reverse()) {
-    if (message.type !== "tool" || message.name !== REGISTER_TOOL) continue;
+    if (message.type === "human") actionable = false;
+    if (message.type !== "tool") continue;
+    if (message.name === CANCEL_TOOL) {
+      if (parseJson(message.content)?.status === "cancelled") return null;
+      continue;
+    }
+    if (message.name !== REGISTER_TOOL) continue;
+
     const result = parseJson(message.content);
     const status = result?.status;
-    if (typeof status !== "string" || !STATUSES.has(status)) continue;
+    if (typeof status !== "string" || !STATUSES.has(status)) {
+      actionable = false;
+      continue;
+    }
 
     const eventId = eventIdFor(messages, message.tool_call_id);
     const data = result?.data as Record<string, unknown> | undefined;
     const outcome = data?.outcome_if_confirmed;
     return {
-      key: `${eventId}:${status}`,
+      key: message.tool_call_id,
       status: status as RegistrationStatus,
       outcome: outcome === "seat" || outcome === "waitlist" ? outcome : null,
       event: eventId ? findEvent(messages, eventId) : null,
+      actionable: status === "preview" && actionable,
     };
   }
   return null;
+}
+
+/** The chat message Confirm sends, naming the event it applies to. */
+export function confirmMessage(registration: Registration): string {
+  const title = registration.event?.title;
+  return title
+    ? `Yes, please confirm my registration for ${title}.`
+    : "Yes, please confirm.";
 }
 
 /** "November 20, 2026, 1:00 PM – 3:00 PM EST" in the reader's time zone. */

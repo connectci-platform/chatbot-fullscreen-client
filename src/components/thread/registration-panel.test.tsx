@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { Message } from "@langchain/langgraph-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Registration } from "@/lib/registration";
+import { confirmMessage, type Registration } from "@/lib/registration";
 import { useStreamContext } from "@/providers/Stream";
 import {
   ArtifactContent,
@@ -17,6 +17,7 @@ const preview: Registration = {
   key: "9372:preview",
   status: "preview",
   outcome: "seat",
+  actionable: true,
   event: {
     title: "Introduction to GPU Programming",
     start: "2026-11-20T18:00:00Z",
@@ -79,6 +80,51 @@ describe("RegistrationDetails", () => {
     expect(button.disabled).toBe(true);
   });
 
+  it("offers no button once the preview is out of date", () => {
+    show({ ...preview, actionable: false });
+
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByText("A seat is available")).toBeNull();
+    expect(screen.getByRole("status").textContent).toContain(
+      "Nothing has been submitted.",
+    );
+  });
+
+  it("doesn't claim a seat when the outcome is unknown", () => {
+    show({ ...preview, outcome: null });
+
+    expect(screen.queryByText("A seat is available")).toBeNull();
+    expect(screen.getByText("Ready to submit")).toBeTruthy();
+  });
+
+  it("names the event in the confirmation message", () => {
+    expect(confirmMessage(preview)).toBe(
+      "Yes, please confirm my registration for Introduction to GPU Programming.",
+    );
+    expect(confirmMessage({ ...preview, event: null })).toBe(
+      "Yes, please confirm.",
+    );
+  });
+
+  it("moves focus to the heading when Confirm goes away", () => {
+    const props = { busy: false, onConfirm: vi.fn() };
+    const { rerender } = render(
+      <RegistrationDetails
+        registration={preview}
+        {...props}
+      />,
+    );
+
+    rerender(
+      <RegistrationDetails
+        registration={{ ...preview, status: "registered" }}
+        {...props}
+      />,
+    );
+
+    expect(document.activeElement?.tagName).toBe("H2");
+  });
+
   it("offers the waitlist when the event is full", () => {
     show({ ...preview, outcome: "waitlist" });
 
@@ -113,6 +159,10 @@ describe("RegistrationDetails", () => {
     expect(screen.getByRole("status").textContent).toContain(
       "Added to the waitlist",
     );
+    expect(
+      screen.getByText("○ You get an email if you're approved"),
+    ).toBeTruthy();
+    expect(screen.queryByText(/confirmation email/)).toBeNull();
   });
 
   it("still works when the event's details aren't in the conversation", () => {
@@ -217,6 +267,16 @@ describe("RegistrationPanel", () => {
 
     expect(screen.getByText("panel open")).toBeTruthy();
     expect(onConfirm).toHaveBeenCalledWith("Yes, please confirm.");
+  });
+
+  it("closes when the conversation has no registration", () => {
+    useMessages(toolMessages("preview"));
+    const { rerender } = render(tree());
+
+    useMessages([]);
+    rerender(tree());
+
+    expect(screen.getByText("panel closed")).toBeTruthy();
   });
 
   it("stays closed after the person closes it, until the next step", () => {

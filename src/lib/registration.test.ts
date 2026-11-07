@@ -83,7 +83,7 @@ describe("latestRegistration", () => {
     ]);
 
     expect(view?.status).toBe("registered");
-    expect(view?.key).toBe("9372:registered");
+    expect(view?.key).toBe("c2");
   });
 
   it("ignores a refusal, keeping the step before it", () => {
@@ -95,6 +95,62 @@ describe("latestRegistration", () => {
     ]);
 
     expect(view?.status).toBe("preview");
+  });
+
+  it("keeps a preview confirmable only while it's the last thing that happened", () => {
+    const shown = [call("c1"), result("c1", preview())];
+    const human = { type: "human", content: "no" } as Message;
+    const failed = [call("c2"), result("c2", { status: "error" })];
+
+    expect(latestRegistration(shown)?.actionable).toBe(true);
+    expect(latestRegistration([...shown, human])?.actionable).toBe(false);
+    expect(latestRegistration([...shown, ...failed])?.actionable).toBe(false);
+  });
+
+  it("gives each step its own key, so a repeat preview reopens the panel", () => {
+    const first = latestRegistration([call("c1"), result("c1", preview())]);
+    const again = latestRegistration([
+      call("c1"),
+      result("c1", preview()),
+      call("c2"),
+      result("c2", preview()),
+    ]);
+
+    expect(first?.key).not.toBe(again?.key);
+  });
+
+  it("shows nothing once the registration is cancelled", () => {
+    const cancelled = {
+      type: "tool",
+      name: "cancel_registration",
+      tool_call_id: "x1",
+      content: JSON.stringify({ status: "cancelled", executed: true }),
+    } as Message;
+
+    expect(
+      latestRegistration([
+        call("c1"),
+        result("c1", { status: "registered" }),
+        cancelled,
+      ]),
+    ).toBeNull();
+  });
+
+  it("keeps the registration when a cancel didn't go through", () => {
+    const failed = {
+      type: "tool",
+      name: "cancel_registration",
+      tool_call_id: "x1",
+      content: JSON.stringify({ status: "error" }),
+    } as Message;
+
+    expect(
+      latestRegistration([
+        call("c1"),
+        result("c1", { status: "registered" }),
+        failed,
+      ])?.status,
+    ).toBe("registered");
   });
 
   it("shows nothing when the only call was refused", () => {
