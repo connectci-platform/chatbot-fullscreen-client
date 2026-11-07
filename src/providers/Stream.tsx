@@ -50,7 +50,7 @@ const useTypedStream = useStream<
 
 type StreamContextType = ReturnType<typeof useTypedStream> & {
   apiUrl: string;
-  runStatus: string | null;
+  runStatus: RunStatusEvent | null;
 };
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
 
@@ -142,7 +142,7 @@ const StreamSession = ({
 }) => {
   const [threadId, setThreadId] = useQueryState("threadId");
   const { getThreads, setThreads } = useThreads();
-  const [runStatus, setRunStatus] = useState<string | null>(null);
+  const [runStatus, setRunStatus] = useState<RunStatusEvent | null>(null);
   // A Client of our own rather than useStream's apiUrl/apiKey options, so the
   // stream and history requests carry the Bearer token (see createClient).
   const client = useMemo(
@@ -160,7 +160,8 @@ const StreamSession = ({
         return;
       }
       if (isRunStatusEvent(event)) {
-        setRunStatus(event.message);
+        // A new object each time, so a repeated line still reaches effects.
+        setRunStatus({ ...event });
         return;
       }
       if (isUIMessage(event) || isRemoveUIMessage(event)) {

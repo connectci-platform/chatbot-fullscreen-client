@@ -34,6 +34,7 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Label } from "../ui/label";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { useInitialQuestion } from "@/hooks/use-initial-question";
+import { useFirstTokenReceived } from "@/hooks/use-first-token-received";
 import { ContentBlocksPreview } from "./ContentBlocksPreview";
 import {
   useArtifactOpen,
@@ -103,11 +104,14 @@ export function Thread() {
     dragOver,
     handlePaste,
   } = useFileUpload({ enabled: program.features.fileUploads });
-  const [firstTokenReceived, setFirstTokenReceived] = useState(false);
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
 
   const stream = useStreamContext();
   const messages = stream.messages;
+  const [firstTokenReceived, setFirstTokenReceived] = useFirstTokenReceived(
+    messages,
+    stream.runStatus,
+  );
   const isLoading = stream.isLoading;
 
   const lastError = useRef<string | undefined>(undefined);
@@ -134,26 +138,6 @@ export function Thread() {
     const text = runErrorMessage(stream.error);
     if (text) toast.error(text, { richColors: true, closeButton: true });
   }, [stream.error]);
-
-  // TODO: this should be part of the useStream hook
-  const prevMessageLength = useRef(0);
-  useEffect(() => {
-    if (
-      messages.length !== prevMessageLength.current &&
-      messages?.length &&
-      messages[messages.length - 1].type === "ai"
-    ) {
-      setFirstTokenReceived(true);
-    }
-
-    prevMessageLength.current = messages.length;
-  }, [messages]);
-
-  // A tool has started, so the indicator comes back even if the model already
-  // wrote text this turn.
-  useEffect(() => {
-    if (stream.runStatus) setFirstTokenReceived(false);
-  }, [stream.runStatus]);
 
   const submitMessage = (text: string, blocks: typeof contentBlocks) => {
     setFirstTokenReceived(false);
@@ -367,7 +351,9 @@ export function Thread() {
                     />
                   )}
                   {isLoading && !firstTokenReceived && (
-                    <AssistantMessageLoading status={stream.runStatus} />
+                    <AssistantMessageLoading
+                      status={stream.runStatus?.message}
+                    />
                   )}
                 </>
               }

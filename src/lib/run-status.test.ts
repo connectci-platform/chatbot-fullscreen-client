@@ -13,6 +13,7 @@ describe("isRunStatusEvent", () => {
       false,
     );
     expect(isRunStatusEvent({ type: "status" })).toBe(false);
+    expect(isRunStatusEvent({ type: "status", message: 42 })).toBe(false);
     expect(isRunStatusEvent(null)).toBe(false);
   });
 });
