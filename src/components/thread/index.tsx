@@ -42,6 +42,7 @@ import {
   ArtifactTitle,
   useArtifactContext,
 } from "./artifact";
+import { RegistrationPanel } from "./registration-panel";
 
 function StickyToBottomContent(props: {
   content: ReactNode;
@@ -481,6 +482,7 @@ export function Thread() {
           </div>
         </div>
       </div>
+      <RegistrationPanel onConfirm={(text) => submitMessage(text, [])} />
     </div>
   );
 }
