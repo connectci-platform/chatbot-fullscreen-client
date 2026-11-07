@@ -1,6 +1,11 @@
 import type { Message } from "@langchain/langgraph-sdk";
 import { describe, expect, it } from "vitest";
-import { formatEventTime, latestRegistration } from "./registration";
+import {
+  formatEventTime,
+  latestRegistration,
+  seatsText,
+  type Registration,
+} from "./registration";
 
 const EVENT = {
   id: "9372",
@@ -227,6 +232,38 @@ describe("latestRegistration", () => {
 
     expect(view?.status).toBe("preview");
     expect(view?.event).toBeNull();
+  });
+});
+
+describe("seats", () => {
+  const withSeats = (seats: unknown, item: object = EVENT) =>
+    latestRegistration([
+      search([item]),
+      call("c1"),
+      result("c1", {
+        status: "preview",
+        data: { outcome_if_confirmed: "seat", seats_remaining: seats },
+      }),
+    ]) as Registration;
+
+  it("reads seats left and the event's capacity", () => {
+    const view = withSeats(39, {
+      ...EVENT,
+      access_registration: { enabled: true, capacity: 40 },
+    });
+
+    expect(view.seatsRemaining).toBe(39);
+    expect(seatsText(view)).toBe("39 of 40 seats left");
+  });
+
+  it("works without a capacity", () => {
+    expect(seatsText(withSeats(39))).toBe("39 seats left");
+    expect(seatsText(withSeats(1))).toBe("1 seat left");
+  });
+
+  it("says nothing when the count isn't a number", () => {
+    expect(seatsText(withSeats(undefined))).toBeNull();
+    expect(seatsText(withSeats("39"))).toBeNull();
   });
 });
 

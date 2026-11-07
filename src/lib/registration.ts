@@ -13,6 +13,7 @@ export interface RegistrationEvent {
   end?: string;
   location?: string;
   url?: string;
+  capacity?: number;
 }
 
 export interface Registration {
@@ -20,6 +21,8 @@ export interface Registration {
   key: string;
   status: RegistrationStatus;
   outcome: "seat" | "waitlist" | null;
+  /** Null when the event has no limit or the result didn't say. */
+  seatsRemaining: number | null;
   event: RegistrationEvent | null;
   /** Whether a preview can still be confirmed from the panel. */
   actionable: boolean;
@@ -60,15 +63,22 @@ function text(value: unknown): string | undefined {
   return typeof value === "string" && value !== "" ? value : undefined;
 }
 
+function count(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function toEvent(item: Record<string, unknown>): RegistrationEvent | null {
   const title = text(item.title);
   if (!title) return null;
+  const registration = item.access_registration as
+    Record<string, unknown> | undefined;
   return {
     title,
     start: text(item.start_date),
     end: text(item.end_date),
     location: text(item.location),
     url: text(item.url),
+    capacity: count(registration?.capacity) ?? undefined,
   };
 }
 
@@ -125,11 +135,21 @@ export function latestRegistration(messages: Message[]): Registration | null {
       key: message.tool_call_id,
       status: status as RegistrationStatus,
       outcome: outcome === "seat" || outcome === "waitlist" ? outcome : null,
+      seatsRemaining: count(data?.seats_remaining),
       event: eventId ? findEvent(messages, eventId) : null,
       actionable: status === "preview" && actionable,
     };
   }
   return null;
+}
+
+/** "39 of 40 seats left", or null when the count isn't known. */
+export function seatsText(registration: Registration): string | null {
+  const left = registration.seatsRemaining;
+  if (left === null) return null;
+  const capacity = registration.event?.capacity;
+  if (capacity) return `${left} of ${capacity} seats left`;
+  return left === 1 ? "1 seat left" : `${left} seats left`;
 }
 
 /** The chat message Confirm sends, naming the event it applies to. */

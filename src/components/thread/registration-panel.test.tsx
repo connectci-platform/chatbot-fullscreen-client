@@ -17,6 +17,7 @@ const preview: Registration = {
   key: "9372:preview",
   status: "preview",
   outcome: "seat",
+  seatsRemaining: null,
   actionable: true,
   event: {
     title: "Introduction to GPU Programming",
@@ -78,6 +79,16 @@ describe("RegistrationDetails", () => {
       name: "Confirm registration",
     }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
+  });
+
+  it("shows the seats left when it knows them", () => {
+    show({
+      ...preview,
+      seatsRemaining: 39,
+      event: { title: "Workshop", capacity: 40 },
+    });
+
+    expect(screen.getByText("39 of 40 seats left")).toBeTruthy();
   });
 
   it("offers no button once the preview is out of date", () => {

@@ -6,6 +6,7 @@ import {
   confirmMessage,
   formatEventTime,
   latestRegistration,
+  seatsText,
   type Registration,
   type RegistrationStatus,
 } from "@/lib/registration";
@@ -23,7 +24,11 @@ function outcomeText(registration: Registration) {
   const body =
     "The organizer reviews each registration. You'll get an email once you're approved.";
   return registration.outcome === "seat"
-    ? { title: "A seat is available", body, cta: "Confirm registration" }
+    ? {
+        title: seatsText(registration) ?? "A seat is available",
+        body,
+        cta: "Confirm registration",
+      }
     : { title: "Ready to submit", body, cta: "Confirm registration" };
 }
 
