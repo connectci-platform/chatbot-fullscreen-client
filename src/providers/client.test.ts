@@ -47,6 +47,55 @@ describe("createClient", () => {
     expect(init.credentials).toBeUndefined();
   });
 
+  it("sends the tab's claim key on SDK requests", async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      url === MINT_URL ? minted("t1") : json(200, []),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { createClient } = await import("./client");
+    const { getClaimKey } = await import("@/lib/thread-claim");
+
+    await createClient(
+      "https://agent.example/api/v1",
+      undefined,
+      undefined,
+    ).threads.search({ limit: 1 });
+
+    const [[, init]] = agentCalls(fetchMock);
+    expect(new Headers(init.headers).get("X-Thread-Claim-Key")).toBe(
+      getClaimKey(),
+    );
+  });
+
+  it("sends the claim key on a run stream", async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      url === MINT_URL
+        ? minted("t1")
+        : new Response("", {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { createClient } = await import("./client");
+    const { getClaimKey } = await import("@/lib/thread-claim");
+
+    const stream = createClient(
+      "https://agent.example/api/v1",
+      undefined,
+      undefined,
+    ).runs.stream("t1", "agent", { input: {} });
+    for await (const _ of stream) {
+      // Drained so the request is sent.
+    }
+
+    const [[url, init]] = agentCalls(fetchMock);
+    expect(String(url)).toContain("/threads/t1/runs/stream");
+    expect(new Headers(init.headers).get("X-Thread-Claim-Key")).toBe(
+      getClaimKey(),
+    );
+  });
+
   it("re-mints once on a 401 and replays the request", async () => {
     let agentCount = 0;
     let mintCount = 0;
