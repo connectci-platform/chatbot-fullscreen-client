@@ -119,6 +119,7 @@ export function AssistantMessage({
             questions={suggestions}
             onAsk={onAsk}
             disabled={isLoading}
+            compact
           />
         )}
 

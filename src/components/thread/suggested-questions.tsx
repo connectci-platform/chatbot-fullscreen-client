@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { cn } from "@/lib/utils";
 
 /**
  * Questions the visitor can ask with one click. They read as lines the
@@ -10,6 +11,7 @@ export function SuggestedQuestions({
   questions,
   onAsk,
   disabled = false,
+  compact = false,
   className,
 }: {
   heading: string;
@@ -17,6 +19,11 @@ export function SuggestedQuestions({
   onAsk: (question: string) => void;
   /** While a reply is running; keeps focus on the button, unlike `disabled`. */
   disabled?: boolean;
+  /**
+   * Inside an answer: the question text lines up with the answer's text, with
+   * the hover bar hanging in the margin, and the lines sit closer together.
+   */
+  compact?: boolean;
   className?: string;
 }) {
   const headingId = useId();
@@ -28,11 +35,14 @@ export function SuggestedQuestions({
     >
       <h2
         id={headingId}
-        className="text-muted-foreground mb-1 pl-4 text-sm"
+        className={cn(
+          "text-muted-foreground mb-1 text-sm",
+          compact ? "mt-1" : "pl-4",
+        )}
       >
         {heading}
       </h2>
-      <ul className="flex flex-col">
+      <ul className={cn("flex flex-col", compact && "-ml-4")}>
         {questions.map((question) => (
           <li key={question}>
             <button
@@ -41,7 +51,10 @@ export function SuggestedQuestions({
               onClick={() => {
                 if (!disabled) onAsk(question);
               }}
-              className="text-brand hover:border-primary hover:bg-primary/10 focus-visible:border-primary focus-visible:bg-primary/10 focus-visible:ring-brand w-full cursor-pointer border-l-4 border-transparent py-2 pr-3 pl-3 text-left text-[15px] transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset aria-disabled:cursor-not-allowed aria-disabled:opacity-60 motion-reduce:transition-none"
+              className={cn(
+                "text-brand hover:border-primary hover:bg-primary/10 focus-visible:border-primary focus-visible:bg-primary/10 focus-visible:ring-brand w-full cursor-pointer border-l-4 border-transparent pr-3 pl-3 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset aria-disabled:cursor-not-allowed aria-disabled:opacity-60 motion-reduce:transition-none",
+                compact ? "py-1 text-base" : "py-2 text-[15px]",
+              )}
             >
               {question}
             </button>
