@@ -26,8 +26,10 @@ export interface AnswerSourcesResult {
   sources: AnswerSource[];
   /**
    * True when the answer links none of the documentation it could have cited:
-   * it searched the documentation, or used no tools at all. An answer drawn
-   * only from live data tools is not flagged; there is no document to cite.
+   * it searched the documentation, or used no tools and makes substantive
+   * claims (from the model's own memory, the main accuracy risk). Short
+   * conversational replies aren't flagged, and neither is an answer drawn
+   * only from live data tools; there is no document to cite.
    */
   citesNoSource: boolean;
 }
@@ -104,6 +106,22 @@ function fragmentOf(url: string): string {
   return new URL(url).hash;
 }
 
+/**
+ * Prose length at which an answer stops being a conversational reply (a
+ * greeting, a thank-you, a one-line clarifying question) and starts making
+ * claims a reader may want to check: about two sentences.
+ */
+const SUBSTANTIVE_LENGTH = 160;
+
+/** The answer's prose: link text kept, URLs dropped, whitespace collapsed. */
+function proseLength(text: string): number {
+  return text
+    .replace(MARKDOWN_LINK, "$1")
+    .replace(BARE_URL, "")
+    .replace(/\s+/g, " ")
+    .trim().length;
+}
+
 /** The turn this message belongs to: everything after the last human message. */
 function turnBefore(messages: Message[], index: number): Message[] {
   let start = index;
@@ -167,8 +185,9 @@ export function answerSources(
 
   const tools = turnBefore(messages, index).filter((m) => m.type === "tool");
   const searchedDocs = tools.some((m) => m.name === DOCS_TOOL);
+  const fromMemory = !tools.length && proseLength(text) >= SUBSTANTIVE_LENGTH;
   return {
     sources,
-    citesNoSource: !sources.length && (searchedDocs || !tools.length),
+    citesNoSource: !sources.length && (searchedDocs || fromMemory),
   };
 }

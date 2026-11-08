@@ -205,12 +205,45 @@ describe("answerSources", () => {
     });
   });
 
-  it("flags an answer that used no tools at all", () => {
-    const messages = [
-      human("h1", "What is ACCESS?"),
-      answer("a1", "ACCESS is an NSF program."),
-    ];
-    expect(answerSources(messages, messages[1])!.citesNoSource).toBe(true);
+  describe("an answer that used no tools", () => {
+    const flagged = (reply: string) => {
+      const messages = [human("h1", "Hi"), answer("a1", reply)];
+      return answerSources(messages, messages[1])!.citesNoSource;
+    };
+
+    it("is flagged when it makes substantive claims from memory", () => {
+      expect(
+        flagged(
+          "ACCESS is an NSF program that allocates computing time on national resources. " +
+            "Researchers request an allocation through the ACCESS allocations portal, " +
+            "choosing Explore, Discover, Accelerate or Maximize depending on how much they need.",
+        ),
+      ).toBe(true);
+    });
+
+    it("is not flagged when it is a greeting or a thank-you reply", () => {
+      expect(flagged("Hello! How can I help you with ACCESS today?")).toBe(
+        false,
+      );
+      expect(
+        flagged("You're welcome! Let me know if anything else comes up."),
+      ).toBe(false);
+    });
+
+    it("is not flagged when it is a one-line clarifying question", () => {
+      expect(
+        flagged(
+          "Which resource are you asking about, Delta, Bridges-2 or Anvil, so I can look up the right guide?",
+        ),
+      ).toBe(false);
+    });
+
+    it("doesn't count link URLs or whitespace toward its length", () => {
+      const url = `https://example.org/${"long-path/".repeat(20)}`;
+      expect(flagged(`Hi!   See [this](${url}) and ${url}\n\n\n  ok?`)).toBe(
+        false,
+      );
+    });
   });
 
   it("has nothing to say about a message that calls a tool", () => {

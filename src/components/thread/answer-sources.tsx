@@ -1,11 +1,54 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ComponentProps } from "react";
+import type { Components } from "react-markdown";
 import type { Message } from "@langchain/langgraph-sdk";
 import { ExternalLink, FileText } from "lucide-react";
 import { answerSources, type AnswerSource } from "@/lib/answer-sources";
 import { useStreamContext } from "@/providers/Stream";
 import { useArtifact } from "./artifact";
+import { MarkdownText } from "./markdown-text";
+
+type HeadingProps = ComponentProps<"h4"> & { node?: unknown };
+
+/**
+ * Passage headings sit below the panel's own h2 title and h3 "Excerpt", so
+ * screen readers hear them inside the excerpt: h1 becomes h4, h2 h5, the rest
+ * h6. Links leave the chat for the documentation site.
+ */
+const PASSAGE_COMPONENTS: Components = {
+  h1: ({ node: _node, ...props }: HeadingProps) => (
+    <h4
+      className="mt-4 mb-2 font-bold first:mt-0"
+      {...props}
+    />
+  ),
+  h2: ({ node: _node, ...props }: HeadingProps) => (
+    <h5
+      className="mt-4 mb-2 font-semibold first:mt-0"
+      {...props}
+    />
+  ),
+  ...Object.fromEntries(
+    (["h3", "h4", "h5", "h6"] as const).map((tag) => [
+      tag,
+      ({ node: _node, ...props }: HeadingProps) => (
+        <h6
+          className="mt-4 mb-2 font-semibold first:mt-0"
+          {...props}
+        />
+      ),
+    ]),
+  ),
+  a: ({ node: _node, ...props }: ComponentProps<"a"> & { node?: unknown }) => (
+    <a
+      {...props}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-primary font-medium underline underline-offset-4"
+    />
+  ),
+};
 
 export function SourceDetails({ source }: { source: AnswerSource }) {
   return (
@@ -29,9 +72,14 @@ export function SourceDetails({ source }: { source: AnswerSource }) {
         {source.passages.map((passage) => (
           <blockquote
             key={passage}
-            className="bg-muted mt-3 rounded-md border-l-4 p-4 text-sm whitespace-pre-wrap"
+            className="bg-muted mt-3 overflow-x-auto rounded-md border-l-4 p-4 text-sm"
           >
-            {passage}
+            <MarkdownText
+              components={PASSAGE_COMPONENTS}
+              math={false}
+            >
+              {passage}
+            </MarkdownText>
           </blockquote>
         ))}
       </section>

@@ -8,7 +8,7 @@ import {
   ArtifactTitle,
   useArtifactOpen,
 } from "./artifact";
-import { AnswerSources } from "./answer-sources";
+import { AnswerSources, SourceDetails } from "./answer-sources";
 
 vi.mock("@/providers/Stream", () => ({ useStreamContext: vi.fn() }));
 
@@ -111,6 +111,59 @@ describe("AnswerSources", () => {
     expect(
       screen.getByText("This answer doesn't cite a documentation source."),
     ).toBeTruthy();
+  });
+
+  it("renders a passage's markdown under the panel's own headings", () => {
+    const { container } = render(
+      <SourceDetails
+        source={{
+          url: GUIDE,
+          label: "Bridges-2 user guide",
+          host: "www.psc.edu",
+          passages: [
+            '# Storage\n\n## File spaces\n\n**$HOME** is backed up. See [Globus](https://www.globus.org/).\n\n<img src=x onerror="alert(1)"><script>alert(1)</script>',
+          ],
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Bridges-2 user guide" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Excerpt" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { level: 4, name: "Storage" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { level: 5, name: "File spaces" }),
+    ).toBeTruthy();
+    expect(screen.getByText("$HOME").tagName).toBe("STRONG");
+
+    const link = screen.getByRole("link", { name: "Globus" });
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+
+    expect(container.querySelector("img, script")).toBeNull();
+  });
+
+  it("shows dollar signs in a passage as written, not as math", () => {
+    const passage =
+      "Bridges-2 has $HOME on Jet, $PROJECT on Ocean, and `$LOCAL` per node.";
+    const { container } = render(
+      <SourceDetails
+        source={{
+          url: GUIDE,
+          label: "Guide",
+          host: "www.psc.edu",
+          passages: [passage],
+        }}
+      />,
+    );
+    const quote = container.querySelector("blockquote")!;
+    expect(quote.textContent).toBe(passage.replace(/`/g, ""));
+    expect(quote.querySelector(".katex")).toBeNull();
   });
 
   it("waits until the answer has finished", () => {
