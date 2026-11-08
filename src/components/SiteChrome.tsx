@@ -6,6 +6,7 @@ import { Header, UniversalMenus, Footer } from "@access-ci/ui/react";
 import { program } from "@/config/program";
 import { useAgentAuth } from "@/hooks/use-agent-auth";
 import { loginUrl, logoutUrl, openSignIn } from "@/lib/sign-in";
+import { clearClaimKey } from "@/lib/thread-claim";
 
 // Login and logout both go through support. Support mints the agent tokens,
 // so signing in there is what makes the next mint succeed, and its logout
@@ -16,6 +17,7 @@ import { loginUrl, logoutUrl, openSignIn } from "@/lib/sign-in";
 export function SiteChromeTopImpl() {
   const authenticated = useAgentAuth() === "signed_in";
   const login = loginUrl();
+  const logout = logoutUrl();
 
   // UniversalMenus is a shadow-DOM web component and only takes a loginUrl
   // string (no onClick), so there's no prop-level way to open a popup
@@ -29,14 +31,20 @@ export function SiteChromeTopImpl() {
         .composedPath()
         .find(
           (el): el is HTMLAnchorElement =>
-            el instanceof HTMLAnchorElement && el.href === login,
+            el instanceof HTMLAnchorElement &&
+            (el.href === login || el.href === logout),
         );
       if (!anchor) return;
 
+      if (anchor.href === logout) {
+        // Logout leaves this page, so this is the last chance to clear it.
+        clearClaimKey();
+        return;
+      }
       event.preventDefault();
       openSignIn();
     },
-    [login],
+    [login, logout],
   );
 
   return (
@@ -45,7 +53,7 @@ export function SiteChromeTopImpl() {
         siteName={program.siteName}
         isLoggedIn={authenticated}
         loginUrl={login}
-        logoutUrl={logoutUrl()}
+        logoutUrl={logout}
       />
       {program.features.siteHeader && (
         <Header

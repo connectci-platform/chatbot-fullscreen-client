@@ -29,6 +29,7 @@ import {
 import { useAuthStatus } from "@/hooks/use-agent-auth";
 import { shouldReloadAfterSignIn } from "@/lib/run-errors";
 import { isRunStatusEvent, type RunStatusEvent } from "@/lib/run-status";
+import { claimThread, noteAuthStatus } from "@/lib/thread-claim";
 import { createClient } from "./client";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
@@ -200,6 +201,33 @@ const StreamSession = ({
     }
     prevAuthStatus.current = authStatus;
   }, [authStatus, streamValue.error]);
+
+  // The sidebar lists conversations linked to the account, so link the open
+  // one on sign-in rather than on the next message. Waits for a run to end, so
+  // that run's turn report exists to be linked. Not for threads started while
+  // signed in: those already belong to the user.
+  const claimOnSignIn = useRef(true);
+  useEffect(() => {
+    noteAuthStatus(authStatus);
+    if (authStatus === "signed_out") {
+      claimOnSignIn.current = true;
+      return;
+    }
+    if (authStatus !== "signed_in" || streamValue.isLoading) return;
+    if (!claimOnSignIn.current) return;
+    claimOnSignIn.current = false;
+    if (!threadId) return;
+    claimThread(apiUrl, threadId).then((claimed) => {
+      if (claimed) getThreads().then(setThreads).catch(console.error);
+    });
+  }, [
+    authStatus,
+    streamValue.isLoading,
+    threadId,
+    apiUrl,
+    getThreads,
+    setThreads,
+  ]);
 
   // Covers every way a run ends: finished, failed or cancelled.
   useEffect(() => {

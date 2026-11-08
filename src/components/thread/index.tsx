@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { ReactNode, useEffect, useRef } from "react";
+import { ReactNode, useCallback, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useStreamContext } from "@/providers/Stream";
@@ -29,7 +29,8 @@ import { useQueryState, parseAsBoolean } from "nuqs";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import ThreadHistory from "./history";
 import { toast } from "sonner";
-import { runErrorMessage } from "@/lib/run-errors";
+import { runErrorMessage, runErrorToastOptions } from "@/lib/run-errors";
+import { useAuthStatus } from "@/hooks/use-agent-auth";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Label } from "../ui/label";
 import { useFileUpload } from "@/hooks/use-file-upload";
@@ -117,13 +118,18 @@ export function Thread() {
 
   const lastError = useRef<string | undefined>(undefined);
 
-  const setThreadId = (id: string | null) => {
-    _setThreadId(id);
+  const authStatus = useAuthStatus();
 
-    // close artifact and reset artifact context
-    closeArtifact();
-    setArtifactContext({});
-  };
+  const setThreadId = useCallback(
+    (id: string | null) => {
+      _setThreadId(id);
+
+      // close artifact and reset artifact context
+      closeArtifact();
+      setArtifactContext({});
+    },
+    [_setThreadId, closeArtifact, setArtifactContext],
+  );
 
   useEffect(() => {
     if (!stream.error) {
@@ -136,9 +142,14 @@ export function Thread() {
     lastError.current = key;
 
     console.error(stream.error);
-    const text = runErrorMessage(stream.error);
-    if (text) toast.error(text, { richColors: true, closeButton: true });
-  }, [stream.error]);
+    const text = runErrorMessage(stream.error, authStatus);
+    if (text) {
+      toast.error(
+        text,
+        runErrorToastOptions(stream.error, () => setThreadId(null)),
+      );
+    }
+  }, [stream.error, authStatus, setThreadId]);
 
   const submitMessage = (text: string, blocks: typeof contentBlocks) => {
     setFirstTokenReceived(false);
