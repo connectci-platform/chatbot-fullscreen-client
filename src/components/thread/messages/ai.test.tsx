@@ -75,6 +75,25 @@ describe("AssistantMessage", () => {
     expect(screen.getByText(/needs approval/)).toBeTruthy();
   });
 
+  it("lists the documentation sources an answer links", () => {
+    const url = "https://www.psc.edu/resources/bridges-2/user-guide/";
+    const search: Message = {
+      id: "tool-2",
+      type: "tool",
+      tool_call_id: "call-2",
+      name: "search_access_documents",
+      content: `Retrieved 1 documentation excerpt(s).\n\n[1] source: ${url}\nUse Globus.`,
+    };
+    const answer: Message = {
+      id: "ai-3",
+      type: "ai",
+      content: `See the [user guide](${url}).`,
+    };
+    stream.messages = [search, answer];
+    renderMessage(answer);
+    expect(screen.getByRole("button", { name: /user guide/ })).toBeTruthy();
+  });
+
   it("shows the agent's status while it works", () => {
     render(<AssistantMessageLoading status="Searching software..." />);
     expect(screen.getByRole("status").textContent).toContain(
