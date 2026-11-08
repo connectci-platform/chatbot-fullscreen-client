@@ -27,7 +27,11 @@ import {
   type RequiresAuthEvent,
 } from "@/lib/requires-auth";
 import { useAuthStatus } from "@/hooks/use-agent-auth";
-import { shouldReloadAfterSignIn } from "@/lib/run-errors";
+import {
+  isTurnstileChallenge,
+  shouldReloadAfterSignIn,
+  shouldResendAfterSignIn,
+} from "@/lib/run-errors";
 import { isRunStatusEvent, type RunStatusEvent } from "@/lib/run-status";
 import { claimThread, noteAuthStatus } from "@/lib/thread-claim";
 import { createClient } from "./client";
@@ -49,11 +53,27 @@ const useTypedStream = useStream<
   }
 >;
 
-type StreamContextType = ReturnType<typeof useTypedStream> & {
+type TypedStream = ReturnType<typeof useTypedStream>;
+
+type StreamContextType = TypedStream & {
   apiUrl: string;
   runStatus: RunStatusEvent | null;
+  /** Sends the challenged question again with a passed Turnstile token. */
+  resendWithToken: (token: string) => void;
+  /** The check can't go further for this question: show no widget. */
+  turnstileFailed: boolean;
+  /** Reports that the Turnstile widget couldn't run. */
+  failChallenge: () => void;
+  /** The human message of the run that was challenged. */
+  challengedQuestion: () => Message | null;
 };
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
+
+function submittedMessages(values: unknown): Message[] {
+  const messages = (values as { messages?: unknown } | null | undefined)
+    ?.messages;
+  return Array.isArray(messages) ? messages : [];
+}
 
 async function checkGraphStatus(
   apiUrl: string,
@@ -184,6 +204,73 @@ const StreamSession = ({
     },
   });
 
+  // Every submit, however it started, so a challenged run can go out again.
+  const lastSubmit = useRef<Parameters<TypedStream["submit"]> | null>(null);
+  const resentChallenge = useRef<unknown>(null);
+  const newQuestion = useRef(false);
+  const [tokenSent, setTokenSent] = useState(false);
+  const [widgetFailed, setWidgetFailed] = useState(false);
+
+  const challenge = isTurnstileChallenge(streamValue.error)
+    ? streamValue.error
+    : null;
+  // A challenge after a token means Cloudflare rejected it. Showing the widget
+  // again would pass and resend by itself, forever.
+  const turnstileFailed =
+    !!challenge && (tokenSent || widgetFailed || !challenge.siteKey);
+
+  // Reset only once the new run has started. Until then the old challenge is
+  // still set, and clearing the failure would mount a widget for it.
+  useEffect(() => {
+    if (!streamValue.isLoading || !newQuestion.current) return;
+    newQuestion.current = false;
+    setTokenSent(false);
+    setWidgetFailed(false);
+  }, [streamValue.isLoading]);
+
+  const submit: TypedStream["submit"] = (values, options) => {
+    // A failed check put the question back in the message box, so sending it
+    // replaces the bubble left from the first try.
+    const stale = turnstileFailed
+      ? submittedMessages(lastSubmit.current?.[0]).map((m) => m.id)
+      : [];
+    const optimisticValues = options?.optimisticValues;
+    lastSubmit.current = [values, options];
+    newQuestion.current = true;
+    if (!stale.length || typeof optimisticValues !== "function") {
+      return streamValue.submit(values, options);
+    }
+    return streamValue.submit(values, {
+      ...options,
+      optimisticValues: (prev) => {
+        const next = optimisticValues(prev);
+        return {
+          ...next,
+          messages: next.messages?.filter((m) => !stale.includes(m.id)),
+        };
+      },
+    });
+  };
+
+  // The question is still on screen from the first try, so no optimistic
+  // values: running them again would show it twice. One resend per challenge,
+  // because a passed check and a sign-in can both arrive.
+  const resend = (token?: string) => {
+    if (!lastSubmit.current || !challenge) return;
+    if (resentChallenge.current === challenge) return;
+    if (token && turnstileFailed) return;
+    resentChallenge.current = challenge;
+    if (token) setTokenSent(true);
+    const [values, options] = lastSubmit.current;
+    void streamValue.submit(values, {
+      ...options,
+      optimisticValues: undefined,
+      ...(token && {
+        context: { ...options?.context, turnstile_token: token },
+      }),
+    });
+  };
+
   // A conversation that 404ed while signed out may be the person's own. When
   // they sign in, reload: the URL keeps ?threadId=, so it opens signed in.
   // No loop: after the reload auth goes unknown -> signed_in.
@@ -199,7 +286,18 @@ const StreamSession = ({
     ) {
       window.location.reload();
     }
+    if (
+      shouldResendAfterSignIn(
+        prevAuthStatus.current,
+        authStatus,
+        streamValue.error,
+      )
+    ) {
+      resend();
+    }
     prevAuthStatus.current = authStatus;
+    // resend is new each render and only needs the latest submit when this runs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authStatus, streamValue.error]);
 
   // The sidebar lists conversations linked to the account, so link the open
@@ -249,7 +347,21 @@ const StreamSession = ({
   }, [apiKey, apiUrl, authScheme]);
 
   return (
-    <StreamContext.Provider value={{ ...streamValue, apiUrl, runStatus }}>
+    <StreamContext.Provider
+      value={{
+        ...streamValue,
+        submit,
+        apiUrl,
+        runStatus,
+        resendWithToken: resend,
+        turnstileFailed,
+        failChallenge: () => setWidgetFailed(true),
+        challengedQuestion: () =>
+          submittedMessages(lastSubmit.current?.[0]).findLast(
+            (m) => m.type === "human",
+          ) ?? null,
+      }}
+    >
       {children}
     </StreamContext.Provider>
   );

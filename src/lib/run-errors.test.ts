@@ -2,9 +2,12 @@ import { describe, it, expect, vi } from "vitest";
 import { Client } from "@langchain/langgraph-sdk";
 import {
   isNotFound,
+  isTurnstileChallenge,
   runErrorMessage,
   runErrorToastOptions,
   shouldReloadAfterSignIn,
+  shouldResendAfterSignIn,
+  TurnstileChallenge,
 } from "./run-errors";
 
 const err = (name: string, message = "") =>
@@ -134,5 +137,55 @@ describe("shouldReloadAfterSignIn", () => {
     expect(isNotFound(notFound)).toBe(true);
     expect(isNotFound(serverError)).toBe(false);
     expect(isNotFound("x")).toBe(false);
+  });
+});
+
+describe("TurnstileChallenge", () => {
+  it("is recognized and carries the site key", () => {
+    const error: unknown = new TurnstileChallenge("site-key");
+    expect(isTurnstileChallenge(error)).toBe(true);
+    expect((error as TurnstileChallenge).siteKey).toBe("site-key");
+  });
+
+  it("isn't confused with other errors", () => {
+    expect(isTurnstileChallenge(new Error("boom"))).toBe(false);
+    expect(isTurnstileChallenge(undefined)).toBe(false);
+  });
+
+  it("shows no error toast, because the challenge panel explains it", () => {
+    expect(
+      runErrorMessage(new TurnstileChallenge("site-key"), "signed_out"),
+    ).toBeNull();
+  });
+});
+
+describe("shouldResendAfterSignIn", () => {
+  const challenge = new TurnstileChallenge("site-key");
+
+  it("resends a challenged question when the person signs in", () => {
+    expect(shouldResendAfterSignIn("signed_out", "signed_in", challenge)).toBe(
+      true,
+    );
+  });
+
+  it("resends when the status was unknown after a failed first mint", () => {
+    expect(shouldResendAfterSignIn("unknown", "signed_in", challenge)).toBe(
+      true,
+    );
+  });
+
+  it("doesn't resend without a sign-in, so a repeat challenge can't loop", () => {
+    expect(shouldResendAfterSignIn("signed_in", "signed_in", challenge)).toBe(
+      false,
+    );
+    expect(shouldResendAfterSignIn("signed_out", "signed_out", challenge)).toBe(
+      false,
+    );
+  });
+
+  it("ignores other errors", () => {
+    expect(
+      shouldResendAfterSignIn("signed_out", "signed_in", new Error("boom")),
+    ).toBe(false);
   });
 });

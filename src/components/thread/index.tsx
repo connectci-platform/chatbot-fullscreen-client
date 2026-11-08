@@ -29,8 +29,14 @@ import { useQueryState, parseAsBoolean } from "nuqs";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import ThreadHistory from "./history";
 import { toast } from "sonner";
-import { runErrorMessage, runErrorToastOptions } from "@/lib/run-errors";
+import {
+  isTurnstileChallenge,
+  runErrorMessage,
+  runErrorToastOptions,
+} from "@/lib/run-errors";
 import { useAuthStatus } from "@/hooks/use-agent-auth";
+import { useRestoreQuestion } from "@/hooks/use-restore-question";
+import { TurnstileChallengePanel } from "./turnstile-challenge";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Label } from "../ui/label";
 import { useFileUpload } from "@/hooks/use-file-upload";
@@ -115,6 +121,16 @@ export function Thread() {
     stream.runStatus,
   );
   const isLoading = stream.isLoading;
+  const challenge = isTurnstileChallenge(stream.error) ? stream.error : null;
+  const awaitingCheck = !!challenge && !stream.turnstileFailed;
+
+  useRestoreQuestion({
+    failed: stream.turnstileFailed,
+    input,
+    getQuestion: stream.challengedQuestion,
+    setInput,
+    setBlocks: setContentBlocks,
+  });
 
   const lastError = useRef<string | undefined>(undefined);
 
@@ -189,7 +205,11 @@ export function Thread() {
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if ((input.trim().length === 0 && contentBlocks.length === 0) || isLoading)
+    if (
+      (input.trim().length === 0 && contentBlocks.length === 0) ||
+      isLoading ||
+      awaitingCheck
+    )
       return;
     submitMessage(input, contentBlocks);
     setInput("");
@@ -380,6 +400,14 @@ export function Thread() {
                   <ScrollToBottom className="animate-in fade-in-0 zoom-in-95 absolute bottom-full left-1/2 mb-4 -translate-x-1/2" />
 
                   <div className="mx-auto mb-8 w-full max-w-3xl">
+                    {challenge && (
+                      <TurnstileChallengePanel
+                        siteKey={challenge.siteKey}
+                        failed={stream.turnstileFailed}
+                        onVerified={stream.resendWithToken}
+                        onFailed={stream.failChallenge}
+                      />
+                    )}
                     <div
                       ref={dropRef}
                       className={cn(
@@ -456,6 +484,7 @@ export function Thread() {
                               className="ml-auto shadow-md transition-all"
                               disabled={
                                 isLoading ||
+                                awaitingCheck ||
                                 (!input.trim() && contentBlocks.length === 0)
                               }
                             >
