@@ -215,6 +215,55 @@ describe("AnswerRating", () => {
     );
   });
 
+  it("keeps focus on a button while its rating saves", async () => {
+    let finish: (saved: boolean) => void = () => {};
+    ratings.saveRating.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    renderRating();
+
+    await user.tab();
+    await user.keyboard("{Enter}");
+
+    expect(helpful()).toHaveFocus();
+    expect(helpful()).toHaveAttribute("aria-disabled", "true");
+    expect(helpful()).not.toBeDisabled();
+    expect(notHelpful()).toHaveAttribute("aria-disabled", "true");
+    await user.click(notHelpful());
+    expect(ratings.saveRating).toHaveBeenCalledTimes(1);
+
+    await act(async () => finish(true));
+    expect(helpful()).toHaveAttribute("aria-disabled", "false");
+    expect(helpful()).toHaveAttribute("aria-pressed", "true");
+    expect(notHelpful()).toHaveFocus();
+  });
+
+  it("keeps focus on Send while the comment sends", async () => {
+    const user = userEvent.setup();
+    renderRating();
+    await user.click(notHelpful());
+    const box = await screen.findByRole("textbox");
+    let finish: (saved: boolean) => void = () => {};
+    ratings.saveRating.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await user.type(box, "Bad link");
+    const send = screen.getByRole("button", { name: "Send" });
+    await user.click(send);
+    await user.click(send);
+
+    expect(send).toHaveFocus();
+    expect(send).toHaveAttribute("aria-disabled", "true");
+    expect(send).not.toBeDisabled();
+    expect(ratings.saveRating).toHaveBeenCalledTimes(2);
+    await act(async () => finish(false));
+  });
+
   it("keeps the comment open when it can't be sent", async () => {
     const user = userEvent.setup();
     renderRating();

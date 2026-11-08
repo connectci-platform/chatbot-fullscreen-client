@@ -91,6 +91,8 @@ function RatingControls({
     notHelpfulRef.current?.focus();
   };
 
+  // aria-disabled rather than disabled while saving, so a keyboard user keeps
+  // focus on the button they pressed.
   const rate = async (rating: Rating) => {
     if (saving) return;
     if (rating === selected) {
@@ -118,6 +120,7 @@ function RatingControls({
 
   const sendComment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     const text = comment.trim();
     if (!text) {
       closeComment();
@@ -150,7 +153,7 @@ function RatingControls({
         <TooltipIconButton
           tooltip="Helpful"
           aria-pressed={selected === "helpful"}
-          disabled={saving}
+          aria-disabled={saving}
           onClick={() => rate("helpful")}
           className="[@media(hover:none)]:size-11"
         >
@@ -164,7 +167,7 @@ function RatingControls({
           tooltip="Not helpful"
           aria-pressed={selected === "not_helpful"}
           aria-expanded={selected === "not_helpful" ? commentOpen : undefined}
-          disabled={saving}
+          aria-disabled={saving}
           onClick={() => rate("not_helpful")}
           className="[@media(hover:none)]:size-11"
         >
@@ -210,7 +213,7 @@ function RatingControls({
             <Button
               type="submit"
               size="sm"
-              disabled={saving}
+              aria-disabled={saving}
             >
               Send
             </Button>
