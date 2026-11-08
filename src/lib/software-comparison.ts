@@ -11,13 +11,26 @@ const VERSION_TOOLS = new Set(["get_software_details", "search_software"]);
 export type ComparisonCell =
   | { status: "listed"; versions: string[] }
   | { status: "not_listed" }
-  | { status: "not_indexed" };
+  | { status: "not_indexed" }
+  | { status: "lookup_failed" };
+
+type Gap = Exclude<ComparisonCell["status"], "listed">;
 
 export interface ComparisonResource {
   name: string;
-  /** False when the index returned nothing at all for this resource. */
-  indexed: boolean;
+  /**
+   * Whether the index has a software list for this resource. "unknown" when
+   * an older server gave no coverage and nothing was found to infer from.
+   */
+  coverage: "indexed" | "not_indexed" | "lookup_failed" | "unknown";
 }
+
+const SERVER_STATUSES = new Set<string>([
+  "listed",
+  "not_listed",
+  "not_indexed",
+  "lookup_failed",
+]);
 
 export interface ComparisonRow {
   software: string;
@@ -156,18 +169,34 @@ function toView(
   const found = strings(result.all_resources_found);
   const requested = strings(result.requested_resources);
 
-  // A requested resource can only be called unindexed when the index did
-  // answer for other resources. With no results at all, nothing is known.
+  // Servers since md-3023-gaps check coverage themselves and say so; older
+  // ones leave it to inference. Inference never overrides the server.
+  const fromServer = Array.isArray(result.resources_not_indexed);
+  const notIndexed = new Set(strings(result.resources_not_indexed));
+  const lookupFailed = new Set(strings(result.resources_lookup_failed));
+
   const resources: ComparisonResource[] = found.map((name) => ({
     name,
-    indexed: true,
+    coverage: "indexed",
   }));
   for (const name of requested) {
     if (found.some((f) => sameResource(name, f))) continue;
     if (resources.some((r) => resourceKey(r.name) === resourceKey(name))) {
       continue;
     }
-    resources.push({ name, indexed: found.length === 0 });
+    let coverage: ComparisonResource["coverage"];
+    if (fromServer) {
+      coverage = notIndexed.has(name)
+        ? "not_indexed"
+        : lookupFailed.has(name)
+          ? "lookup_failed"
+          : "indexed";
+    } else {
+      // A requested resource can only be called unindexed when the index
+      // did answer for other resources. With no results, nothing is known.
+      coverage = found.length > 0 ? "not_indexed" : "unknown";
+    }
+    resources.push({ name, coverage });
   }
 
   const facts = softwareFacts(messages);
@@ -175,17 +204,37 @@ function toView(
   const notFound: string[] = [];
   for (const entry of result.comparison as unknown[]) {
     if (!entry || typeof entry !== "object") continue;
-    const { software, found: isFound, available_on } = entry as Json;
+    const {
+      software,
+      found: isFound,
+      available_on,
+      resource_status,
+    } = entry as Json;
     if (typeof software !== "string") continue;
     if (isFound !== true) notFound.push(software);
     const listed = new Set(strings(available_on));
+    const statuses =
+      resource_status && typeof resource_status === "object"
+        ? (resource_status as Json)
+        : {};
     const known = facts.get(nameKey(software));
     rows.push({
       software,
       documentation: known?.documentation,
       cells: resources.map((resource): ComparisonCell => {
-        if (!resource.indexed) return { status: "not_indexed" };
-        if (!listed.has(resource.name)) return { status: "not_listed" };
+        const stated = statuses[resource.name];
+        let status: ComparisonCell["status"];
+        if (typeof stated === "string" && SERVER_STATUSES.has(stated)) {
+          status = stated as ComparisonCell["status"];
+        } else if (
+          resource.coverage === "not_indexed" ||
+          resource.coverage === "lookup_failed"
+        ) {
+          status = resource.coverage;
+        } else {
+          status = listed.has(resource.name) ? "listed" : "not_listed";
+        }
+        if (status !== "listed") return { status: status as Gap };
         return {
           status: "listed",
           versions: known?.versions[nameKey(resource.name)] ?? [],

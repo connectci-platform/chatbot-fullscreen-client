@@ -17,6 +17,14 @@ const GAP_HELP = {
     "The index covers this resource but doesn't list this software. It may still be installed, so check the resource's documentation or ask its support team.",
   not_indexed:
     "The index returned nothing for this resource, so it may not be covered yet. This says nothing about what is installed there.",
+  lookup_failed:
+    "Checking this resource's software list failed, so nothing is known about it here. Ask again later or check the resource's documentation.",
+};
+
+const GAP_TEXT = {
+  not_listed: "Not listed",
+  not_indexed: "Not indexed",
+  lookup_failed: "Couldn't check",
 };
 
 function Versions({ versions }: { versions: string[] }) {
@@ -63,7 +71,11 @@ function Cell({ cell }: { cell: ComparisonCell }) {
   }
   return (
     <td className="text-muted-foreground border-b px-3 py-2 align-top">
-      {cell.status === "not_listed" ? "Not listed" : <em>Not indexed</em>}
+      {cell.status === "not_listed" ? (
+        GAP_TEXT.not_listed
+      ) : (
+        <em>{GAP_TEXT[cell.status]}</em>
+      )}
     </td>
   );
 }
@@ -77,6 +89,9 @@ export function SoftwareComparisonGrid({
     view.rows.flatMap((row) => row.cells.map((cell) => cell.status)),
   );
   const names = view.rows.map((row) => row.software).join(", ");
+  const gapsShown = (
+    ["not_listed", "not_indexed", "lookup_failed"] as const
+  ).filter((gap) => gaps.has(gap));
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto p-4 sm:p-6">
@@ -157,20 +172,14 @@ export function SoftwareComparisonGrid({
         </p>
       )}
 
-      {(gaps.has("not_listed") || gaps.has("not_indexed")) && (
+      {gapsShown.length > 0 && (
         <dl className="flex flex-col gap-2 text-sm">
-          {gaps.has("not_listed") && (
-            <div>
-              <dt className="font-semibold">Not listed</dt>
-              <dd className="text-muted-foreground">{GAP_HELP.not_listed}</dd>
+          {gapsShown.map((gap) => (
+            <div key={gap}>
+              <dt className="font-semibold">{GAP_TEXT[gap]}</dt>
+              <dd className="text-muted-foreground">{GAP_HELP[gap]}</dd>
             </div>
-          )}
-          {gaps.has("not_indexed") && (
-            <div>
-              <dt className="font-semibold">Not indexed</dt>
-              <dd className="text-muted-foreground">{GAP_HELP.not_indexed}</dd>
-            </div>
-          )}
+          ))}
         </dl>
       )}
     </div>

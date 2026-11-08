@@ -128,6 +128,38 @@ describe("SoftwareComparisonGrid", () => {
     expect(text).toContain("doesn't mean it's unavailable everywhere");
   });
 
+  it("says it couldn't check when the server's lookup failed", () => {
+    render(
+      <SoftwareComparisonGrid
+        view={view(
+          comparison("c", {
+            requested_software: ["gromacs"],
+            requested_resources: ["anvil", "expanse"],
+            all_resources_found: ["anvil"],
+            comparison: [
+              {
+                software: "gromacs",
+                found: true,
+                available_on: ["anvil"],
+                resource_count: 1,
+                resource_status: { anvil: "listed", expanse: "lookup_failed" },
+              },
+            ],
+            resources_not_indexed: [],
+            resources_lookup_failed: ["expanse"],
+          }),
+        )}
+      />,
+    );
+
+    expect(cellText("gromacs", "expanse")).toBe("Couldn't check");
+    expect(
+      screen.getByText(/Checking this resource's software list failed/),
+    ).toBeTruthy();
+    expect(screen.queryByText("Not indexed")).toBeNull();
+    expect(screen.queryByText("Not listed")).toBeNull();
+  });
+
   it("leaves out gap notes the grid doesn't need", () => {
     render(
       <SoftwareComparisonGrid

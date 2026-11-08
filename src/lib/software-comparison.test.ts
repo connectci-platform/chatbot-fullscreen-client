@@ -172,11 +172,11 @@ describe("latestComparison", () => {
   it("marks a requested resource with no results as not indexed", () => {
     const view = latestComparison(compare(COMPARE_REQUESTED))!;
 
-    expect(view.resources.map((r) => [r.name, r.indexed])).toEqual([
-      ["anvil", true],
-      ["delta", true],
-      ["deltaai", true],
-      ["expanse", false],
+    expect(view.resources.map((r) => [r.name, r.coverage])).toEqual([
+      ["anvil", "indexed"],
+      ["delta", "indexed"],
+      ["deltaai", "indexed"],
+      ["expanse", "not_indexed"],
     ]);
     expect(cell(view, "gromacs", "expanse")?.status).toBe("not_indexed");
     expect(cell(view, "pytorch", "expanse")?.status).toBe("not_indexed");
@@ -203,7 +203,7 @@ describe("latestComparison", () => {
     )!;
 
     expect(view.resources.map((r) => r.name)).toEqual(["anvil", "bridges-2"]);
-    expect(view.resources.every((r) => r.indexed)).toBe(true);
+    expect(view.resources.every((r) => r.coverage === "indexed")).toBe(true);
   });
 
   it("does not call anything unindexed when nothing at all was found", () => {
@@ -224,9 +224,9 @@ describe("latestComparison", () => {
       }),
     )!;
 
-    expect(view.resources.map((r) => [r.name, r.indexed])).toEqual([
-      ["delta", true],
-      ["expanse", true],
+    expect(view.resources.map((r) => [r.name, r.coverage])).toEqual([
+      ["delta", "unknown"],
+      ["expanse", "unknown"],
     ]);
     expect(cell(view, "notarealpkg", "expanse")?.status).toBe("not_listed");
     expect(view.notFound).toEqual(["notarealpkg"]);
@@ -403,6 +403,156 @@ describe("latestComparison", () => {
 
     expect(view.resources).toHaveLength(30);
     expect(view.rows[0].cells.every((c) => c.status === "listed")).toBe(true);
+  });
+});
+
+// Real output from the md-3023-gaps server, 2026-11-08, for GROMACS on
+// delta, expanse and anvil. It says what each gap means itself.
+const GAP_NOTE =
+  "not_listed means the package isn't in that resource's software list, not that it can't be used. not_indexed means no software list exists for that resource, so nothing is known about its software. lookup_failed means the check for that resource's list failed. None of these mean the software is unavailable; point the user to the resource's documentation or support.";
+const COMPARE_WITH_STATUS = {
+  requested_software: ["gromacs"],
+  requested_resources: ["delta", "expanse", "anvil"],
+  all_resources_found: ["anvil", "delta", "deltaai"],
+  comparison: [
+    {
+      software: "gromacs",
+      found: true,
+      available_on: ["delta", "anvil", "deltaai"],
+      resource_count: 3,
+      resource_status: {
+        anvil: "listed",
+        delta: "listed",
+        deltaai: "listed",
+        expanse: "not_indexed",
+      },
+    },
+  ],
+  resources_not_indexed: ["expanse"],
+  resources_lookup_failed: [],
+  gap_note: GAP_NOTE,
+  summary: {
+    total_software_requested: 1,
+    software_found: 1,
+    software_not_found: [],
+  },
+};
+
+function withStatus(
+  available_on: string[],
+  resource_status: Record<string, string>,
+  extra: Record<string, unknown> = {},
+) {
+  return {
+    requested_software: ["pytorch"],
+    requested_resources: Object.keys(resource_status),
+    all_resources_found: available_on,
+    comparison: [
+      {
+        software: "pytorch",
+        found: available_on.length > 0,
+        available_on,
+        resource_count: available_on.length,
+        resource_status,
+      },
+    ],
+    resources_not_indexed: [],
+    resources_lookup_failed: [],
+    gap_note: GAP_NOTE,
+    ...extra,
+  };
+}
+
+describe("latestComparison with the server's resource_status", () => {
+  it("reads each gap from the server", () => {
+    const view = latestComparison(compare(COMPARE_WITH_STATUS))!;
+
+    expect(view.resources.map((r) => [r.name, r.coverage])).toEqual([
+      ["anvil", "indexed"],
+      ["delta", "indexed"],
+      ["deltaai", "indexed"],
+      ["expanse", "not_indexed"],
+    ]);
+    expect(cell(view, "gromacs", "delta")?.status).toBe("listed");
+    expect(cell(view, "gromacs", "expanse")?.status).toBe("not_indexed");
+  });
+
+  it("trusts the server over the inference for a resource with a list", () => {
+    // Expanse has a software list without pytorch. Inference alone would
+    // have called it not indexed.
+    const view = latestComparison(
+      compare(
+        withStatus(["anvil"], { anvil: "listed", expanse: "not_listed" }),
+      ),
+    )!;
+
+    expect(view.resources.map((r) => [r.name, r.coverage])).toEqual([
+      ["anvil", "indexed"],
+      ["expanse", "indexed"],
+    ]);
+    expect(cell(view, "pytorch", "expanse")).toEqual({ status: "not_listed" });
+  });
+
+  it("says a lookup failed rather than guessing", () => {
+    const view = latestComparison(
+      compare(
+        withStatus(
+          ["anvil"],
+          { anvil: "listed", expanse: "lookup_failed" },
+          { resources_lookup_failed: ["expanse"] },
+        ),
+      ),
+    )!;
+
+    expect(view.resources[1]).toEqual({
+      name: "expanse",
+      coverage: "lookup_failed",
+    });
+    expect(cell(view, "pytorch", "expanse")).toEqual({
+      status: "lookup_failed",
+    });
+  });
+
+  it("calls a resource unindexed when the server checked, even with no results", () => {
+    const view = latestComparison(
+      compare(
+        withStatus(
+          [],
+          { delta: "not_listed", expanse: "not_indexed" },
+          { resources_not_indexed: ["expanse"] },
+        ),
+      ),
+    )!;
+
+    expect(view.resources.map((r) => [r.name, r.coverage])).toEqual([
+      ["delta", "indexed"],
+      ["expanse", "not_indexed"],
+    ]);
+    expect(cell(view, "pytorch", "delta")?.status).toBe("not_listed");
+    expect(cell(view, "pytorch", "expanse")?.status).toBe("not_indexed");
+  });
+
+  it("still adds versions to cells the server lists", () => {
+    const view = latestComparison([
+      result(
+        "get_software_details",
+        {
+          software_name: "gromacs",
+          found: true,
+          details: {
+            name: "gromacs",
+            versions_by_resource: { delta: ["2026.1-cuda", "2025.2"] },
+          },
+        },
+        "d1",
+      ),
+      ...compare(COMPARE_WITH_STATUS),
+    ])!;
+
+    expect(cell(view, "gromacs", "delta")).toEqual({
+      status: "listed",
+      versions: ["2026.1-cuda", "2025.2"],
+    });
   });
 });
 
