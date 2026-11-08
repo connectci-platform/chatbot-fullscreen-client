@@ -6,6 +6,8 @@ import { CommandBar } from "./shared";
 import { MarkdownText } from "../markdown-text";
 import { LoadExternalComponent } from "@langchain/langgraph-sdk/react-ui";
 import { cn } from "@/lib/utils";
+import { getCapabilitySuggestions } from "@/lib/capability-suggestions";
+import { SuggestedQuestions } from "../suggested-questions";
 import { Fragment } from "react/jsx-runtime";
 import { isAgentInboxInterruptSchema } from "@/lib/agent-inbox-interrupt";
 import { ThreadView } from "../agent-inbox";
@@ -74,12 +76,16 @@ function Interrupt({
 export function AssistantMessage({
   message,
   isLoading,
+  onAsk,
 }: {
   message: Message | undefined;
   isLoading: boolean;
+  /** Sends a suggested question as if typed. */
+  onAsk?: (question: string) => void;
 }) {
   const content = message?.content ?? [];
   const contentString = getContentString(content);
+  const suggestions = getCapabilitySuggestions(message);
 
   const thread = useStreamContext();
   const isLastMessage =
@@ -100,6 +106,15 @@ export function AssistantMessage({
           <div className="py-1">
             <MarkdownText>{contentString}</MarkdownText>
           </div>
+        )}
+
+        {onAsk && suggestions.length > 0 && (
+          <SuggestedQuestions
+            heading="Try one of these"
+            questions={suggestions}
+            onAsk={onAsk}
+            disabled={isLoading}
+          />
         )}
 
         {message && (

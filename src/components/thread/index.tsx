@@ -392,6 +392,7 @@ export function Thread() {
                           key={message.id || `${message.type}-${index}`}
                           message={message}
                           isLoading={isLoading}
+                          onAsk={(question) => submitMessage(question, [])}
                         />
                       ),
                     )}
