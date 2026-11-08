@@ -518,7 +518,7 @@ export function Thread() {
                 <XIcon className="size-5" />
               </button>
             </div>
-            <ArtifactContent className="relative flex-grow" />
+            <ArtifactContent className="relative min-h-0 flex-grow overflow-hidden" />
           </div>
         </div>
       </div>
