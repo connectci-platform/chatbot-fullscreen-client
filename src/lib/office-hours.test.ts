@@ -7,12 +7,15 @@ import {
 
 const SUPPORT = "https://support.access-ci.org";
 const NOW = new Date("2026-11-10T15:00:00Z");
+const AFFILIATION = "access_nairr_office_hours";
+const OPTS = { now: NOW, supportUrl: SUPPORT, affiliation: AFFILIATION };
 
 function row(overrides: Record<string, unknown>) {
   return {
     id: "1",
     title: "Jetstream2 Office Hours",
     event_type: "Office Hours",
+    affiliation: "access_nairr_office_hours, ACCESS Collaboration, nairr_pilot",
     start_date: "2026-11-10T19:00:00Z",
     end_date: "2026-11-10T20:00:00Z",
     url: "https://support.access-ci.org/events/1",
@@ -38,7 +41,7 @@ describe("parseOfficeHours", () => {
       }),
     ];
 
-    const hours = parseOfficeHours(rows, { now: NOW, supportUrl: SUPPORT });
+    const hours = parseOfficeHours(rows, OPTS);
 
     expect(hours.map((h) => h.title)).toEqual(["Soonest", "Middle"]);
     expect(hours[0].start.toISOString()).toBe("2026-11-10T19:00:00.000Z");
@@ -64,9 +67,21 @@ describe("parseOfficeHours", () => {
       }),
     ];
 
-    const hours = parseOfficeHours(rows, { now: NOW, supportUrl: SUPPORT });
+    const hours = parseOfficeHours(rows, OPTS);
 
     expect(hours.map((h) => h.id)).toEqual(["e"]);
+  });
+
+  it("keeps only the program's own sessions, not other providers'", () => {
+    const rows = [
+      row({ id: "ospool", affiliation: "ACCESS Collaboration" }),
+      row({ id: "jetstream", affiliation: "Community, nairr_pilot" }),
+      row({ id: "none", affiliation: null }),
+      row({ id: "prefix", affiliation: "access_nairr_office_hours_old" }),
+      row({ id: "access" }),
+    ];
+
+    expect(parseOfficeHours(rows, OPTS).map((h) => h.id)).toEqual(["access"]);
   });
 
   it("links to the support site's event page when the url isn't a web link", () => {
@@ -75,7 +90,7 @@ describe("parseOfficeHours", () => {
         row({ id: "42", url: "javascript:alert(1)" }),
         row({ id: "43", url: null }),
       ],
-      { now: NOW, supportUrl: SUPPORT },
+      OPTS,
     );
 
     expect(hours.map((h) => h.url)).toEqual([
@@ -85,9 +100,7 @@ describe("parseOfficeHours", () => {
   });
 
   it("returns nothing for a response that isn't a list", () => {
-    expect(
-      parseOfficeHours({ error: "x" }, { now: NOW, supportUrl: SUPPORT }),
-    ).toEqual([]);
+    expect(parseOfficeHours({ error: "x" }, OPTS)).toEqual([]);
   });
 });
 
@@ -99,6 +112,7 @@ describe("fetchOfficeHours", () => {
 
     const hours = await fetchOfficeHours({
       supportUrl: SUPPORT,
+      affiliation: AFFILIATION,
       now: NOW,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
@@ -107,6 +121,7 @@ describe("fetchOfficeHours", () => {
     expect(url.origin + url.pathname).toBe(`${SUPPORT}/api/2.4/events`);
     expect(url.searchParams.get("search_api_fulltext")).toBe("office hours");
     expect(url.searchParams.get("beginning_date_relative")).toBe("today");
+    expect(url.searchParams.get("items_per_page")).toBe("50");
     expect(hours).toHaveLength(1);
   });
 
@@ -116,6 +131,7 @@ describe("fetchOfficeHours", () => {
     await expect(
       fetchOfficeHours({
         supportUrl: SUPPORT,
+        affiliation: AFFILIATION,
         fetchImpl: fetchImpl as unknown as typeof fetch,
       }),
     ).rejects.toThrow("503");

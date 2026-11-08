@@ -23,6 +23,9 @@ export const access: ProgramConfig = {
     "How do I transfer large files to Bridges-2?",
     "What can you help me with?",
   ],
+  // "ACCESS and NAIRR Pilot Office Hours". Resource providers' sessions share
+  // the broader "ACCESS Collaboration" affiliation, so that can't be used.
+  officeHours: { affiliation: "access_nairr_office_hours" },
   colors: {
     primary: "#fec340",
     primaryForeground: "#000000",

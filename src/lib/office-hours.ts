@@ -1,7 +1,9 @@
 /**
  * The next drop-in office hours, read from the support site's public events
  * API. That API has no working event-type filter for its export, so this
- * searches "office hours" and keeps only events typed as Office Hours.
+ * searches "office hours", keeps only events typed as Office Hours, and
+ * narrows them to one affiliation so a program shows its own sessions rather
+ * than every resource provider's.
  */
 
 export type OfficeHour = {
@@ -13,6 +15,15 @@ export type OfficeHour = {
 };
 
 const OFFICE_HOURS_TYPE = "Office Hours";
+
+/** The API joins multiple affiliations with ", ". */
+function hasAffiliation(value: unknown, affiliation: string): boolean {
+  if (typeof value !== "string") return false;
+  return value
+    .split(",")
+    .map((part) => part.trim())
+    .includes(affiliation);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -45,13 +56,15 @@ export function parseOfficeHours(
   {
     now,
     supportUrl,
+    affiliation,
     limit = 2,
-  }: { now: Date; supportUrl: string; limit?: number },
+  }: { now: Date; supportUrl: string; affiliation: string; limit?: number },
 ): OfficeHour[] {
   if (!Array.isArray(rows)) return [];
   const hours: OfficeHour[] = [];
   for (const row of rows) {
     if (!isRecord(row) || row.event_type !== OFFICE_HOURS_TYPE) continue;
+    if (!hasAffiliation(row.affiliation, affiliation)) continue;
     const id = row.id == null ? "" : String(row.id);
     const title = typeof row.title === "string" ? row.title.trim() : "";
     const start = parseDate(row.start_date);
@@ -72,11 +85,13 @@ export function parseOfficeHours(
 
 export async function fetchOfficeHours({
   supportUrl,
+  affiliation,
   now = new Date(),
   signal,
   fetchImpl = fetch,
 }: {
   supportUrl: string;
+  affiliation: string;
   now?: Date;
   signal?: AbortSignal;
   fetchImpl?: typeof fetch;
@@ -84,13 +99,19 @@ export async function fetchOfficeHours({
   const url = new URL("/api/2.4/events", supportUrl);
   url.searchParams.set("beginning_date_relative", "today");
   url.searchParams.set("search_api_fulltext", "office hours");
-  url.searchParams.set("items_per_page", "20");
+  // Every provider's weekly sessions share this search, so fetch enough to
+  // reach a biweekly series' next two dates.
+  url.searchParams.set("items_per_page", "50");
   const response = await fetchImpl(url, {
     signal,
     headers: { Accept: "application/json" },
   });
   if (!response.ok) throw new Error(`Events API returned ${response.status}`);
-  return parseOfficeHours(await response.json(), { now, supportUrl });
+  return parseOfficeHours(await response.json(), {
+    now,
+    supportUrl,
+    affiliation,
+  });
 }
 
 /** "Tue, Nov 10, 9:30 AM EST" in the reader's own time zone. */

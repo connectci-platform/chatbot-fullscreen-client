@@ -17,6 +17,11 @@ export type ProgramConfig = {
    * agent when changing them.
    */
   starterQuestions: string[];
+  /**
+   * The program's own drop-in office hours, picked out of the events API by
+   * affiliation. Null hides the office hours box.
+   */
+  officeHours: { affiliation: string } | null;
   colors: {
     /** Primary buttons and calls to action. */
     primary: string;

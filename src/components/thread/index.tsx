@@ -117,13 +117,15 @@ export function Thread() {
     handlePaste,
   } = useFileUpload({ enabled: program.features.fileUploads });
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
-  // The office hours box sits in the empty screen's bottom-left corner only
-  // where it clears the centered column; elsewhere it follows the starters.
+  // Office hours sit in the empty screen's bottom-left corner on wide screens
+  // and follow the suggested questions on narrow ones. They're hidden while
+  // the conversation list is open, which takes that side of the screen.
   const isXlScreen = useMediaQuery("(min-width: 1280px)");
-  const is2xlScreen = useMediaQuery("(min-width: 1536px)");
   const supportUrl = getSupportUrl();
-  const officeHours = useOfficeHours(supportUrl);
-  const officeHoursInCorner = isXlScreen && (!chatHistoryOpen || is2xlScreen);
+  const officeHours = useOfficeHours(
+    supportUrl,
+    program.officeHours?.affiliation ?? null,
+  );
 
   const stream = useStreamContext();
   const messages = stream.messages;
@@ -230,6 +232,7 @@ export function Thread() {
   useInitialQuestion((question) => submitMessage(question, []));
 
   const chatStarted = !!threadId || !!messages.length;
+  const showOfficeHours = !chatStarted && !chatHistoryOpen;
   const hasNoAIOrToolMessages = !messages.find(
     (m) => m.type === "ai" || m.type === "tool",
   );
@@ -352,7 +355,7 @@ export function Thread() {
             </div>
           )}
 
-          {!chatStarted && officeHoursInCorner && (
+          {showOfficeHours && isXlScreen && (
             <OfficeHours
               hours={officeHours}
               supportUrl={supportUrl}
@@ -517,7 +520,7 @@ export function Thread() {
                         onAsk={(question) => submitMessage(question, [])}
                       />
                     )}
-                    {!chatStarted && !officeHoursInCorner && (
+                    {showOfficeHours && !isXlScreen && (
                       <OfficeHours
                         hours={officeHours}
                         supportUrl={supportUrl}
