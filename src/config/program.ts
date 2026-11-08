@@ -11,6 +11,12 @@ export type ProgramConfig = {
   privacyUrl: string;
   disclaimer: string;
   features: { fileUploads: boolean; siteHeader: boolean };
+  /**
+   * Questions offered on the empty screen. Clicking one sends it as typed, so
+   * each should be one the tools answer well; check them against the live
+   * agent when changing them.
+   */
+  starterQuestions: string[];
   colors: {
     /** Primary buttons and calls to action. */
     primary: string;

@@ -15,6 +15,7 @@ import {
 import { ProgramLogo } from "./program-logo";
 import { program } from "@/config/program";
 import { ChatDisclaimer } from "./chat-disclaimer";
+import { StarterQuestions } from "./starter-questions";
 import { TooltipIconButton } from "./tooltip-icon-button";
 import {
   ArrowDown,
@@ -494,6 +495,11 @@ export function Thread() {
                         </div>
                       </form>
                     </div>
+                    {!chatStarted && (
+                      <StarterQuestions
+                        onAsk={(question) => submitMessage(question, [])}
+                      />
+                    )}
                     <ChatDisclaimer />
                   </div>
                 </div>

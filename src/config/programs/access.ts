@@ -17,6 +17,12 @@ export const access: ProgramConfig = {
   disclaimer:
     "AI-powered responses may not always be accurate. Don't share passwords or secrets.",
   features: { fileUploads: false, siteHeader: false },
+  starterQuestions: [
+    "Sign me up for an upcoming GPU training",
+    "Which ACCESS resources have GROMACS, and which versions?",
+    "How do I transfer large files to Bridges-2?",
+    "When are the next drop-in office hours?",
+  ],
   colors: {
     primary: "#fec340",
     primaryForeground: "#000000",
