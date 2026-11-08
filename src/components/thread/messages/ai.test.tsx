@@ -32,6 +32,12 @@ vi.mock("@/providers/Stream", () => ({
 
 vi.mock("../artifact", () => ({ useArtifact: () => [null, vi.fn()] }));
 
+vi.mock("./answer-rating", () => ({
+  AnswerRating: ({ message }: { message: Message }) => (
+    <div data-testid="rating">{message.id}</div>
+  ),
+}));
+
 function renderMessage(message: Message, searchParams = "") {
   return render(
     <NuqsTestingAdapter searchParams={searchParams}>
@@ -61,11 +67,18 @@ describe("AssistantMessage", () => {
     expect(screen.getByRole("button", { name: "Copy content" })).toBeTruthy();
   });
 
+  it("offers a rating under an answer with text", () => {
+    stream.messages = [aiMessage];
+    renderMessage(aiMessage);
+    expect(screen.getByTestId("rating").textContent).toBe("ai-1");
+  });
+
   it("has no Copy button when the message has no text", () => {
     const toolCallMessage: Message = { id: "ai-2", type: "ai", content: "" };
     stream.messages = [toolCallMessage];
     renderMessage(toolCallMessage);
     expect(screen.queryByRole("button", { name: "Copy content" })).toBeNull();
+    expect(screen.queryByTestId("rating")).toBeNull();
   });
 
   it("still renders an interrupt for the last AI message", () => {

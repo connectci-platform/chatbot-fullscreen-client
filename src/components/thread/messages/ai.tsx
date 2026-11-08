@@ -12,6 +12,7 @@ import { ThreadView } from "../agent-inbox";
 import { GenericInterruptView } from "./generic-interrupt";
 import { useArtifact } from "../artifact";
 import { AnswerSources } from "../answer-sources";
+import { AnswerRating } from "./answer-rating";
 
 function CustomComponent({
   message,
@@ -132,6 +133,12 @@ export function AssistantMessage({
               isLoading={isLoading}
             />
           </div>
+        )}
+        {message && contentString.length > 0 && (
+          <AnswerRating
+            message={message}
+            isLoading={isLoading}
+          />
         )}
       </div>
     </div>
