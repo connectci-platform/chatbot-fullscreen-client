@@ -1,6 +1,13 @@
 "use client";
 
-import { useMemo, useState, type ComponentProps } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+} from "react";
 import type { Components } from "react-markdown";
 import type { Message } from "@langchain/langgraph-sdk";
 import { ExternalLink, FileText } from "lucide-react";
@@ -14,7 +21,8 @@ type HeadingProps = ComponentProps<"h4"> & { node?: unknown };
 /**
  * Passage headings sit below the panel's own h2 title and h3 "Excerpt", so
  * screen readers hear them inside the excerpt: h1 becomes h4, h2 h5, the rest
- * h6. Links leave the chat for the documentation site.
+ * h6. Links leave the chat for the documentation site. Images aren't
+ * loaded from the documentation's servers; they become a link instead.
  */
 const PASSAGE_COMPONENTS: Components = {
   h1: ({ node: _node, ...props }: HeadingProps) => (
@@ -48,14 +56,57 @@ const PASSAGE_COMPONENTS: Components = {
       className="text-primary font-medium underline underline-offset-4"
     />
   ),
+  img: ({ src, alt }: ComponentProps<"img">) => {
+    const label = `Image: ${alt || "untitled"}`;
+    return typeof src === "string" && src ? (
+      <a
+        href={src}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary underline underline-offset-4"
+      >
+        {label}
+      </a>
+    ) : (
+      <span>{label}</span>
+    );
+  },
 };
 
-export function SourceDetails({ source }: { source: AnswerSource }) {
+const NO_SOURCE = {
+  unlinked: "This answer doesn't link any of the documentation it retrieved.",
+  "not-retrieved": "No documentation was retrieved for this answer.",
+} as const;
+
+export function SourceDetails({
+  source,
+  id,
+}: {
+  source: AnswerSource;
+  id?: string;
+}) {
+  const heading = useRef<HTMLHeadingElement>(null);
+  // Opening a source, or switching to another, takes the reader to it.
+  useEffect(() => heading.current?.focus(), [source.key]);
+
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto p-6">
+    <div
+      id={id}
+      className="flex h-full flex-col gap-4 overflow-y-auto p-6"
+    >
       <div>
-        <h2 className="text-xl font-bold">{source.label}</h2>
-        <p className="text-muted-foreground text-sm">{source.host}</p>
+        <h2
+          ref={heading}
+          tabIndex={-1}
+          className="text-lg font-bold break-words outline-none"
+        >
+          {source.title}
+        </h2>
+        {source.linkText && (
+          <p className="text-muted-foreground text-sm">
+            Linked as: {source.linkText}
+          </p>
+        )}
       </div>
       <section aria-labelledby="source-excerpt">
         <h3
@@ -116,15 +167,53 @@ export function AnswerSources({
     () => (message ? answerSources(messages, message) : null),
     [messages, message],
   );
-  const [Artifact, { setOpen }] = useArtifact();
-  const [selected, setSelected] = useState<AnswerSource | null>(null);
+  const [Artifact, { open, setOpen }] = useArtifact();
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const panelId = `source-panel-${useId()}`;
+  const chips = useRef(new Map<string, HTMLButtonElement>());
+  const selected =
+    result?.sources.find((source) => source.key === selectedKey) ?? null;
+
+  // The answer was edited or regenerated and no longer cites the open source:
+  // close the panel rather than leave it empty.
+  const stale = selectedKey !== null && !selected;
+  useEffect(() => {
+    if (stale && open) setOpen(false);
+  }, [stale, open, setOpen]);
+
+  // Gone altogether, as when an answer is regenerated.
+  const openRef = useRef(open);
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
+  useEffect(
+    () => () => {
+      if (openRef.current) setOpen(false);
+    },
+    [setOpen],
+  );
+
+  // Closing the panel returns focus to the chip that opened it, unless the
+  // reader has already moved on somewhere else.
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    if (wasOpen.current && !open && selectedKey) {
+      const active = document.activeElement;
+      const lost =
+        !active ||
+        active === document.body ||
+        !!document.getElementById(panelId)?.contains(active);
+      if (lost) chips.current.get(selectedKey)?.focus();
+    }
+    wasOpen.current = open;
+  }, [open, selectedKey, panelId]);
 
   if (!result || streaming) return null;
 
   if (!result.sources.length) {
-    return result.citesNoSource ? (
+    return result.noSource ? (
       <p className="text-muted-foreground text-sm">
-        This answer doesn&apos;t cite a documentation source.
+        {NO_SOURCE[result.noSource]}
       </p>
     ) : null;
   }
@@ -142,11 +231,17 @@ export function AnswerSources({
         className="flex flex-wrap gap-2"
       >
         {result.sources.map((source) => (
-          <li key={source.url}>
+          <li key={source.key}>
             <button
               type="button"
+              ref={(el) => {
+                if (el) chips.current.set(source.key, el);
+                else chips.current.delete(source.key);
+              }}
+              aria-expanded={open && selectedKey === source.key}
+              aria-controls={panelId}
               onClick={() => {
-                setSelected(source);
+                setSelectedKey(source.key);
                 setOpen(true);
               }}
               className="hover:bg-muted flex max-w-xs cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-left text-sm"
@@ -155,7 +250,7 @@ export function AnswerSources({
                 aria-hidden
                 className="size-4 shrink-0"
               />
-              <span className="truncate font-medium">{source.label}</span>
+              <span className="truncate font-medium">{source.chipLabel}</span>
               <span className="text-muted-foreground shrink-0">
                 {source.host}
               </span>
@@ -165,7 +260,10 @@ export function AnswerSources({
       </ul>
       {selected && (
         <Artifact title="Source">
-          <SourceDetails source={selected} />
+          <SourceDetails
+            id={panelId}
+            source={selected}
+          />
         </Artifact>
       )}
     </div>

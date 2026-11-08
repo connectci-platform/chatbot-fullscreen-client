@@ -91,7 +91,7 @@ describe("AssistantMessage", () => {
     };
     stream.messages = [search, answer];
     renderMessage(answer);
-    expect(screen.getByRole("button", { name: /user guide/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /user-guide/ })).toBeTruthy();
   });
 
   it("shows the agent's status while it works", () => {
