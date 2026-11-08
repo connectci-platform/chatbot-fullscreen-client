@@ -162,3 +162,32 @@
     box-shadow: inset 9px 0 6px -1px rgb(0 0 0 / 0.02);
   }
 }
+
+/* Neutral toasts use the program's colors. Error and warning toasts keep their
+   own colors, because those colors carry meaning. */
+[data-sonner-toast]:not([data-type]),
+[data-sonner-toast][data-type="info"],
+[data-sonner-toast][data-type="success"] {
+  --normal-bg: var(--brand-teal);
+  --normal-border: var(--brand-teal);
+  --normal-text: var(--brand-foreground);
+  background: var(--brand-teal) !important;
+  border-color: var(--brand-teal) !important;
+  color: var(--brand-foreground) !important;
+}
+
+[data-sonner-toast]:not([data-type]) [data-description],
+[data-sonner-toast][data-type="info"] [data-description],
+[data-sonner-toast][data-type="success"] [data-description] {
+  color: var(--brand-foreground) !important;
+}
+
+[data-sonner-toast] [data-button]:not([data-cancel]) {
+  background: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+}
+
+/* Sonner lightens this button on hover, which hides a light icon. */
+[data-sonner-toast] [data-close-button]:hover {
+  color: var(--foreground) !important;
+}

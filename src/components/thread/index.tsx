@@ -42,6 +42,7 @@ import {
   ArtifactTitle,
   useArtifactContext,
 } from "./artifact";
+import { RegistrationPanel } from "./registration-panel";
 
 function StickyToBottomContent(props: {
   content: ReactNode;
@@ -221,7 +222,7 @@ export function Thread() {
       <div
         className={cn(
           "grid w-full grid-cols-[1fr_0fr] transition-all duration-500",
-          artifactOpen && "grid-cols-[3fr_2fr]",
+          artifactOpen && "grid-cols-[0fr_1fr] lg:grid-cols-[3fr_2fr]",
         )}
       >
         <motion.div
@@ -481,6 +482,7 @@ export function Thread() {
           </div>
         </div>
       </div>
+      <RegistrationPanel onConfirm={(text) => submitMessage(text, [])} />
     </div>
   );
 }

@@ -17,4 +17,10 @@ export const access: ProgramConfig = {
   disclaimer:
     "AI-powered responses may not always be accurate. Don't share passwords or secrets.",
   features: { fileUploads: false, siteHeader: false },
+  colors: {
+    primary: "#fec340",
+    primaryForeground: "#000000",
+    brand: "#107180",
+    brandForeground: "#ffffff",
+  },
 };

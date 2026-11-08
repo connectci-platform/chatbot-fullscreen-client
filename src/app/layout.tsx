@@ -3,7 +3,7 @@ import "./globals.css";
 import { Archivo } from "next/font/google";
 import React from "react";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
-import { program } from "@/config/program";
+import { colorVariables, program } from "@/config/program";
 import { SiteChromeTop, SiteFooter } from "@/components/SiteChrome";
 
 // The @access-ci/ui chrome's CSS asks for "Archivo". Its components render
@@ -32,6 +32,7 @@ export default function RootLayout({
     <html
       lang="en"
       data-program={program.id}
+      style={colorVariables(program) as React.CSSProperties}
     >
       <body className={`font-sans ${archivo.variable}`}>
         <div className="flex h-dvh flex-col">

@@ -156,7 +156,7 @@ export default function useInterruptedActions({
       errorOccurred = true;
 
       if ("message" in error && error.message.includes("Invalid assistant")) {
-        toast("Error: Invalid assistant ID", {
+        toast.error("Error: Invalid assistant ID", {
           description:
             "The provided assistant ID was not found in this graph. Please update the assistant ID in the settings and try again.",
           richColors: true,
