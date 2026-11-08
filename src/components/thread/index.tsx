@@ -50,6 +50,7 @@ import {
   useArtifactContext,
 } from "./artifact";
 import { RegistrationPanel } from "./registration-panel";
+import { SoftwareComparisonPanel } from "./software-comparison-panel";
 
 function StickyToBottomContent(props: {
   content: ReactNode;
@@ -523,6 +524,7 @@ export function Thread() {
         </div>
       </div>
       <RegistrationPanel onConfirm={(text) => submitMessage(text, [])} />
+      <SoftwareComparisonPanel />
     </div>
   );
 }
