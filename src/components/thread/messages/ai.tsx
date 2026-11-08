@@ -120,25 +120,28 @@ export function AssistantMessage({
           hasNoAIOrToolMessages={hasNoAIOrToolMessages}
         />
         {/* Tool-calling messages are stored with empty content; there is
-            nothing to copy. */}
+            nothing to copy or rate. Rating stays visible and comes first, so
+            the copy button fading in on hover doesn't shift it. */}
         {contentString.length > 0 && (
-          <div
-            className={cn(
-              "mr-auto flex items-center gap-2 transition-opacity",
-              "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
+          <div className="mr-auto flex flex-wrap items-start gap-1">
+            {message && (
+              <AnswerRating
+                message={message}
+                isLoading={isLoading}
+              />
             )}
-          >
-            <CommandBar
-              content={contentString}
-              isLoading={isLoading}
-            />
+            <div
+              className={cn(
+                "flex items-center gap-2 transition-opacity",
+                "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
+              )}
+            >
+              <CommandBar
+                content={contentString}
+                isLoading={isLoading}
+              />
+            </div>
           </div>
-        )}
-        {message && contentString.length > 0 && (
-          <AnswerRating
-            message={message}
-            isLoading={isLoading}
-          />
         )}
       </div>
     </div>
