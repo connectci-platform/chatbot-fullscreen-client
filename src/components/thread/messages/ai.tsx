@@ -11,6 +11,7 @@ import { isAgentInboxInterruptSchema } from "@/lib/agent-inbox-interrupt";
 import { ThreadView } from "../agent-inbox";
 import { GenericInterruptView } from "./generic-interrupt";
 import { useArtifact } from "../artifact";
+import { AnswerSources } from "../answer-sources";
 
 function CustomComponent({
   message,
@@ -101,6 +102,10 @@ export function AssistantMessage({
             <MarkdownText>{contentString}</MarkdownText>
           </div>
         )}
+        <AnswerSources
+          message={message}
+          streaming={isLoading && isLastMessage}
+        />
 
         {message && (
           <CustomComponent

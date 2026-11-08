@@ -2,7 +2,7 @@
 
 import "./markdown-styles.css";
 
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
@@ -224,13 +224,23 @@ const defaultComponents: any = {
   ),
 };
 
-const MarkdownTextImpl: FC<{ children: string }> = ({ children }) => {
+const MarkdownTextImpl: FC<{
+  children: string;
+  /** Replaces the default renderer for these elements. */
+  components?: Components;
+  /** Off for quoted text, where "$HOME and $PROJECT" isn't math. */
+  math?: boolean;
+}> = ({ children, components, math = true }) => {
   return (
     <div className="markdown-content">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
-        components={defaultComponents}
+        remarkPlugins={math ? [remarkGfm, remarkMath] : [remarkGfm]}
+        rehypePlugins={math ? [rehypeKatex] : []}
+        components={
+          components
+            ? { ...defaultComponents, ...components }
+            : defaultComponents
+        }
       >
         {children}
       </ReactMarkdown>
