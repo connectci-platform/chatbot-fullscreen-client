@@ -1,13 +1,18 @@
 import { cn } from "@/lib/utils";
 import { formatOfficeHourStart, type OfficeHour } from "@/lib/office-hours";
 
-/** Drop-in office hours: a way to reach a person, shown on the empty screen. */
+/**
+ * Drop-in office hours: a way to reach a person, shown on the empty screen.
+ * Every session is the same series, so each is listed by its start time.
+ */
 export function OfficeHours({
   hours,
+  description,
   supportUrl,
   className,
 }: {
   hours: OfficeHour[] | null;
+  description: string;
   supportUrl: string;
   className?: string;
 }) {
@@ -23,10 +28,8 @@ export function OfficeHours({
       >
         Office hours
       </h2>
-      <p className="text-muted-foreground">
-        Drop in to talk with ACCESS staff.
-      </p>
-      <ul className="mt-2 flex flex-col gap-2">
+      <p className="text-muted-foreground">{description}</p>
+      <ul className="mt-2 flex flex-col gap-1">
         {hours.map((hour) => (
           <li key={hour.id}>
             <a
@@ -35,13 +38,10 @@ export function OfficeHours({
               rel="noopener noreferrer"
               className="text-brand font-medium underline-offset-2 hover:underline"
             >
-              {hour.title}
-            </a>
-            <div className="text-muted-foreground">
               <time dateTime={hour.start.toISOString()}>
                 {formatOfficeHourStart(hour.start)}
               </time>
-            </div>
+            </a>
           </li>
         ))}
       </ul>

@@ -25,7 +25,10 @@ export const access: ProgramConfig = {
   ],
   // "ACCESS and NAIRR Pilot Office Hours". Resource providers' sessions share
   // the broader "ACCESS Collaboration" affiliation, so that can't be used.
-  officeHours: { affiliation: "access_nairr_office_hours" },
+  officeHours: {
+    affiliation: "access_nairr_office_hours",
+    description: "Drop in to talk with ACCESS staff.",
+  },
   colors: {
     primary: "#fec340",
     primaryForeground: "#000000",

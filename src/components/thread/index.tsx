@@ -358,6 +358,7 @@ export function Thread() {
           {showOfficeHours && isXlScreen && (
             <OfficeHours
               hours={officeHours}
+              description={program.officeHours?.description ?? ""}
               supportUrl={supportUrl}
               className="absolute bottom-6 left-6 z-10 w-52 bg-white"
             />
@@ -523,6 +524,7 @@ export function Thread() {
                     {showOfficeHours && !isXlScreen && (
                       <OfficeHours
                         hours={officeHours}
+                        description={program.officeHours?.description ?? ""}
                         supportUrl={supportUrl}
                         className="mt-6"
                       />
