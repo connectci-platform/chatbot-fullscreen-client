@@ -1,7 +1,10 @@
-import { MessageSquare } from "lucide-react";
 import { program } from "@/config/program";
 
-/** Suggested first questions, shown before a conversation starts. */
+/**
+ * Suggested first questions, shown before a conversation starts. They read as
+ * lines the visitor might type, so they stay plain text in the brand teal; the
+ * yellow bar on hover and focus marks the one being chosen.
+ */
 export function StarterQuestions({
   onAsk,
   questions = program.starterQuestions,
@@ -13,27 +16,23 @@ export function StarterQuestions({
   return (
     <section
       aria-labelledby="starter-questions-heading"
-      className="mt-4 flex flex-col gap-2"
+      className="mt-6"
     >
       <h2
         id="starter-questions-heading"
-        className="text-muted-foreground text-sm"
+        className="text-muted-foreground mb-1 text-sm"
       >
         Try asking
       </h2>
-      <ul className="grid gap-2 sm:grid-cols-2">
+      <ul className="flex flex-col">
         {questions.map((question) => (
           <li key={question}>
             <button
               type="button"
               onClick={() => onAsk(question)}
-              className="hover:bg-muted focus-visible:ring-ring flex h-full w-full cursor-pointer items-start gap-2 rounded-md border bg-white px-3 py-2 text-left text-sm focus-visible:ring-2 focus-visible:outline-none"
+              className="text-brand hover:border-primary hover:bg-primary/10 focus-visible:border-primary focus-visible:bg-primary/10 focus-visible:ring-brand w-full cursor-pointer border-l-4 border-transparent py-2 pr-3 pl-3 text-left text-[15px] transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset motion-reduce:transition-none"
             >
-              <MessageSquare
-                aria-hidden
-                className="text-muted-foreground mt-0.5 size-4 shrink-0"
-              />
-              <span>{question}</span>
+              {question}
             </button>
           </li>
         ))}

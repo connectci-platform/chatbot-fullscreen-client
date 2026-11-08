@@ -21,7 +21,7 @@ export const access: ProgramConfig = {
     "Sign me up for an upcoming GPU training",
     "Which ACCESS resources have GROMACS, and which versions?",
     "How do I transfer large files to Bridges-2?",
-    "When are the next drop-in office hours?",
+    "What can you help me with?",
   ],
   colors: {
     primary: "#fec340",

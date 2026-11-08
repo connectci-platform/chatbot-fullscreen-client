@@ -16,6 +16,9 @@ import { ProgramLogo } from "./program-logo";
 import { program } from "@/config/program";
 import { ChatDisclaimer } from "./chat-disclaimer";
 import { StarterQuestions } from "./starter-questions";
+import { OfficeHours } from "./office-hours";
+import { useOfficeHours } from "@/hooks/useOfficeHours";
+import { getSupportUrl } from "@/lib/agent-token";
 import { TooltipIconButton } from "./tooltip-icon-button";
 import {
   ArrowDown,
@@ -114,6 +117,13 @@ export function Thread() {
     handlePaste,
   } = useFileUpload({ enabled: program.features.fileUploads });
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
+  // The office hours box sits in the empty screen's bottom-left corner only
+  // where it clears the centered column; elsewhere it follows the starters.
+  const isXlScreen = useMediaQuery("(min-width: 1280px)");
+  const is2xlScreen = useMediaQuery("(min-width: 1536px)");
+  const supportUrl = getSupportUrl();
+  const officeHours = useOfficeHours(supportUrl);
+  const officeHoursInCorner = isXlScreen && (!chatHistoryOpen || is2xlScreen);
 
   const stream = useStreamContext();
   const messages = stream.messages;
@@ -342,6 +352,13 @@ export function Thread() {
             </div>
           )}
 
+          {!chatStarted && officeHoursInCorner && (
+            <OfficeHours
+              hours={officeHours}
+              supportUrl={supportUrl}
+              className="absolute bottom-6 left-6 z-10 w-52 bg-white"
+            />
+          )}
           <StickToBottom className="relative flex-1 overflow-hidden">
             <StickyToBottomContent
               className={cn(
@@ -498,6 +515,13 @@ export function Thread() {
                     {!chatStarted && (
                       <StarterQuestions
                         onAsk={(question) => submitMessage(question, [])}
+                      />
+                    )}
+                    {!chatStarted && !officeHoursInCorner && (
+                      <OfficeHours
+                        hours={officeHours}
+                        supportUrl={supportUrl}
+                        className="mt-6"
                       />
                     )}
                     <ChatDisclaimer />
