@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import {
-  comparisonOwnsPanel,
   latestComparison,
+  newestPanelStep,
   type ComparisonCell,
   type SoftwareComparisonView,
 } from "@/lib/software-comparison";
@@ -191,7 +191,10 @@ export function SoftwareComparisonPanel() {
   const shownKey = useRef<string | null>(null);
 
   const key = view?.key ?? null;
-  const owns = key !== null && comparisonOwnsPanel(stream.messages, key);
+  const owns = useMemo(
+    () => newestPanelStep(stream.messages) === "comparison",
+    [stream.messages],
+  );
   useEffect(() => {
     if (key === shownKey.current) return;
     shownKey.current = key;

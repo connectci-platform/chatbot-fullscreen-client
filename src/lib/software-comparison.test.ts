@@ -1,8 +1,8 @@
 import type { Message } from "@langchain/langgraph-sdk";
 import { describe, expect, it } from "vitest";
 import {
-  comparisonOwnsPanel,
   latestComparison,
+  newestPanelStep,
   type SoftwareComparisonView,
 } from "./software-comparison";
 
@@ -406,25 +406,46 @@ describe("latestComparison", () => {
   });
 });
 
-describe("comparisonOwnsPanel", () => {
+describe("newestPanelStep", () => {
   const registration = [
     ...call("register_for_event", { eventinstance_id: "1" }, "reg"),
     result("register_for_event", { status: "preview" }, "reg"),
   ];
+  const cancelled = [
+    ...call("cancel_registration", {}, "cancel"),
+    result("cancel_registration", { status: "cancelled" }, "cancel"),
+  ];
 
-  it("wins when there is no registration", () => {
-    expect(comparisonOwnsPanel(compare(COMPARE_ALL), "cmp1")).toBe(true);
+  it("is empty when neither panel has anything to show", () => {
+    expect(newestPanelStep([])).toBeNull();
+    expect(newestPanelStep([...registration, ...cancelled])).toBeNull();
   });
 
-  it("wins when it is the newer step", () => {
-    expect(
-      comparisonOwnsPanel([...registration, ...compare(COMPARE_ALL)], "cmp1"),
-    ).toBe(true);
+  it("is the comparison when there is no registration", () => {
+    expect(newestPanelStep(compare(COMPARE_ALL))).toBe("comparison");
   });
 
-  it("yields when a registration step is newer", () => {
+  it("is the comparison when it is the newer step", () => {
+    expect(newestPanelStep([...registration, ...compare(COMPARE_ALL)])).toBe(
+      "comparison",
+    );
+  });
+
+  it("is the registration when it is the newer step", () => {
+    expect(newestPanelStep([...compare(COMPARE_ALL), ...registration])).toBe(
+      "registration",
+    );
+  });
+
+  it("falls back to the comparison when the registration is cancelled", () => {
     expect(
-      comparisonOwnsPanel([...compare(COMPARE_ALL), ...registration], "cmp1"),
-    ).toBe(false);
+      newestPanelStep([...registration, ...compare(COMPARE_ALL), ...cancelled]),
+    ).toBe("comparison");
+  });
+
+  it("stays with the registration when a newer comparison failed", () => {
+    expect(newestPanelStep([...registration, ...compare(ERROR, "bad")])).toBe(
+      "registration",
+    );
   });
 });

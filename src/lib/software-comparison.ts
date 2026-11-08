@@ -221,17 +221,19 @@ function toolIndex(messages: Message[], toolCallId: string): number {
   );
 }
 
+export type PanelStep = "registration" | "comparison";
+
 /**
- * Whether the comparison should hold the shared side panel. The registration
- * panel uses it too, and the newest step in the conversation wins.
+ * Which panel should hold the shared side panel: the newest step in the
+ * conversation that still has something to show.
  */
-export function comparisonOwnsPanel(
-  messages: Message[],
-  comparisonKey: string,
-): boolean {
+export function newestPanelStep(messages: Message[]): PanelStep | null {
   const registration = latestRegistration(messages);
-  if (!registration) return true;
-  return (
-    toolIndex(messages, registration.key) < toolIndex(messages, comparisonKey)
-  );
+  const comparison = latestComparison(messages);
+  if (!registration) return comparison ? "comparison" : null;
+  if (!comparison) return "registration";
+  return toolIndex(messages, registration.key) <
+    toolIndex(messages, comparison.key)
+    ? "comparison"
+    : "registration";
 }

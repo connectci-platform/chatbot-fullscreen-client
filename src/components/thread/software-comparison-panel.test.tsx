@@ -287,6 +287,52 @@ describe("SoftwareComparisonPanel", () => {
     expect(screen.queryByText("Software availability")).toBeNull();
   });
 
+  it("keeps the grid when a registration behind it is cancelled", () => {
+    useMessages([...registration(), ...comparison()]);
+    const { rerender } = render(tree());
+    expect(screen.getByRole("table")).toBeTruthy();
+
+    useMessages([
+      ...registration(),
+      ...comparison(),
+      ...tool("cancel_registration", "cancel1", { status: "cancelled" }),
+    ]);
+    rerender(tree());
+
+    expect(screen.getByText("panel open")).toBeTruthy();
+    expect(screen.getByRole("table")).toBeTruthy();
+  });
+
+  it("keeps a registration preview open when a comparison fails", () => {
+    useMessages(registration());
+    const { rerender } = render(tree());
+    expect(screen.getByText("Not registered yet")).toBeTruthy();
+
+    useMessages([
+      ...registration(),
+      ...comparison("bad", {
+        status: "error",
+        executed: false,
+        error: { code: "error", message: "SDS API error: 500" },
+      }),
+    ]);
+    rerender(tree());
+
+    expect(screen.getByText("panel open")).toBeTruthy();
+    expect(screen.getByText("Not registered yet")).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("closes the grid when the thread has no comparison", () => {
+    useMessages(comparison());
+    const { rerender } = render(tree());
+
+    useMessages([]);
+    rerender(tree());
+
+    expect(screen.getByText("panel closed")).toBeTruthy();
+  });
+
   it("hands over when a newer step arrives in either order", () => {
     useMessages(registration());
     const { rerender } = render(tree());

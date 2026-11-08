@@ -10,6 +10,7 @@ import {
   type Registration,
   type RegistrationStatus,
 } from "@/lib/registration";
+import { newestPanelStep } from "@/lib/software-comparison";
 import { useStreamContext } from "@/providers/Stream";
 import { useArtifact } from "./artifact";
 
@@ -191,16 +192,26 @@ export function RegistrationPanel({
     () => latestRegistration(stream.messages),
     [stream.messages],
   );
-  const [Artifact, { setOpen }] = useArtifact();
+  const [Artifact, { open, setOpen }] = useArtifact();
   const shownKey = useRef<string | null>(null);
+  // The software grid shares the panel; only the newest step takes it, and
+  // only the panel holding it closes it.
+  const owns = useMemo(
+    () => newestPanelStep(stream.messages) === "registration",
+    [stream.messages],
+  );
 
   const key = registration?.key ?? null;
   useEffect(() => {
     if (key !== shownKey.current) {
       shownKey.current = key;
-      setOpen(key !== null);
+      if (key === null) {
+        if (open) setOpen(false);
+      } else if (owns) {
+        setOpen(true);
+      }
     }
-  }, [key, setOpen]);
+  }, [key, owns, open, setOpen]);
 
   if (!registration) return null;
   return (
