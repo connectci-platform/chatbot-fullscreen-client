@@ -5,6 +5,9 @@ const nextConfig = {
   // the token request to the local portal is same-site (see the portal's
   // .ddev/nginx_full/chat-proxy.conf).
   allowedDevOrigins: ["chat.accessmatch.ddev.site"],
+  // The dev badge sits in the bottom-left corner, over the office hours box.
+  // Compile and runtime errors still show without it.
+  devIndicators: false,
   experimental: {
     serverActions: {
       bodySizeLimit: "10mb",

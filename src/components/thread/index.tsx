@@ -15,6 +15,10 @@ import {
 import { ProgramLogo } from "./program-logo";
 import { program } from "@/config/program";
 import { ChatDisclaimer } from "./chat-disclaimer";
+import { StarterQuestions } from "./starter-questions";
+import { OfficeHours } from "./office-hours";
+import { useOfficeHours } from "@/hooks/useOfficeHours";
+import { getSupportUrl } from "@/lib/agent-token";
 import { TooltipIconButton } from "./tooltip-icon-button";
 import {
   ArrowDown,
@@ -114,6 +118,15 @@ export function Thread() {
     handlePaste,
   } = useFileUpload({ enabled: program.features.fileUploads });
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
+  // Office hours sit in the empty screen's bottom-left corner on wide screens
+  // and follow the suggested questions on narrow ones. They're hidden while
+  // the conversation list is open, which takes that side of the screen.
+  const isXlScreen = useMediaQuery("(min-width: 1280px)");
+  const supportUrl = getSupportUrl();
+  const officeHours = useOfficeHours(
+    supportUrl,
+    program.officeHours?.affiliation ?? null,
+  );
 
   const stream = useStreamContext();
   const messages = stream.messages;
@@ -220,6 +233,7 @@ export function Thread() {
   useInitialQuestion((question) => submitMessage(question, []));
 
   const chatStarted = !!threadId || !!messages.length;
+  const showOfficeHours = !chatStarted && !chatHistoryOpen;
   const hasNoAIOrToolMessages = !messages.find(
     (m) => m.type === "ai" || m.type === "tool",
   );
@@ -342,6 +356,14 @@ export function Thread() {
             </div>
           )}
 
+          {showOfficeHours && isXlScreen && (
+            <OfficeHours
+              hours={officeHours}
+              description={program.officeHours?.description ?? ""}
+              supportUrl={supportUrl}
+              className="absolute bottom-6 left-6 z-10 w-52 bg-white"
+            />
+          )}
           <StickToBottom className="relative flex-1 overflow-hidden">
             <StickyToBottomContent
               className={cn(
@@ -495,6 +517,19 @@ export function Thread() {
                         </div>
                       </form>
                     </div>
+                    {!chatStarted && (
+                      <StarterQuestions
+                        onAsk={(question) => submitMessage(question, [])}
+                      />
+                    )}
+                    {showOfficeHours && !isXlScreen && (
+                      <OfficeHours
+                        hours={officeHours}
+                        description={program.officeHours?.description ?? ""}
+                        supportUrl={supportUrl}
+                        className="mt-6"
+                      />
+                    )}
                     <ChatDisclaimer />
                   </div>
                 </div>
