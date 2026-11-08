@@ -3,6 +3,17 @@ import type { Message } from "@langchain/langgraph-sdk";
 const MAX_SUGGESTIONS = 12;
 const MAX_LENGTH = 200;
 
+/** The agent's fixed "what can you help me with?" answer, not a model answer. */
+export function isCapabilityOverview(message: Message | undefined): boolean {
+  if (!message || message.type !== "ai") return false;
+  const extra = (message as { additional_kwargs?: unknown }).additional_kwargs;
+  return (
+    typeof extra === "object" &&
+    extra !== null &&
+    (extra as Record<string, unknown>).capability_overview === true
+  );
+}
+
 /**
  * The example questions the agent attaches to its "what can you help me
  * with?" answer, as additional_kwargs { capability_overview, suggestions }.

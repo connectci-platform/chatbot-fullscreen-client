@@ -1,4 +1,5 @@
 import type { Message } from "@langchain/langgraph-sdk";
+import { isCapabilityOverview } from "./capability-suggestions";
 
 const DOCS_TOOL = "search_access_documents";
 
@@ -178,6 +179,9 @@ export function answerSources(
   message: Message,
 ): AnswerSourcesResult | null {
   if (message.type !== "ai" || message.tool_calls?.length) return null;
+  // The capability overview is fixed text about the assistant, not a claim
+  // that needs a documentation source.
+  if (isCapabilityOverview(message)) return null;
   const text = textOf(message.content);
   if (!text.trim()) return null;
 
