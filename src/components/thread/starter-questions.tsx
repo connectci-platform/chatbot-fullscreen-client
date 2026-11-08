@@ -20,7 +20,7 @@ export function StarterQuestions({
     >
       <h2
         id="starter-questions-heading"
-        className="text-muted-foreground mb-1 text-sm"
+        className="text-muted-foreground mb-1 pl-4 text-sm"
       >
         Try asking
       </h2>
