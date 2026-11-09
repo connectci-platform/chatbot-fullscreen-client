@@ -3,40 +3,45 @@ import { act, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QUESTION_TOP_OFFSET_PX, useChatScroll } from "./use-chat-scroll";
 
-// jsdom has no layout, so the scroller's geometry is faked: each message
-// sits at a fixed offset, and scrolling just moves scrollTop.
+// jsdom has no layout, so the scroller's geometry is faked: each question
+// sits at a fixed offset in the list, the list is `listHeight` tall plus the
+// spacer under it, and scrolling just moves scrollTop.
 const geometry = {
   scrollTop: 0,
-  scrollHeight: 0,
+  listHeight: 0,
   clientHeight: 500,
   offsets: {} as Record<string, number>,
 };
+let spacer: HTMLDivElement | null = null;
+const spacerPx = () => parseInt(spacer?.style.height || "0", 10);
+const scrollHeight = () => geometry.listHeight + spacerPx();
+const maxScroll = () => scrollHeight() - geometry.clientHeight;
 const scrollTo = vi.fn((options: ScrollToOptions) => {
-  geometry.scrollTop = options.top ?? geometry.scrollTop;
+  geometry.scrollTop = Math.min(options.top ?? 0, maxScroll());
 });
 const resizeCallbacks: (() => void)[] = [];
 const resize = () => act(() => resizeCallbacks.forEach((cb) => cb()));
+/** Where a question's top is, from the top of the view. */
+const topInView = (id: string) => geometry.offsets[id] - geometry.scrollTop;
 
 function fake(scroller: HTMLDivElement) {
-  const max = () => geometry.scrollHeight - geometry.clientHeight;
   Object.defineProperties(scroller, {
     scrollTop: {
       configurable: true,
       get: () => geometry.scrollTop,
       set: (v: number) =>
-        (geometry.scrollTop = Math.max(0, Math.min(v, max()))),
+        (geometry.scrollTop = Math.max(0, Math.min(v, maxScroll()))),
     },
-    scrollHeight: { configurable: true, get: () => geometry.scrollHeight },
+    scrollHeight: { configurable: true, get: scrollHeight },
     clientHeight: { configurable: true, get: () => geometry.clientHeight },
   });
   scroller.scrollTo = scrollTo as unknown as typeof scroller.scrollTo;
   scroller.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
 }
 
-function placeMessage(el: HTMLDivElement | null, id: string) {
+function placeQuestion(el: HTMLDivElement | null, id: string) {
   if (!el) return;
-  el.getBoundingClientRect = () =>
-    ({ top: geometry.offsets[id] - geometry.scrollTop }) as DOMRect;
+  el.getBoundingClientRect = () => ({ top: topInView(id) }) as DOMRect;
 }
 
 let scroll: ReturnType<typeof useChatScroll>;
@@ -66,10 +71,15 @@ function Harness(props: { threadId: string | null; ids: string[] }) {
           <div
             key={id}
             data-message-id={id}
-            ref={(el) => placeMessage(el, id)}
+            ref={(el) => placeQuestion(el, id)}
           />
         ))}
+        <div
+          data-testid="spacer"
+          ref={chat.spacerRef}
+        />
       </div>
+      <div ref={chat.footerRef} />
     </div>
   );
 }
@@ -85,34 +95,54 @@ function reducedMotion(reduce: boolean) {
   );
 }
 
-/** A loaded thread: one question and a long answer, opened at the end. */
+type Rendered = ReturnType<typeof render>;
+
+/** A loaded thread with a long first answer, opened at its end. */
 function renderLoadedThread() {
-  geometry.scrollHeight = 2000;
-  geometry.offsets = { q1: 40, a1: 120 };
-  return render(
+  geometry.listHeight = 2000;
+  geometry.offsets = { q1: 40 };
+  const rendered = render(
     <Harness
       threadId="t-1"
-      ids={["q1", "a1"]}
+      ids={["q1"]}
+    />,
+  );
+  spacer = rendered.getByTestId("spacer") as HTMLDivElement;
+  return rendered;
+}
+
+/** Sends a follow-up, shown near the bottom of the list as it is sent. */
+function sendFollowUp({ rerender }: Rendered) {
+  act(() => scroll.scrollToQuestion());
+  geometry.offsets.q2 = 1900;
+  rerender(
+    <Harness
+      threadId="t-1"
+      ids={["q1", "q2"]}
     />,
   );
 }
 
-/** Sends a follow-up and renders it 1200px down the list. */
-function sendFollowUp(rerender: ReturnType<typeof render>["rerender"]) {
-  act(() => scroll.scrollToQuestion("q2"));
-  geometry.scrollHeight = 2400;
-  geometry.offsets.q2 = 1200;
+/**
+ * The whole answer comes back in one update, with the agent's copy of the
+ * question under a new id in place of the one shown on sending.
+ */
+function answerArrives({ rerender }: Rendered, listHeight: number) {
+  geometry.listHeight = listHeight;
+  geometry.offsets["q2-agent"] = 1900;
   rerender(
     <Harness
       threadId="t-1"
-      ids={["q1", "a1", "q2"]}
+      ids={["q1", "q2-agent"]}
     />,
   );
+  resize();
 }
 
 describe("useChatScroll", () => {
   beforeEach(() => {
     geometry.scrollTop = 0;
+    spacer = null;
     scrollTo.mockClear();
     resizeCallbacks.length = 0;
     vi.stubGlobal(
@@ -129,77 +159,61 @@ describe("useChatScroll", () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it("opens a loaded thread at its end", () => {
+  it("opens a loaded thread at its end, with no spacer", () => {
     renderLoadedThread();
     expect(geometry.scrollTop).toBe(1500);
+    expect(spacerPx()).toBe(0);
     expect(scroll.isAtBottom).toBe(true);
   });
 
-  it("scrolls a new question to the top of the view, not to the bottom", () => {
-    const { rerender } = renderLoadedThread();
-    sendFollowUp(rerender);
+  it("scrolls a new question to the top of the view, making room below it", () => {
+    const rendered = renderLoadedThread();
+    sendFollowUp(rendered);
 
     expect(scrollTo).toHaveBeenCalledOnce();
     expect(scrollTo).toHaveBeenCalledWith({
-      top: 1200 - QUESTION_TOP_OFFSET_PX,
+      top: 1900 - QUESTION_TOP_OFFSET_PX,
       behavior: "smooth",
     });
-    expect(geometry.scrollTop).toBe(1184);
+    expect(topInView("q2")).toBe(QUESTION_TOP_OFFSET_PX);
+    // The list ends 100px below the question; the spacer makes up the rest.
+    expect(spacerPx()).toBe(1884 - 1500);
   });
 
-  it("holds the question in place while the answer streams in", () => {
-    const { rerender } = renderLoadedThread();
-    sendFollowUp(rerender);
+  it("holds the question at the top when the answer arrives in one piece", () => {
+    const rendered = renderLoadedThread();
+    sendFollowUp(rendered);
     scrollTo.mockClear();
 
-    for (const height of [2600, 3000, 3600]) {
-      geometry.scrollHeight = height;
-      resize();
-    }
-    rerender(
-      <Harness
-        threadId="t-1"
-        ids={["q1", "a1", "q2", "a2"]}
-      />,
-    );
+    answerArrives(rendered, 4000);
 
     expect(scrollTo).not.toHaveBeenCalled();
-    expect(geometry.scrollTop).toBe(1184);
+    expect(topInView("q2-agent")).toBe(QUESTION_TOP_OFFSET_PX);
+    expect(spacerPx()).toBe(0);
     expect(scroll.isAtBottom).toBe(false);
   });
 
-  it("moves down only as far as the question once the answer makes room", () => {
-    const { rerender } = renderLoadedThread();
-    act(() => scroll.scrollToQuestion("q2"));
-    // A short page: the question can't reach the top yet.
-    geometry.scrollHeight = 1800;
-    geometry.offsets.q2 = 1600;
-    rerender(
-      <Harness
-        threadId="t-1"
-        ids={["q1", "a1", "q2"]}
-      />,
-    );
-    expect(geometry.scrollTop).toBe(1300);
+  it("leaves space under a short answer, so the question stays at the top", () => {
+    const rendered = renderLoadedThread();
+    sendFollowUp(rendered);
+    answerArrives(rendered, 2200);
 
-    geometry.scrollHeight = 5000;
-    resize();
-    expect(geometry.scrollTop).toBe(1600 - QUESTION_TOP_OFFSET_PX);
+    expect(topInView("q2-agent")).toBe(QUESTION_TOP_OFFSET_PX);
+    expect(spacerPx()).toBe(1884 - 1700);
+    expect(scroll.isAtBottom).toBe(true);
   });
 
   it("uses an instant scroll when the person prefers reduced motion", () => {
     reducedMotion(true);
-    const { rerender } = renderLoadedThread();
-    sendFollowUp(rerender);
+    const rendered = renderLoadedThread();
+    sendFollowUp(rendered);
     expect(scrollTo).toHaveBeenCalledWith(
       expect.objectContaining({ behavior: "auto" }),
     );
 
+    answerArrives(rendered, 4000);
     act(() => scroll.scrollToBottom());
-    expect(scrollTo).toHaveBeenLastCalledWith({
-      top: 2400,
-      behavior: "auto",
-    });
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 4000, behavior: "auto" });
   });
 
   it("leaves the view alone after the person scrolls up", () => {
@@ -209,66 +223,72 @@ describe("useChatScroll", () => {
     geometry.scrollTop = 900;
     fireEvent.scroll(scroller);
 
-    geometry.scrollHeight = 2600;
+    geometry.listHeight = 2600;
     resize();
     expect(geometry.scrollTop).toBe(900);
     expect(scroll.isAtBottom).toBe(false);
   });
 
-  it("Scroll to bottom follows new text again", () => {
-    const { rerender } = renderLoadedThread();
-    sendFollowUp(rerender);
+  it("Scroll to bottom follows new content again", () => {
+    const rendered = renderLoadedThread();
+    sendFollowUp(rendered);
+    answerArrives(rendered, 4000);
     act(() => scroll.scrollToBottom());
     expect(scrollTo).toHaveBeenLastCalledWith({
-      top: 2400,
+      top: 4000,
       behavior: "smooth",
     });
 
-    geometry.scrollHeight = 3000;
+    geometry.listHeight = 4300;
     resize();
+    expect(geometry.scrollTop).toBe(3800);
+  });
+
+  it("opens another thread at its end and drops the spacer", () => {
+    const rendered = renderLoadedThread();
+    sendFollowUp(rendered);
+    expect(spacerPx()).toBeGreaterThan(0);
+
+    geometry.listHeight = 3000;
+    rendered.rerender(
+      <Harness
+        threadId="t-2"
+        ids={["x1"]}
+      />,
+    );
+    expect(spacerPx()).toBe(0);
     expect(geometry.scrollTop).toBe(2500);
   });
 
-  it("opens another thread at its end", () => {
-    const { rerender } = renderLoadedThread();
-    sendFollowUp(rerender);
-    geometry.scrollHeight = 4000;
-    rerender(
-      <Harness
-        threadId="t-2"
-        ids={["x1", "x2"]}
-      />,
-    );
-    expect(geometry.scrollTop).toBe(3500);
-  });
-
   it("keeps the first question in place when it creates the thread", () => {
-    geometry.scrollHeight = 500;
+    geometry.listHeight = 400;
     geometry.offsets = {};
-    const { rerender } = render(
+    const rendered = render(
       <Harness
         threadId={null}
         ids={[]}
       />,
     );
-    act(() => scroll.scrollToQuestion("q1"));
-    geometry.scrollHeight = 900;
+    spacer = rendered.getByTestId("spacer") as HTMLDivElement;
+    act(() => scroll.scrollToQuestion());
+    geometry.listHeight = 900;
     geometry.offsets.q1 = 300;
-    rerender(
+    rendered.rerender(
       <Harness
         threadId={null}
         ids={["q1"]}
       />,
     );
-    expect(geometry.scrollTop).toBe(300 - QUESTION_TOP_OFFSET_PX);
+    expect(topInView("q1")).toBe(QUESTION_TOP_OFFSET_PX);
 
-    geometry.scrollHeight = 1400;
-    rerender(
+    geometry.listHeight = 1400;
+    rendered.rerender(
       <Harness
         threadId="t-new"
-        ids={["q1", "a1"]}
+        ids={["q1"]}
       />,
     );
-    expect(geometry.scrollTop).toBe(300 - QUESTION_TOP_OFFSET_PX);
+    resize();
+    expect(topInView("q1")).toBe(QUESTION_TOP_OFFSET_PX);
   });
 });

@@ -63,6 +63,8 @@ vi.mock("@/hooks/use-chat-scroll", () => ({
     ...chatScroll,
     scrollRef: { current: null },
     contentRef: { current: null },
+    spacerRef: { current: null },
+    footerRef: { current: null },
   }),
 }));
 vi.mock("@/hooks/useMediaQuery", () => ({ useMediaQuery: () => true }));
@@ -74,9 +76,6 @@ function renderThread() {
     </NuqsTestingAdapter>,
   );
 }
-
-/** The id of the question the last submit sent. */
-const sentId = () => stream.submit.mock.calls.at(-1)![0].messages.at(-1).id;
 
 describe("Thread scrolling", () => {
   beforeEach(() => {
@@ -101,9 +100,10 @@ describe("Thread scrolling", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     expect(stream.submit).toHaveBeenCalledOnce();
-    expect(chatScroll.scrollToQuestion).toHaveBeenCalledExactlyOnceWith(
-      sentId(),
-    );
+    expect(chatScroll.scrollToQuestion).toHaveBeenCalledOnce();
+    expect(
+      chatScroll.scrollToQuestion.mock.invocationCallOrder[0],
+    ).toBeLessThan(stream.submit.mock.invocationCallOrder[0]);
     expect(chatScroll.scrollToBottom).not.toHaveBeenCalled();
   });
 
@@ -113,9 +113,10 @@ describe("Thread scrolling", () => {
     renderThread();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
-    expect(chatScroll.scrollToQuestion).toHaveBeenCalledExactlyOnceWith(
-      sentId(),
-    );
+    expect(chatScroll.scrollToQuestion).toHaveBeenCalledOnce();
+    expect(
+      chatScroll.scrollToQuestion.mock.invocationCallOrder[0],
+    ).toBeLessThan(stream.submit.mock.invocationCallOrder[0]);
   });
 
   it("puts Scroll to bottom in its own band above the message box", () => {
@@ -139,6 +140,8 @@ describe("Thread scrolling", () => {
     expect(button).toHaveFocus();
     fireEvent.click(button);
     expect(chatScroll.scrollToBottom).toHaveBeenCalledOnce();
+    // The button goes away at the end, so focus moves to the message box.
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveFocus();
   });
 
   it("keeps the band's space when the button is hidden at the end", () => {

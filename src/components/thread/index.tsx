@@ -164,7 +164,7 @@ export function Thread() {
     };
 
     const toolMessages = ensureToolCallsHaveResponses(stream.messages);
-    chatScroll.scrollToQuestion(newHumanMessage.id!);
+    chatScroll.scrollToQuestion();
 
     const context =
       Object.keys(artifactContext).length > 0 ? artifactContext : undefined;
@@ -454,8 +454,17 @@ export function Thread() {
                 {isLoading && !firstTokenReceived && (
                   <AssistantMessageLoading status={stream.runStatus?.message} />
                 )}
+                {/* Room for a new question to scroll to the top; sized by
+                    useChatScroll. -mt-4 cancels the list's gap. */}
+                <div
+                  ref={chatScroll.spacerRef}
+                  aria-hidden
+                  data-testid="question-spacer"
+                  className="-mt-4 shrink-0"
+                />
               </div>
               <div
+                ref={chatScroll.footerRef}
                 className={cn(
                   "sticky bottom-0 flex flex-col items-center bg-white",
                   !chatStarted && "gap-8",
@@ -470,7 +479,11 @@ export function Thread() {
                 {chatStarted && (
                   <ScrollToBottomSlot
                     visible={!chatScroll.isAtBottom}
-                    onClick={chatScroll.scrollToBottom}
+                    onClick={() => {
+                      chatScroll.scrollToBottom();
+                      // The button goes away once at the end; keep focus.
+                      focusComposer();
+                    }}
                   />
                 )}
 

@@ -24,12 +24,17 @@ const SCROLL_KEYS = new Set([
 
 /**
  * follow: keep the end of the conversation in view (a loaded thread).
- * anchor: keep the question just asked at the top while its answer streams.
+ * anchor: keep the question just asked at the top while its answer arrives.
  * free: the person scrolled away, so leave the view where they put it.
  */
 type Mode = "follow" | "anchor" | "free";
 
-type Anchor = { id: string; el: HTMLElement | null; placed: boolean };
+/**
+ * The question being kept at the top. It's always the newest one, found by
+ * position rather than id: the agent's copy of a question replaces the one
+ * shown on sending, under a new id, when the answer comes back.
+ */
+type Anchor = { questionsBefore: number; placed: boolean };
 
 /** Smooth scrolling, unless the person asked for reduced motion. */
 export function scrollBehavior(): ScrollBehavior {
@@ -50,12 +55,15 @@ function isControl(target: EventTarget | null) {
 /**
  * Scrolling for the conversation. A loaded thread opens at its end. A new
  * question scrolls to the top of the view and stays there while the answer
- * arrives below it, so the person reads from the start rather than being
- * pulled along with each new line. Once they scroll themselves, the view is
+ * arrives below it, so the person reads from the start rather than landing
+ * at its end. A spacer under the newest turn gives the question room to
+ * reach the top when what follows it is shorter than the view; it shrinks
+ * as the answer fills in. Once the person scrolls themselves, the view is
  * theirs: back at the end it follows new text again, anywhere else it stays.
  *
- * Attach `scrollRef` to the scrolling element and `contentRef` to the
- * message list inside it. Question elements carry `data-message-id`.
+ * Attach `scrollRef` to the scrolling element, `contentRef` to the message
+ * list inside it, `spacerRef` to an empty element last in that list, and
+ * `footerRef` to the composer below it. Questions carry `data-message-id`.
  */
 export function useChatScroll({
   threadId,
@@ -67,6 +75,8 @@ export function useChatScroll({
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const spacerRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
   const mode = useRef<Mode>("follow");
   const anchor = useRef<Anchor | null>(null);
   const anchorBehavior = useRef<ScrollBehavior>("auto");
@@ -86,16 +96,22 @@ export function useChatScroll({
     return atBottom;
   }, []);
 
-  const findAnchor = useCallback(() => {
-    const current = anchor.current;
-    if (!current) return null;
-    if (current.el?.isConnected) return current.el;
-    const match = Array.from(
-      contentRef.current?.querySelectorAll<HTMLElement>("[data-message-id]") ??
-        [],
-    ).find((el) => el.dataset.messageId === current.id);
-    current.el = match ?? null;
-    return current.el;
+  const questions = useCallback(
+    () =>
+      Array.from(
+        contentRef.current?.querySelectorAll<HTMLElement>(
+          "[data-message-id]",
+        ) ?? [],
+      ),
+    [],
+  );
+
+  // Set directly on the element: it changes with layout, not with state.
+  const spacerPx = useRef(0);
+  const setSpacer = useCallback((height: number) => {
+    spacerPx.current = Math.max(0, Math.ceil(height));
+    const spacer = spacerRef.current;
+    if (spacer) spacer.style.height = `${spacerPx.current}px`;
   }, []);
 
   /** Puts the view where the current mode wants it. */
@@ -103,26 +119,43 @@ export function useChatScroll({
     const scroller = scrollRef.current;
     if (!scroller) return;
 
-    if (mode.current === "anchor") {
-      const el = findAnchor();
-      if (el) {
-        const max = scroller.scrollHeight - scroller.clientHeight;
-        const top =
-          scroller.scrollTop +
-          el.getBoundingClientRect().top -
-          scroller.getBoundingClientRect().top -
-          QUESTION_TOP_OFFSET_PX;
-        const target = Math.max(0, Math.min(top, max));
-        // Once the question is at the top, more answer text below it
-        // leaves the target unchanged, so streaming doesn't scroll.
-        if (Math.abs(target - scroller.scrollTop) > 1) {
-          scroller.scrollTo({ top: target, behavior: anchorBehavior.current });
+    const all = questions();
+    const current = anchor.current;
+    const question =
+      current && (current.placed || all.length > current.questionsBefore)
+        ? all.at(-1)
+        : undefined;
+
+    if (current?.placed && !question) {
+      // The conversation went away (another thread loaded): open at its end.
+      mode.current = "follow";
+      anchor.current = null;
+      setSpacer(0);
+    }
+
+    if (question) {
+      const target =
+        scroller.scrollTop +
+        question.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top -
+        QUESTION_TOP_OFFSET_PX;
+      // Room the question needs below it to scroll to the top: zero once
+      // the answer fills the view. Only an anchored question can grow it.
+      const withoutSpacer =
+        scroller.scrollHeight - spacerPx.current - scroller.clientHeight;
+      const needed = Math.max(0, target - withoutSpacer);
+      setSpacer(
+        mode.current === "anchor" ? needed : Math.min(spacerPx.current, needed),
+      );
+
+      if (mode.current === "anchor") {
+        const top = Math.max(0, target);
+        // Once the question is at the top, the answer arriving below it
+        // leaves the target unchanged, so it doesn't scroll.
+        if (Math.abs(top - scroller.scrollTop) > 1) {
+          scroller.scrollTo({ top, behavior: anchorBehavior.current });
         }
-        anchor.current!.placed = true;
-      } else if (anchor.current?.placed) {
-        // The question went away (another thread loaded): open at the end.
-        mode.current = "follow";
-        anchor.current = null;
+        current!.placed = true;
       }
     }
 
@@ -130,7 +163,7 @@ export function useChatScroll({
       scroller.scrollTop = scroller.scrollHeight;
     }
     measure();
-  }, [findAnchor, measure]);
+  }, [measure, questions, setSpacer]);
 
   useEffect(() => {
     const scroller = scrollRef.current;
@@ -140,9 +173,8 @@ export function useChatScroll({
       const byPerson =
         draggingScrollbar.current || Date.now() < userScrollUntil.current;
       const atBottom = measure();
-      if (byPerson) {
+      if (byPerson && mode.current !== (atBottom ? "follow" : "free")) {
         mode.current = atBottom ? "follow" : "free";
-        anchor.current = null;
       }
     };
     const onWheel = () => {
@@ -173,11 +205,14 @@ export function useChatScroll({
     scroller.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("pointerup", onPointerUp);
 
+    // The view, the messages, and the composer (which grows with a long
+    // question or the Turnstile check) all move where the end is.
     let observer: ResizeObserver | undefined;
     if (typeof ResizeObserver !== "undefined") {
       observer = new ResizeObserver(() => settle());
-      observer.observe(scroller);
-      if (contentRef.current) observer.observe(contentRef.current);
+      for (const el of [scroller, contentRef.current, footerRef.current]) {
+        if (el) observer.observe(el);
+      }
     }
 
     return () => {
@@ -195,9 +230,9 @@ export function useChatScroll({
     settle();
   }, [contentVersion, settle]);
 
-  // Opening another thread (or a new conversation) starts at its end. The
-  // first question of a new conversation creates its thread id; that's the
-  // same conversation, so its anchor stays.
+  // Opening another thread (or a new conversation) starts at its end, with
+  // no spacer. The first question of a new conversation creates its thread
+  // id; that's the same conversation, so its anchor stays.
   const previousThreadId = useRef(threadId);
   useEffect(() => {
     const previous = previousThreadId.current;
@@ -206,25 +241,21 @@ export function useChatScroll({
     if (previous === null && mode.current === "anchor") return;
     mode.current = "follow";
     anchor.current = null;
+    setSpacer(0);
     settle();
-  }, [threadId, settle]);
+  }, [threadId, settle, setSpacer]);
 
-  /** Call as a question is sent, with the id its message will render with. */
-  const scrollToQuestion = useCallback(
-    (messageId: string) => {
-      mode.current = "anchor";
-      anchor.current = { id: messageId, el: null, placed: false };
-      anchorBehavior.current = scrollBehavior();
-      userScrollUntil.current = 0;
-      settle();
-    },
-    [settle],
-  );
+  /** Call as a question is sent, before it renders. */
+  const scrollToQuestion = useCallback(() => {
+    mode.current = "anchor";
+    anchor.current = { questionsBefore: questions().length, placed: false };
+    anchorBehavior.current = scrollBehavior();
+    userScrollUntil.current = 0;
+  }, [questions]);
 
   const scrollToBottom = useCallback(() => {
     const scroller = scrollRef.current;
     mode.current = "follow";
-    anchor.current = null;
     scroller?.scrollTo({
       top: scroller.scrollHeight,
       behavior: scrollBehavior(),
@@ -234,6 +265,8 @@ export function useChatScroll({
   return {
     scrollRef,
     contentRef,
+    spacerRef,
+    footerRef,
     isAtBottom,
     scrollToQuestion,
     scrollToBottom,
