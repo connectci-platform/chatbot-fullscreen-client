@@ -86,13 +86,18 @@ function view(messages: Message[]): SoftwareComparisonView {
   return latestComparison(messages)!;
 }
 
+/** The cell for this software on this resource, whichever way the grid runs. */
 function cellText(software: string, resource: string) {
   const table = screen.getByRole("table");
   const headers = within(table)
     .getAllByRole("columnheader")
     .map((h) => h.textContent);
-  const row = within(table).getByRole("row", { name: new RegExp(software) });
-  return within(row).getAllByRole("cell")[headers.indexOf(resource) - 1]
+  const [rowName, column] =
+    headers[0] === "Resource" ? [resource, software] : [software, resource];
+  const row = within(table).getByRole("row", {
+    name: new RegExp(`^${rowName}\\b`),
+  });
+  return within(row).getAllByRole("cell")[headers.indexOf(column) - 1]
     .textContent;
 }
 
@@ -102,9 +107,16 @@ describe("SoftwareComparisonGrid", () => {
       <SoftwareComparisonGrid view={view([...details(), ...comparison()])} />,
     );
 
+    // Four resources and three packages: resources run down the side.
     expect(
       screen.getAllByRole("columnheader").map((h) => h.textContent),
-    ).toEqual(["Software", "anvil", "delta", "deltaai", "expanse"]);
+    ).toEqual(["Resource", "pytorch", "gromacs", "notarealpkg"]);
+    expect(screen.getAllByRole("rowheader").map((h) => h.textContent)).toEqual([
+      "anvil",
+      "delta",
+      "deltaai",
+      "expanse",
+    ]);
     expect(cellText("pytorch", "anvil")).toContain("✓ Listed");
     expect(cellText("pytorch", "anvil")).toContain("21.09-py3");
     expect(cellText("pytorch", "anvil")).toContain("1 more");
@@ -199,7 +211,7 @@ describe("SoftwareComparisonGrid", () => {
     ).toBeTruthy();
   });
 
-  it("scrolls many resources sideways with the software column pinned", () => {
+  it("lists many resources down the side with their names pinned", () => {
     const many = Array.from({ length: 25 }, (_, i) => `resource-${i}`);
     render(
       <SoftwareComparisonGrid
@@ -221,9 +233,35 @@ describe("SoftwareComparisonGrid", () => {
     });
     expect(region.className).toContain("overflow-x-auto");
     expect(region.getAttribute("tabindex")).toBe("0");
-    expect(screen.getAllByRole("columnheader")).toHaveLength(26);
     expect(
-      screen.getByRole("rowheader", { name: "gromacs" }).className,
+      screen.getAllByRole("columnheader").map((h) => h.textContent),
+    ).toEqual(["Resource", "gromacs"]);
+    expect(screen.getAllByRole("rowheader")).toHaveLength(25);
+    expect(
+      screen.getByRole("rowheader", { name: "resource-0" }).className,
+    ).toContain("sticky");
+    expect(cellText("gromacs", "resource-0")).toContain("Listed");
+    expect(cellText("gromacs", "resource-9")).toBe("Not listed");
+  });
+
+  it("keeps software down the side when there are more packages than resources", () => {
+    render(
+      <SoftwareComparisonGrid
+        view={view(
+          comparison("c", {
+            ...COMPARE,
+            all_resources_found: ["delta"],
+            requested_resources: ["delta"],
+          }),
+        )}
+      />,
+    );
+
+    expect(
+      screen.getAllByRole("columnheader").map((h) => h.textContent),
+    ).toEqual(["Software", "delta"]);
+    expect(
+      screen.getByRole("rowheader", { name: "pytorch" }).className,
     ).toContain("sticky");
   });
 });
