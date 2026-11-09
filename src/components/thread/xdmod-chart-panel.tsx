@@ -9,6 +9,7 @@ import {
   shownCount,
 } from "@/lib/chart-export";
 import { newestPanelStep } from "@/lib/software-comparison";
+import { getSuggestedQuestions } from "@/lib/suggested-questions";
 import { cn } from "@/lib/utils";
 import { chartViewsByMessage, type ChartView } from "@/lib/xdmod-chart";
 import { useStreamContext } from "@/providers/Stream";
@@ -33,10 +34,13 @@ const BUTTON =
 
 function ChartBody({
   view,
+  questions,
   busy,
   onAsk,
 }: {
   view: ChartView;
+  /** What the answer that drew the chart suggests asking next. */
+  questions: string[];
   busy: boolean;
   onAsk: (text: string) => void;
 }) {
@@ -117,7 +121,7 @@ function ChartBody({
 
       <SuggestedQuestions
         heading="Ask next"
-        questions={view.followUps}
+        questions={questions}
         onAsk={onAsk}
         disabled={busy}
         compact
@@ -191,6 +195,12 @@ export function XdmodChartPanel({ onAsk }: { onAsk: (text: string) => void }) {
   const [selected, setSelected] = useState<string | null>(null);
   const view = turn?.find((v) => v.key === selected) ?? turn?.[0] ?? null;
 
+  const answerId = view?.messageId;
+  const questions = useMemo(
+    () => getSuggestedQuestions(stream.messages.find((m) => m.id === answerId)),
+    [stream.messages, answerId],
+  );
+
   const [Artifact, { open, setOpen }] = useArtifact();
   const owns = useMemo(
     () => newestPanelStep(stream.messages) === "chart",
@@ -237,6 +247,7 @@ export function XdmodChartPanel({ onAsk }: { onAsk: (text: string) => void }) {
         <ChartBody
           key={view.key}
           view={view}
+          questions={questions}
           busy={stream.isLoading}
           onAsk={onAsk}
         />

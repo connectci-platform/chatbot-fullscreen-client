@@ -926,14 +926,61 @@ describe("XdmodChartPanel", () => {
     ]);
   });
 
-  it("asks a follow-up as if typed", () => {
+  it("offers the answer's suggested questions and asks one as if typed", () => {
     const onAsk = vi.fn();
-    useMessages(turn(payload({ unit: "Day" })));
+    const messages = turn(payload());
+    messages[3] = {
+      ...messages[3],
+      additional_kwargs: {
+        suggested_questions: [
+          "How does this compare to last year?",
+          "Which resources used the most?",
+        ],
+      },
+    } as Message;
+    useMessages(messages);
     render(tree(onAsk));
+    const next = screen.getByRole("region", { name: "Ask next" });
+    expect(within(next).getAllByRole("button")).toHaveLength(2);
     fireEvent.click(
-      screen.getByRole("button", { name: "Show this by month instead" }),
+      within(next).getByRole("button", {
+        name: "Which resources used the most?",
+      }),
     );
-    expect(onAsk).toHaveBeenCalledWith("Show this by month instead");
+    expect(onAsk).toHaveBeenCalledWith("Which resources used the most?");
+  });
+
+  it("has no Ask next when the answer suggests nothing", () => {
+    useMessages(turn(payload({ unit: "Day" })));
+    render(tree());
+    expect(document.querySelector("svg.recharts-surface")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Ask next" })).toBeNull();
+    expect(screen.queryByText("Ask next")).toBeNull();
+  });
+
+  it("shows the suggestions of the answer that drew the picked chart", () => {
+    const older = turn(payload(), "old");
+    older[3] = {
+      ...older[3],
+      additional_kwargs: { suggested_questions: ["Older question?"] },
+    } as Message;
+    const newer = turn(bars(), "new");
+    newer[3] = {
+      ...newer[3],
+      additional_kwargs: { suggested_questions: ["Newer question?"] },
+    } as Message;
+    useMessages([...older, ...newer]);
+    render(tree());
+    expect(
+      screen.getByRole("button", { name: "Newer question?" }),
+    ).toBeTruthy();
+    act(() => showChart("old"));
+    expect(
+      screen.getByRole("button", { name: "Older question?" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Newer question?" }),
+    ).toBeNull();
   });
 
   it("links to the measure in XDMoD in a new tab, saying its dates differ", () => {

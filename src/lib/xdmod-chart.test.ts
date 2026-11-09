@@ -433,57 +433,6 @@ describe("chartViewsByMessage", () => {
       ).toContain("mean-of-jobs");
     });
   });
-
-  describe("followUps", () => {
-    it("offers monthly for Day unit, capped at three", () => {
-      const v = view(payload({ unit: "Day" }))!;
-      expect(v.followUps).toContain("Show this by month instead");
-      expect(v.followUps.length).toBeLessThanOrEqual(3);
-    });
-
-    it("offers a resource comparison for one series, with ACEs when needed", () => {
-      expect(view(payload({ statistic: "job_count" }))!.followUps).toContain(
-        "Compare this across resources",
-      );
-      expect(
-        view(
-          payload({
-            group_by: "resource",
-            dimension: { name: "resource", ordered: false },
-          }),
-        )!.followUps,
-      ).toContain("Compare this across resources using ACEs");
-    });
-
-    it("offers it for one filtered resource", () => {
-      const v = view(
-        aggregate({
-          group_by: "queue",
-          dimension: { name: "queue", ordered: false },
-          statistic: "job_count",
-          filters: { notes: ["Resource: Anvil"] },
-        }),
-      )!;
-      expect(v.followUps).toContain("Compare this across resources");
-    });
-
-    it("offers wait time by job size and the job-size mix", () => {
-      const v = view(payload({ statistic: "avg_waitduration_hours" }))!;
-      expect(v.followUps).toContain("Show wait time by job size");
-      expect(view(payload())!.followUps).toContain(
-        "Show the job-size mix for this period",
-      );
-      const sized = view(
-        aggregate({
-          group_by: "jobsize",
-          dimension: { name: "jobsize", ordered: true },
-        }),
-      )!;
-      expect(sized.followUps).not.toContain(
-        "Show the job-size mix for this period",
-      );
-    });
-  });
 });
 
 describe("data_through precision", () => {

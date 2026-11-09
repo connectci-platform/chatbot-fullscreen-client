@@ -7,6 +7,7 @@ import { MarkdownText } from "../markdown-text";
 import { LoadExternalComponent } from "@langchain/langgraph-sdk/react-ui";
 import { cn } from "@/lib/utils";
 import { getCapabilitySuggestions } from "@/lib/capability-suggestions";
+import { getSuggestedQuestions } from "@/lib/suggested-questions";
 import { SuggestedQuestions } from "../suggested-questions";
 import { Fragment } from "react/jsx-runtime";
 import { isAgentInboxInterruptSchema } from "@/lib/agent-inbox-interrupt";
@@ -101,6 +102,15 @@ export function AssistantMessage({
     (m) => m.type === "ai" || m.type === "tool",
   );
   const threadInterrupt = thread.interrupt;
+  // Only the newest answer offers what to ask next: once a newer question is
+  // asked, an earlier answer's suggestions are stale.
+  const isLatestAnswer =
+    !!message?.id &&
+    thread.messages.findLast((m) => m.type !== "tool")?.id === message.id;
+  const nextQuestions =
+    isLatestAnswer && !isLoading && suggestions.length === 0
+      ? getSuggestedQuestions(message)
+      : [];
 
   if (message?.type === "tool") {
     return null;
@@ -138,6 +148,14 @@ export function AssistantMessage({
             questions={suggestions}
             onAsk={onAsk}
             disabled={isLoading}
+            compact
+          />
+        )}
+        {onAsk && nextQuestions.length > 0 && (
+          <SuggestedQuestions
+            heading="Ask next"
+            questions={nextQuestions}
+            onAsk={onAsk}
             compact
           />
         )}

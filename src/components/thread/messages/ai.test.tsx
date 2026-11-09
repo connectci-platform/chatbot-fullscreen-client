@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "@langchain/langgraph-sdk";
@@ -211,6 +211,115 @@ describe("AssistantMessage", () => {
       ];
       renderMessage(aiMessage);
       expect(screen.queryByRole("button", { name: "Show chart" })).toBeNull();
+    });
+  });
+
+  describe("with suggested questions", () => {
+    const question: Message = { id: "h-q", type: "human", content: "Hi" };
+    const withNext = (id: string, questions: unknown): Message =>
+      ({
+        id,
+        type: "ai",
+        content: "Here's how.",
+        additional_kwargs: { suggested_questions: questions },
+      }) as Message;
+    const ask = (message: Message, isLoading = false) => {
+      const onAsk = vi.fn();
+      render(
+        <NuqsTestingAdapter>
+          <AssistantMessage
+            message={message}
+            isLoading={isLoading}
+            onAsk={onAsk}
+          />
+        </NuqsTestingAdapter>,
+      );
+      return onAsk;
+    };
+
+    it("offers them under the latest answer as buttons", () => {
+      const answer = withNext("ai-n", ["What is Delta?", "How do I log in?"]);
+      stream.messages = [question, answer];
+      ask(answer);
+      const next = screen.getByRole("region", { name: "Ask next" });
+      expect(
+        within(next)
+          .getAllByRole("button")
+          .map((b) => b.textContent),
+      ).toEqual(["What is Delta?", "How do I log in?"]);
+    });
+
+    it("sends the question when one is clicked", () => {
+      const answer = withNext("ai-n", ["What is Delta?"]);
+      stream.messages = [question, answer];
+      const onAsk = ask(answer);
+      fireEvent.click(screen.getByRole("button", { name: "What is Delta?" }));
+      expect(onAsk).toHaveBeenCalledWith("What is Delta?");
+    });
+
+    it("drops them from an earlier answer", () => {
+      const earlier = withNext("ai-old", ["What is Delta?"]);
+      stream.messages = [
+        question,
+        earlier,
+        { id: "h-2", type: "human", content: "Thanks" },
+        withNext("ai-new", ["What is Anvil?"]),
+      ];
+      ask(earlier);
+      expect(screen.queryByText("Ask next")).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "What is Delta?" }),
+      ).toBeNull();
+    });
+
+    it("drops them once a newer question is asked", () => {
+      const answer = withNext("ai-n", ["What is Delta?"]);
+      stream.messages = [
+        question,
+        answer,
+        { id: "h-2", type: "human", content: "Next" },
+      ];
+      ask(answer);
+      expect(screen.queryByText("Ask next")).toBeNull();
+    });
+
+    it("hides them while loading", () => {
+      const answer = withNext("ai-n", ["What is Delta?"]);
+      stream.messages = [question, answer];
+      ask(answer, true);
+      expect(screen.queryByText("Ask next")).toBeNull();
+    });
+
+    it("shows nothing for an answer without them", () => {
+      const answer: Message = { id: "ai-n", type: "ai", content: "Done." };
+      stream.messages = [question, answer];
+      ask(answer);
+      expect(screen.queryByText("Ask next")).toBeNull();
+    });
+
+    it("keeps the capability answer's own examples instead", () => {
+      const overview = {
+        id: "ai-cap",
+        type: "ai",
+        content: "I can help with these.",
+        additional_kwargs: {
+          capability_overview: true,
+          suggestions: ["Find software on Delta"],
+          suggested_questions: ["What is Delta?"],
+        },
+      } as Message;
+      stream.messages = [question, overview];
+      ask(overview);
+      expect(
+        screen.getByRole("region", { name: "Try one of these" }),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: "Find software on Delta" }),
+      ).toBeTruthy();
+      expect(screen.queryByText("Ask next")).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "What is Delta?" }),
+      ).toBeNull();
     });
   });
 

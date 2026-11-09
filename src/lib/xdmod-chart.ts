@@ -1,7 +1,6 @@
 import type { Message } from "@langchain/langgraph-sdk";
 
 const CHART_TOOL = "get_chart_data";
-const MAX_FOLLOW_UPS = 3;
 /** The palette's size and the server's default limit: more lines can't be told apart. */
 export const MAX_SERIES = 10;
 
@@ -103,7 +102,6 @@ export type ChartView = {
   caption: CaptionFacts;
   /** An https link into XDMoD, or null when there is none to offer. */
   link: string | null;
-  followUps: string[];
 };
 
 function isRecord(v: unknown): v is Json {
@@ -296,33 +294,6 @@ function warningsFor(chart: ChartPayload): CaptionWarning[] {
   return warnings;
 }
 
-function followUpsFor(
-  chart: ChartPayload,
-  kind: ChartView["kind"],
-  warnings: CaptionWarning[],
-): string[] {
-  const out: string[] = [];
-  if (chart.unit === "Day") out.push("Show this by month instead");
-  const oneSeries = kind === "line" && chart.series?.length === 1;
-  const oneResource =
-    chart.group_by !== "resource" &&
-    chart.filters.notes.some((n) => /\bresource\b/i.test(n));
-  if (oneSeries || oneResource) {
-    out.push(
-      warnings.includes("not-comparable-across-resources")
-        ? "Compare this across resources using ACEs"
-        : "Compare this across resources",
-    );
-  }
-  if (chart.statistic.includes("waitduration")) {
-    out.push("Show wait time by job size");
-  }
-  if (chart.realm.toLowerCase() === "jobs" && chart.group_by !== "jobsize") {
-    out.push("Show the job-size mix for this period");
-  }
-  return out.slice(0, MAX_FOLLOW_UPS);
-}
-
 function toView(
   key: string,
   messageId: string,
@@ -437,7 +408,6 @@ function toView(
     },
     // The payload crossed a network boundary: only a web link is followed.
     link: chart.link?.startsWith("https:") ? chart.link : null,
-    followUps: followUpsFor(chart, kind, warnings),
   };
 }
 
