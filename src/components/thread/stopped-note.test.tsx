@@ -197,4 +197,119 @@ describe("the Stopped note", () => {
     renderThread();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
+
+  const savedStop: Message = {
+    id: "a-1",
+    type: "ai",
+    content: "Anvil is a",
+    response_metadata: { stopped: true },
+  };
+  const later: Message = { id: "q-2", type: "human", content: "Delta?" };
+  const laterAnswer: Message = { id: "a-2", type: "ai", content: "Delta is." };
+
+  it("shows under an answer the agent saved as stopped, as after a reload", () => {
+    stream.messages = [question, savedStop];
+    renderThread();
+    expect(screen.getByText("Anvil is a")).toBeTruthy();
+    expect(note()).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.queryByText(/No documentation was retrieved/)).toBeNull();
+  });
+
+  it("keeps an earlier stopped turn's text and note after the next answer", () => {
+    stream.messages = [question, savedStop, later, laterAnswer];
+    renderThread();
+    expect(screen.getByText("Anvil is a")).toBeTruthy();
+    const kept = note()!;
+    expect(
+      screen.getByText("Anvil is a").compareDocumentPosition(kept) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      kept.compareDocumentPosition(screen.getByText("Delta?")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // Only the latest unanswered turn can be asked again.
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("shows no empty answer for a stop before any text", () => {
+    stream.messages = [question, { ...savedStop, content: "" }];
+    const { container } = renderThread();
+    expect(note()).toBeTruthy();
+    expect(container.querySelectorAll("div.group.mr-auto")).toHaveLength(0);
+  });
+
+  it("Retry replaces the stopped turn instead of adding one", () => {
+    stream.messages = [question, savedStop];
+    renderThread();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    const [values, options] = stream.submit.mock.calls[0];
+    expect(values.messages).toHaveLength(1);
+    expect(options.context).toEqual({ replace_stopped_turn: true });
+    const shown = options.optimisticValues({ messages: [question, savedStop] });
+    expect(shown.messages).toHaveLength(1);
+    expect(shown.messages[0].id).not.toBe("q-1");
+  });
+
+  it("sending an edited question replaces the stopped turn", () => {
+    stream.messages = [question, savedStop];
+    renderThread();
+    fireEvent.click(screen.getByRole("button", { name: "Edit question" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const [, options] = stream.submit.mock.calls[0];
+    expect(options.context).toEqual({ replace_stopped_turn: true });
+    expect(
+      options.optimisticValues({ messages: [question, savedStop] }).messages,
+    ).toHaveLength(1);
+  });
+
+  it("a new question keeps the stopped turn", () => {
+    stream.messages = [question, savedStop];
+    renderThread();
+    const box = screen.getByRole("textbox", { name: "Message" });
+    fireEvent.change(box, { target: { value: "Delta?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const [, options] = stream.submit.mock.calls[0];
+    expect(options.context).toBeUndefined();
+    expect(
+      options.optimisticValues({ messages: [question, savedStop] }).messages,
+    ).toHaveLength(3);
+  });
+
+  it("moves focus from Cancel to Retry when the answer stops", () => {
+    stream.isLoading = true;
+    const { rerender } = renderThread();
+    const cancel = screen.getByRole("button", { name: /cancel/i });
+    cancel.focus();
+    fireEvent.click(cancel);
+
+    stream.isLoading = false;
+    stream.stopped = true;
+    rerender(
+      <NuqsTestingAdapter searchParams="?threadId=t-1">
+        <Thread />
+      </NuqsTestingAdapter>,
+    );
+    expect(screen.getByRole("button", { name: "Retry" })).toHaveFocus();
+  });
+
+  it("moves focus to the message box when a stop leaves no note", () => {
+    stream.isLoading = true;
+    const { rerender } = renderThread();
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+    // The answer was delivered before the stop reached the agent.
+    stream.isLoading = false;
+    stream.messages = [question, laterAnswer];
+    rerender(
+      <NuqsTestingAdapter searchParams="?threadId=t-1">
+        <Thread />
+      </NuqsTestingAdapter>,
+    );
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveFocus();
+  });
 });

@@ -14,6 +14,34 @@ const humanCount = (messages: Message[]) =>
   messages.filter((m) => m.type === "human").length;
 
 /**
+ * An answer the person stopped, as the agent saves it: the text that had
+ * streamed, marked in its response_metadata. It may be empty, when the stop
+ * came before any text.
+ */
+export function isStoppedAnswer(message: Message | undefined): boolean {
+  return message?.type === "ai" && message.response_metadata?.stopped === true;
+}
+
+/**
+ * Where the latest question starts, when nothing but a stopped answer, or
+ * nothing at all, came after it. Else -1.
+ */
+function unansweredFrom(messages: Message[]): number {
+  const at = messages.findLastIndex((m) => m.type === "human");
+  if (at === -1) return -1;
+  return messages.slice(at + 1).every(isStoppedAnswer) ? at : -1;
+}
+
+/**
+ * The thread without its unanswered last turn, which Retry and Edit replace.
+ * Unchanged when the last question was answered.
+ */
+export function withoutUnansweredTurn(messages: Message[]): Message[] {
+  const at = unansweredFrom(messages);
+  return at === -1 ? messages : messages.slice(0, at);
+}
+
+/**
  * What a stop keeps of the turn on screen: the conversation up to the
  * question, plus any answer text that had streamed. Tool calls are dropped
  * from that text, since their results will never come.
@@ -33,9 +61,11 @@ export function stoppedTurn(messages: Message[]): {
 
 /**
  * After a stop the SDK swaps in the thread as the agent saved it. The agent
- * saves the question when the run starts but never a cut-off answer, so the
- * partial text goes back after it. A saved reply means the answer was
- * delivered before the stop reached the agent: that is shown as it is.
+ * saves the question when the run starts, and the cut-off answer, marked
+ * stopped, once the stop reaches it. A read that comes before that has only
+ * the question, so the partial text goes back after it. A saved reply that
+ * isn't marked stopped means the answer was delivered before the stop
+ * reached the agent: that is shown as it is.
  */
 export function afterStop(
   saved: Message[],
@@ -45,9 +75,11 @@ export function afterStop(
   if (humanCount(saved) < humanCount(turn.onScreen)) {
     return { messages: turn.onScreen };
   }
-  if (shown(saved).at(-1)?.type === "human") {
+  const last = shown(saved).at(-1);
+  if (last?.type === "human") {
     return { messages: [...saved, ...turn.partial] };
   }
+  if (isStoppedAnswer(last)) return { messages: saved };
   return "delivered";
 }
 
@@ -55,7 +87,8 @@ export function afterStop(
  * The question to show a Stopped note under, or null. That is the last
  * question when nothing answered it and no run is going, which also covers a
  * reloaded thread. `stopped` is set when the person stopped this turn here,
- * so the note also shows under the answer text that had streamed.
+ * so the note also shows under the answer text that had streamed. An answer
+ * the agent saved as stopped reads the same way, here or after a reload.
  *
  * A thread reloaded while the agent is still answering also reads as
  * unanswered: the agent doesn't report a thread's active run (its history has
@@ -83,7 +116,11 @@ export function unansweredQuestion({
   const at = visible.findLastIndex((m) => m.type === "human");
   if (at === -1) return null;
   const question = visible[at];
-  const stoppedHere = stopped || isStopError(error);
-  if (at === visible.length - 1) return { question, stoppedHere };
+  const savedStopped =
+    unansweredFrom(visible) === at && at < visible.length - 1;
+  const stoppedHere = stopped || savedStopped || isStopError(error);
+  if (at === visible.length - 1 || savedStopped) {
+    return { question, stoppedHere };
+  }
   return stopped ? { question, stoppedHere } : null;
 }

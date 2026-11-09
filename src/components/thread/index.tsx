@@ -1,5 +1,12 @@
 import { v4 as uuidv4 } from "uuid";
-import { ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  Fragment,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useStreamContext } from "@/providers/Stream";
@@ -43,7 +50,11 @@ import {
   questionParts,
   useRestoreQuestion,
 } from "@/hooks/use-restore-question";
-import { unansweredQuestion } from "@/lib/stopped-answer";
+import {
+  isStoppedAnswer,
+  unansweredQuestion,
+  withoutUnansweredTurn,
+} from "@/lib/stopped-answer";
 import { StoppedNote } from "./stopped-note";
 import { TurnstileChallengePanel } from "./turnstile-challenge";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -191,8 +202,26 @@ export function Thread() {
     }
   }, [stream.error, authStatus, setThreadId]);
 
-  const submitMessage = (text: string, blocks: typeof contentBlocks) => {
+  // Set by Edit: sending the edited question replaces the unanswered one.
+  const replaceOnSend = useRef(false);
+  useEffect(() => {
+    replaceOnSend.current = false;
+  }, [threadId]);
+
+  /**
+   * Sends a question. `replacing` is for Retry and Edit on an unanswered
+   * question: the new one takes that turn's place, on screen and in the
+   * thread the agent keeps, instead of following it.
+   */
+  const submitMessage = (
+    text: string,
+    blocks: typeof contentBlocks,
+    { replacing = false }: { replacing?: boolean } = {},
+  ) => {
     setFirstTokenReceived(false);
+    replaceOnSend.current = false;
+    const kept = (all: Message[]) =>
+      replacing ? withoutUnansweredTurn(all) : all;
 
     const newHumanMessage: Message = {
       id: uuidv4(),
@@ -203,7 +232,7 @@ export function Thread() {
       ] as Message["content"],
     };
 
-    const toolMessages = ensureToolCallsHaveResponses(stream.messages);
+    const toolMessages = ensureToolCallsHaveResponses(kept(stream.messages));
 
     const context =
       Object.keys(artifactContext).length > 0 ? artifactContext : undefined;
@@ -214,11 +243,12 @@ export function Thread() {
         streamMode: ["values"],
         streamSubgraphs: true,
         streamResumable: true,
+        ...(replacing && { context: { replace_stopped_turn: true } }),
         optimisticValues: (prev) => ({
           ...prev,
           context,
           messages: [
-            ...(prev.messages ?? []),
+            ...kept(prev.messages ?? []),
             ...toolMessages,
             newHumanMessage,
           ],
@@ -235,7 +265,9 @@ export function Thread() {
       awaitingCheck
     )
       return;
-    submitMessage(input, contentBlocks);
+    submitMessage(input, contentBlocks, {
+      replacing: replaceOnSend.current && !!unanswered,
+    });
     setInput("");
     setContentBlocks([]);
   };
@@ -274,7 +306,7 @@ export function Thread() {
     const parts = unansweredParts();
     if (!parts || awaitingCheck || retrying.current) return;
     retrying.current = true;
-    submitMessage(parts.text, parts.blocks);
+    submitMessage(parts.text, parts.blocks, { replacing: true });
   };
 
   /**
@@ -288,8 +320,22 @@ export function Thread() {
       draft.trim() ? `${draft}\n${parts.text}` : parts.text,
     );
     setContentBlocks((blocks) => [...blocks, ...parts.blocks]);
+    replaceOnSend.current = true;
     focusComposer();
   };
+
+  // Cancel goes away when the run stops, which would drop focus to the page.
+  // It moves to the Stopped note's Retry, or to the message box without one.
+  const retryButton = useRef<HTMLButtonElement>(null);
+  const focusAfterStop = useRef(false);
+  useEffect(() => {
+    if (isLoading || !focusAfterStop.current) return;
+    focusAfterStop.current = false;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    if (retryButton.current) retryButton.current.focus({ preventScroll: true });
+    else focusComposer();
+  });
 
   const chatStarted = !!threadId || !!messages.length;
   const showOfficeHours = !chatStarted && !chatHistoryOpen;
@@ -445,7 +491,7 @@ export function Thread() {
                   )}
                   {messages
                     .filter((m) => !m.id?.startsWith(DO_NOT_RENDER_ID_PREFIX))
-                    .map((message, index) =>
+                    .map((message, index, shownMessages) =>
                       message.type === "human" ? (
                         <HumanMessage
                           key={message.id || `${message.type}-${index}`}
@@ -453,18 +499,29 @@ export function Thread() {
                           isLoading={isLoading}
                         />
                       ) : (
-                        <AssistantMessage
+                        <Fragment
                           key={message.id || `${message.type}-${index}`}
-                          message={message}
-                          isLoading={isLoading}
-                          onAsk={askSuggested}
-                          awaitingCheck={awaitingCheck}
-                          chartKey={
-                            message.id
-                              ? chartViews.get(message.id)?.[0]?.key
-                              : undefined
-                          }
-                        />
+                        >
+                          <AssistantMessage
+                            message={message}
+                            isLoading={isLoading}
+                            onAsk={askSuggested}
+                            awaitingCheck={awaitingCheck}
+                            chartKey={
+                              message.id
+                                ? chartViews.get(message.id)?.[0]?.key
+                                : undefined
+                            }
+                          />
+                          {/* An earlier stopped turn keeps its note; the
+                            latest one's, with Retry and Edit, is below. */}
+                          {isStoppedAnswer(message) &&
+                            shownMessages[index + 1]?.type === "human" && (
+                              <p className="text-muted-foreground text-sm">
+                                You stopped this answer.
+                              </p>
+                            )}
+                        </Fragment>
                       ),
                     )}
                   {/* Special rendering case where there are no AI/tool messages, but there is an interrupt.
@@ -478,6 +535,7 @@ export function Thread() {
                   )}
                   <StoppedNote
                     turn={unanswered}
+                    retryRef={retryButton}
                     onRetry={retryQuestion}
                     onEdit={editQuestion}
                   />
@@ -574,7 +632,10 @@ export function Thread() {
                           {stream.isLoading ? (
                             <Button
                               key="stop"
-                              onClick={() => stream.stop()}
+                              onClick={() => {
+                                focusAfterStop.current = true;
+                                stream.stop();
+                              }}
                               className="ml-auto"
                             >
                               <LoaderCircle className="h-4 w-4 animate-spin" />

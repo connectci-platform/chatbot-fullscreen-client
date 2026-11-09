@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import { Button } from "../ui/button";
 
 /**
@@ -10,11 +11,14 @@ export function StoppedNote({
   turn,
   onRetry,
   onEdit,
+  retryRef,
 }: {
   /** Null while there's nothing to show. */
   turn: { stoppedHere: boolean } | null;
   onRetry: () => void;
   onEdit: () => void;
+  /** Retry, so focus can move to it when Cancel goes away. */
+  retryRef?: Ref<HTMLButtonElement>;
 }) {
   return (
     <div
@@ -30,6 +34,7 @@ export function StoppedNote({
           </p>
           <div className="flex gap-2">
             <Button
+              ref={retryRef}
               type="button"
               variant="outline"
               size="sm"

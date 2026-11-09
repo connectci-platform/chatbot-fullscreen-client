@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "@langchain/langgraph-sdk";
-import { afterStop, stoppedTurn, unansweredQuestion } from "./stopped-answer";
+import {
+  afterStop,
+  isStoppedAnswer,
+  stoppedTurn,
+  unansweredQuestion,
+  withoutUnansweredTurn,
+} from "./stopped-answer";
 
 const earlier: Message = { id: "h-0", type: "human", content: "Hi" };
 const earlierReply: Message = { id: "a-0", type: "ai", content: "Hello." };
@@ -122,5 +128,53 @@ describe("unansweredQuestion", () => {
     expect(
       unansweredQuestion({ ...idle, messages: [question], error: cancelled }),
     ).toEqual({ question, stoppedHere: true });
+  });
+});
+
+describe("a stopped answer the agent saved", () => {
+  const saved: Message = {
+    id: "a-1",
+    type: "ai",
+    content: "Anvil is",
+    response_metadata: { stopped: true },
+  };
+
+  it("is marked in its response_metadata", () => {
+    expect(isStoppedAnswer(saved)).toBe(true);
+    expect(isStoppedAnswer(earlierReply)).toBe(false);
+    expect(isStoppedAnswer(question)).toBe(false);
+    expect(isStoppedAnswer(undefined)).toBe(false);
+  });
+
+  it("is shown as saved after a stop, and still reads as stopped", () => {
+    const turn = stoppedTurn([earlier, earlierReply, question, partial]);
+    const thread = [earlier, earlierReply, savedQuestion, saved];
+    expect(afterStop(thread, turn)).toEqual({ messages: thread });
+  });
+
+  it("leaves its question unanswered, stopped", () => {
+    const at = unansweredQuestion({
+      messages: [earlier, earlierReply, question, saved],
+      isLoading: false,
+      error: undefined,
+      interrupted: false,
+      stopped: false,
+    });
+    expect(at).toEqual({ question, stoppedHere: true });
+  });
+
+  it("is what Retry and Edit replace, with its question", () => {
+    expect(
+      withoutUnansweredTurn([earlier, earlierReply, question, saved]),
+    ).toEqual([earlier, earlierReply]);
+    expect(withoutUnansweredTurn([earlier, earlierReply, question])).toEqual([
+      earlier,
+      earlierReply,
+    ]);
+    expect(withoutUnansweredTurn([earlier, earlierReply])).toEqual([
+      earlier,
+      earlierReply,
+    ]);
+    expect(withoutUnansweredTurn([])).toEqual([]);
   });
 });
