@@ -439,6 +439,7 @@ describe("chartViewsByMessage", () => {
               ],
               data_through: "2026-01-01",
               data_through_precision: "period",
+              data_through_source: "resource",
             },
             {
               name: "C",
@@ -451,9 +452,20 @@ describe("chartViewsByMessage", () => {
           ],
         }),
       )!;
+      // Without a source, C is said only as weakly as possible.
       expect(v.caption.earlyEnds).toEqual([
-        { name: "B", through: "2026-01-01", precision: "period" },
-        { name: "C", through: "2026-02-10", precision: "day" },
+        {
+          name: "B",
+          through: "2026-01-01",
+          precision: "period",
+          source: "resource",
+        },
+        {
+          name: "C",
+          through: "2026-02-10",
+          precision: "day",
+          source: "series",
+        },
       ]);
       expect(v.series[1]).toEqual({
         name: "B",
@@ -469,12 +481,22 @@ describe("chartViewsByMessage", () => {
         aggregate({
           categories: [
             { name: "A", value: 5 },
-            { name: "B", value: 4, data_through: "2026-10-19" },
+            {
+              name: "B",
+              value: 4,
+              data_through: "2026-10-19",
+              data_through_source: "resource",
+            },
           ],
         }),
       )!;
       expect(v.caption.earlyEnds).toEqual([
-        { name: "B", through: "2026-10-19", precision: "day" },
+        {
+          name: "B",
+          through: "2026-10-19",
+          precision: "day",
+          source: "resource",
+        },
       ]);
     });
 
@@ -492,6 +514,9 @@ describe("chartViewsByMessage", () => {
       const bad = payload();
       (bad.series as Json[])[0].data_through_precision = "week";
       expect(view(bad)).toBeNull();
+      const badSource = payload();
+      (badSource.series as Json[])[0].data_through_source = "guess";
+      expect(view(badSource)).toBeNull();
     });
   });
 

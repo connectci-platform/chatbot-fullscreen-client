@@ -86,10 +86,10 @@ function shownLine(caption: CaptionFacts, shown: number): string | null {
   const ranks = rankRange(caption, shown);
   if (ranks) {
     const offset = caption.offset ?? 0;
-    // XDMoD pages by value, so for buckets it's the largest that are skipped.
+    // XDMoD pages an ordered dimension in bucket order, not by value.
     if (caption.ordered) {
       const of = caption.total === undefined ? "" : ` of ${caption.total}`;
-      return `Showing ${shown}${of} buckets, leaving out the ${offset} largest.`;
+      return `Showing buckets ${ranks}${of}, leaving out the first ${offset}.`;
     }
     if (caption.total !== undefined) {
       return `Showing ranks ${ranks} of ${caption.total} ${caption.groupNoun ?? "groups"}, not the top ${offset}.`;
@@ -105,11 +105,44 @@ function shownLine(caption: CaptionFacts, shown: number): string | null {
     : `Showing the top ${shown} of ${caption.total} ${caption.groupNoun ?? "groups"}.`;
 }
 
-/** One series' or bar's early end, as the caption says it. */
-function earlyEndText(end: EarlyEnd, unit?: string): string {
+/** When an early end is, at the precision it's known. */
+function earlyEndWhen(end: EarlyEnd, unit?: string): string {
   return end.precision === "day"
-    ? `${end.name} through ${formatDay(end.through)}`
-    : `${end.name}, nothing after ${formatPeriod(end.through, unit)}`;
+    ? formatDay(end.through)
+    : formatPeriod(end.through, unit);
+}
+
+/** "A", "A and B", "A, B and C". */
+function listNames(names: string[]): string {
+  return names.length < 2
+    ? names.join("")
+    : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/**
+ * The early ends as one sentence, worded only as strongly as is known, with
+ * names that stop on the same date together.
+ */
+function earlyEndsLine(ends: EarlyEnd[], unit?: string): string {
+  const groups = new Map<
+    string,
+    { source: EarlyEnd["source"]; when: string; names: string[] }
+  >();
+  for (const end of ends) {
+    const when = earlyEndWhen(end, unit);
+    const key = `${end.source}|${when}`;
+    const group = groups.get(key) ?? { source: end.source, when, names: [] };
+    group.names.push(end.name);
+    groups.set(key, group);
+  }
+  const text = [...groups.values()]
+    .map((g) =>
+      g.source === "resource"
+        ? `XDMoD has no data from ${listNames(g.names)} after ${g.when}`
+        : `nothing is recorded for ${listNames(g.names)} after ${g.when}`,
+    )
+    .join("; ");
+  return `${text[0].toUpperCase()}${text.slice(1)}.`;
 }
 
 /**
@@ -141,9 +174,7 @@ export function captionLines(caption: CaptionFacts, shown: number): string[] {
     );
   }
   if (caption.earlyEnds?.length) {
-    lines.push(
-      `Some data stops earlier: ${caption.earlyEnds.map((e) => earlyEndText(e, caption.unit)).join("; ")}.`,
-    );
+    lines.push(earlyEndsLine(caption.earlyEnds, caption.unit));
   }
   const showing = shownLine(caption, shown);
   if (showing) lines.push(showing);
@@ -208,20 +239,22 @@ export function chartCsv(view: ChartView): string {
       : []),
     ...(caption.earlyEnds ?? []).map(
       (e) =>
-        (e.precision === "day"
-          ? [`Data through (${e.name})`, e.through]
-          : [
-              `No data after (${e.name})`,
-              formatPeriod(e.through, caption.unit),
-            ]) as [string, string],
+        [
+          e.source === "resource"
+            ? `No data after (${e.name})`
+            : `Nothing recorded after (${e.name})`,
+          e.precision === "day" ? e.through : earlyEndWhen(e, caption.unit),
+        ] as [string, string],
     ),
     ["Filters", caption.filters.length ? caption.filters.join("; ") : "None"],
     ...(rankRange(caption, shownCount(view))
       ? [
-          [
-            "Ranks",
-            `${rankRange(caption, shownCount(view))}${caption.ordered ? " by value" : ""}`,
-          ] as [string, string],
+          (caption.ordered
+            ? ["Buckets", `${rankRange(caption, shownCount(view))}`]
+            : [
+                "Ranks",
+                `${rankRange(caption, shownCount(view))} by value`,
+              ]) as [string, string],
         ]
       : []),
     ["Retrieved", caption.retrieved],

@@ -38,9 +38,15 @@ interface ChartPayload {
     /** Set only when this series' data stops before the chart's. */
     data_through?: string;
     data_through_precision?: "day" | "period";
+    data_through_source?: "resource" | "series";
   }[];
   /** A bar's data_through is its last day, set only when before the chart's end. */
-  categories?: { name: string; value: number | null; data_through?: string }[];
+  categories?: {
+    name: string;
+    value: number | null;
+    data_through?: string;
+    data_through_source?: "resource" | "series";
+  }[];
   has_more: boolean;
   /** How many top-ranked ones XDMoD skipped before these; absent from older payloads. */
   offset?: number;
@@ -68,6 +74,11 @@ export type EarlyEnd = {
   through: string;
   /** "day": the last day with data. "period": the start of the last period with data. */
   precision: "day" | "period";
+  /**
+   * "resource": XDMoD has no data from that resource after it. "series":
+   * only nothing recorded for this series, for reasons unknown.
+   */
+  source: "resource" | "series";
 };
 
 export type CaptionFacts = {
@@ -143,6 +154,8 @@ function isList<T>(v: unknown, check: (item: unknown) => item is T): v is T[] {
 const isPoint = (p: unknown): p is { start: string; value: Value } =>
   isRecord(p) && isString(p.start) && isValue(p.value);
 const isOptionalString = (v: unknown) => v === undefined || isString(v);
+const isSource = (v: unknown) =>
+  v === undefined || v === "resource" || v === "series";
 const isSeries = (s: unknown): s is NonNullable<ChartPayload["series"]>[0] =>
   isRecord(s) &&
   isString(s.name) &&
@@ -150,14 +163,16 @@ const isSeries = (s: unknown): s is NonNullable<ChartPayload["series"]>[0] =>
   isOptionalString(s.data_through) &&
   (s.data_through_precision === undefined ||
     s.data_through_precision === "day" ||
-    s.data_through_precision === "period");
+    s.data_through_precision === "period") &&
+  isSource(s.data_through_source);
 const isCategory = (
   c: unknown,
 ): c is NonNullable<ChartPayload["categories"]>[0] =>
   isRecord(c) &&
   isString(c.name) &&
   isValue(c.value) &&
-  isOptionalString(c.data_through);
+  isOptionalString(c.data_through) &&
+  isSource(c.data_through_source);
 const isCount = (v: unknown) =>
   v === undefined ||
   v === null ||
@@ -365,8 +380,17 @@ function earlyEnd(
   name: string,
   through: string | undefined,
   precision: "day" | "period" | undefined,
+  source: "resource" | "series" | undefined,
 ): EarlyEnd | undefined {
-  return through ? { name, through, precision: precision ?? "day" } : undefined;
+  // Without a source, nothing is known about why: say the least.
+  return through
+    ? {
+        name,
+        through,
+        precision: precision ?? "day",
+        source: source ?? "series",
+      }
+    : undefined;
 }
 
 function toView(
@@ -401,7 +425,12 @@ function toView(
             start: p.start,
             value: i > last ? p.value : fillPoint(p),
           })),
-          end: earlyEnd(s.name, s.data_through, s.data_through_precision),
+          end: earlyEnd(
+            s.name,
+            s.data_through,
+            s.data_through_precision,
+            s.data_through_source,
+          ),
         },
       ];
     });
@@ -434,7 +463,8 @@ function toView(
     }
     arrived = bars.length;
     earlyEnds = (chart.categories ?? []).flatMap(
-      (c) => earlyEnd(c.name, c.data_through, "day") ?? [],
+      (c) =>
+        earlyEnd(c.name, c.data_through, "day", c.data_through_source) ?? [],
     );
   }
 

@@ -134,11 +134,15 @@ describe("captionLines past the top", () => {
     expect(captionLines(paged, 5)).toContain(
       "Showing ranks 4 to 8, not the top 3.",
     );
+    // XDMoD pages buckets in their order, so the first ones are skipped.
     expect(
-      captionLines({ ...paged, ordered: true, hasMore: true, total: 11 }, 5),
-    ).toContain("Showing 5 of 11 buckets, leaving out the 3 largest.");
+      captionLines({ ...paged, ordered: true, hasMore: true, total: 11 }, 4),
+    ).toContain("Showing buckets 4 to 7 of 11, leaving out the first 3.");
     expect(captionLines({ ...paged, ordered: true }, 5)).toContain(
-      "Showing 5 buckets, leaving out the 3 largest.",
+      "Showing buckets 4 to 8, leaving out the first 3.",
+    );
+    expect(captionLines({ ...paged, ordered: true }, 5).join("\n")).not.toMatch(
+      /largest|by value|top/,
     );
     expect(captionLines(paged, 5).join("\n")).not.toContain("the top 5");
   });
@@ -155,14 +159,47 @@ describe("captionLines with early ends", () => {
               name: "Purdue Anvil CPU",
               through: "2026-10-19",
               precision: "day",
+              source: "resource",
             },
-            { name: "IACS Ookami", through: "2026-09-01", precision: "period" },
+            {
+              name: "IACS Ookami",
+              through: "2026-09-01",
+              precision: "period",
+              source: "series",
+            },
           ],
         },
         2,
       ),
     ).toContain(
-      "Some data stops earlier: Purdue Anvil CPU through Oct 19, 2026; IACS Ookami, nothing after Sep 2026.",
+      "XDMoD has no data from Purdue Anvil CPU after Oct 19, 2026; nothing is recorded for IACS Ookami after Sep 2026.",
+    );
+  });
+});
+
+describe("captionLines with early ends on the same date", () => {
+  it("names them together", () => {
+    const end = (name: string, through: string) => ({
+      name,
+      through,
+      precision: "day" as const,
+      source: "resource" as const,
+    });
+    expect(
+      captionLines(
+        {
+          ...CAPTION,
+          earlyEnds: [
+            end("A", "2026-11-07"),
+            end("B", "2026-11-07"),
+            end("C", "2026-10-19"),
+            end("D", "2026-11-07"),
+          ],
+        },
+        4,
+      ),
+    ).toContain(
+      "XDMoD has no data from A, B and D after Nov 7, 2026; XDMoD has no data from C after Oct 19, 2026.",
     );
   });
 });
@@ -373,24 +410,34 @@ describe("chartCsv with the newer facts", () => {
         ...lineView().caption,
         offset: 3,
         earlyEnds: [
-          { name: "Anvil, Purdue", through: "2026-10-19", precision: "day" },
-          { name: "Delta", through: "2026-09-01", precision: "period" },
+          {
+            name: "Anvil, Purdue",
+            through: "2026-10-19",
+            precision: "day",
+            source: "resource",
+          },
+          {
+            name: "Delta",
+            through: "2026-09-01",
+            precision: "period",
+            source: "series",
+          },
         ],
       },
     });
     expect(chartCsv(view).split("\n").slice(2, 6)).toEqual([
-      '"Data through (Anvil, Purdue)",2026-10-19',
-      "No data after (Delta),Sep 2026",
+      '"No data after (Anvil, Purdue)",2026-10-19',
+      "Nothing recorded after (Delta),Sep 2026",
       "Filters,Resource is Delta or Anvil",
-      "Ranks,4 to 5",
+      "Ranks,4 to 5 by value",
     ]);
-    expect(
-      chartCsv(
-        lineView({
-          caption: { ...view.caption, ordered: true, earlyEnds: [] },
-        }),
-      ),
-    ).toContain("Ranks,4 to 5 by value");
+    const ordered = chartCsv(
+      lineView({
+        caption: { ...view.caption, ordered: true, earlyEnds: [] },
+      }),
+    );
+    expect(ordered).toContain("Buckets,4 to 5");
+    expect(ordered).not.toContain("by value");
   });
 });
 
