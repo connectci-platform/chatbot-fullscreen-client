@@ -22,6 +22,9 @@ import { AnswerRating } from "./answer-rating";
 import { BarChart3 } from "lucide-react";
 import { showChart } from "../xdmod-chart-panel";
 import { focusComposer } from "../composer";
+import { useMemo } from "react";
+import { answerSources, withoutSourcesSection } from "@/lib/answer-sources";
+import { isToolCallNarration } from "@/lib/tool-narration";
 
 function CustomComponent({
   message,
@@ -119,6 +122,16 @@ export function AssistantMessage({
       ? getSuggestedQuestions(message)
       : [];
 
+  const streaming = isLoading && isLastMessage;
+  // Once the chips show, a sources list the model wrote at the end that
+  // links only those pages would list them twice.
+  const shownText = useMemo(() => {
+    if (!message || streaming) return contentString;
+    const sources = answerSources(thread.messages, message) ?? [];
+    return withoutSourcesSection(contentString, sources);
+  }, [thread.messages, message, streaming, contentString]);
+  const narration = isToolCallNarration(message, contentString);
+
   if (message?.type === "tool") {
     return null;
   }
@@ -126,14 +139,20 @@ export function AssistantMessage({
   return (
     <div className="group mr-auto flex w-full items-start gap-2">
       <div className="flex w-full flex-col gap-2">
-        {contentString.length > 0 && (
-          <div className="py-1">
-            <MarkdownText>{contentString}</MarkdownText>
-          </div>
+        {narration ? (
+          <p className="text-muted-foreground text-sm">
+            {contentString.trim()}
+          </p>
+        ) : (
+          contentString.length > 0 && (
+            <div className="py-1">
+              <MarkdownText>{shownText}</MarkdownText>
+            </div>
+          )
         )}
         <AnswerSources
           message={message}
-          streaming={isLoading && isLastMessage}
+          streaming={streaming}
         />
         {chartKey && (
           <button
@@ -184,10 +203,11 @@ export function AssistantMessage({
           isLastMessage={isLastMessage}
           hasNoAIOrToolMessages={hasNoAIOrToolMessages}
         />
-        {/* Tool-calling messages are stored with empty content; there is
-            nothing to copy or rate. Rating stays visible and comes first, so
-            the copy button fading in on hover doesn't shift it. */}
-        {contentString.length > 0 && (
+        {/* Tool-calling messages are stored with empty content or a line of
+            narration; there is nothing to copy or rate. Rating stays visible
+            and comes first, so the copy button fading in on hover doesn't
+            shift it. */}
+        {contentString.length > 0 && !narration && (
           <div className="mr-auto flex flex-wrap items-start gap-1">
             {message && (
               <AnswerRating

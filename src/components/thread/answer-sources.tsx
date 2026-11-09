@@ -72,11 +72,6 @@ const PASSAGE_COMPONENTS: Components = {
   },
 };
 
-const NO_SOURCE = {
-  unlinked: "This answer doesn't link any of the documentation it retrieved.",
-  "not-retrieved": "No documentation was retrieved for this answer.",
-} as const;
-
 export function SourceDetails({
   source,
   id,
@@ -101,6 +96,9 @@ export function SourceDetails({
         >
           {source.title}
         </h2>
+        <p className="text-muted-foreground text-sm break-words">
+          {source.host}
+        </p>
         {source.linkText && (
           <p className="text-muted-foreground text-sm">
             Linked as: {source.linkText}
@@ -162,7 +160,7 @@ export function AnswerSources({
   streaming: boolean;
 }) {
   const { messages } = useStreamContext();
-  const result = useMemo(
+  const sources = useMemo(
     () => (message ? answerSources(messages, message) : null),
     [messages, message],
   );
@@ -171,7 +169,7 @@ export function AnswerSources({
   const panelId = `source-panel-${useId()}`;
   const chips = useRef(new Map<string, HTMLButtonElement>());
   const selected =
-    result?.sources.find((source) => source.key === selectedKey) ?? null;
+    sources?.find((source) => source.key === selectedKey) ?? null;
 
   // The answer was edited or regenerated and no longer cites the open source:
   // close the panel rather than leave it empty.
@@ -207,15 +205,9 @@ export function AnswerSources({
     wasOpen.current = open;
   }, [open, selectedKey, panelId]);
 
-  if (!result || streaming) return null;
-
-  if (!result.sources.length) {
-    return result.noSource ? (
-      <p className="text-muted-foreground text-sm">
-        {NO_SOURCE[result.noSource]}
-      </p>
-    ) : null;
-  }
+  // Nothing at all when the answer links no retrieved page: a note about
+  // missing sources read like a debug message.
+  if (!sources?.length || streaming) return null;
 
   return (
     <div className="flex flex-col gap-2">
@@ -229,7 +221,7 @@ export function AnswerSources({
         aria-labelledby={`sources-${message?.id}`}
         className="flex flex-wrap gap-2"
       >
-        {result.sources.map((source) => (
+        {sources.map((source) => (
           <li key={source.key}>
             <button
               type="button"

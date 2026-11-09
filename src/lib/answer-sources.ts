@@ -20,31 +20,18 @@ export interface AnswerSource {
   /** The link as the answer wrote it. */
   url: string;
   /**
-   * Taken from the URL, never from the answer's wording: "host › path ›
-   * section". The model's link text could describe a page wrongly.
+   * Never from the answer's wording, which could describe a page wrongly:
+   * the heading the retrieved passages open with, or else a readable form
+   * of the URL's path ("Bridges 2 › User guide").
    */
   title: string;
-  /** The last two parts of the title, for the chip. */
+  /** The heading, or else the last two parts of the path, for the chip. */
   chipLabel: string;
   host: string;
   /** The answer's link text, or null for a bare URL. */
   linkText: string | null;
   /** Excerpts the documentation search returned from this page, verbatim. */
   passages: string[];
-}
-
-export interface AnswerSourcesResult {
-  sources: AnswerSource[];
-  /**
-   * Why the answer shows no source, when that is worth saying:
-   * "unlinked" when the turn searched the documentation and the answer links
-   * none of what it retrieved; "not-retrieved" when the turn used no tools
-   * and the answer makes substantive claims (from the model's own memory,
-   * the main accuracy risk), whether or not it links pages. Otherwise null:
-   * short conversational replies, and answers drawn only from live data
-   * tools, which have no document to cite.
-   */
-  noSource: "unlinked" | "not-retrieved" | null;
 }
 
 function textOf(content: Message["content"]): string {
@@ -131,31 +118,65 @@ function decode(part: string): string {
   }
 }
 
-/** "host", then each path segment, then the section. */
-function crumbs(url: URL): string[] {
-  const path = url.pathname.split("/").filter(Boolean).map(decode);
-  const section = url.hash ? [decode(url.hash.slice(1))] : [];
-  return [url.hostname, ...path, ...section];
-}
-
 function fragmentOf(url: string): string {
   return new URL(url).hash;
 }
 
-/**
- * Prose length at which an answer stops being a conversational reply (a
- * greeting, a thank-you, a one-line clarifying question) and starts making
- * claims a reader may want to check: about two sentences.
- */
-const SUBSTANTIVE_LENGTH = 160;
+/** What a chip is keyed by: the page, plus the section the link names. */
+function sourceKey(url: string): string | null {
+  const page = pageKey(url);
+  return page && `${page}${fragmentOf(url)}`;
+}
 
-/** The answer's prose: link text kept, URLs dropped, whitespace collapsed. */
-function proseLength(text: string): number {
-  return text
+/**
+ * Path segments that say nothing about the page: a language, a docs build
+ * ("latest", "stable"), a version, or a directory index.
+ */
+const NOISE_SEGMENT =
+  /^(?:en|latest|stable|current|v?\d+(?:\.\d+)*|index|default)$/i;
+
+/**
+ * The URL's path as words: "user_guide/running_jobs.html" becomes
+ * ["User guide", "Running jobs"]. The fragment is left out; anchors are
+ * often generated ids like "narrow-wysiwyg-7" that mean nothing to a reader.
+ */
+function pathWords(url: URL): string[] {
+  return url.pathname
+    .split("/")
+    .map((segment) =>
+      decode(segment)
+        .replace(/\.[a-z0-9]{1,5}$/i, "")
+        .replace(/[-_\s]+/g, " ")
+        .trim(),
+    )
+    .filter((words) => words && !NOISE_SEGMENT.test(words))
+    .map((words) => words[0].toUpperCase() + words.slice(1));
+}
+
+const HEADING_LINE = /^#{1,6}[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/;
+
+/** The heading a passage opens with, as plain text, or null. */
+function headingOf(passage: string): string | null {
+  const first = passage.trimStart().split("\n", 1)[0];
+  const match = first.match(HEADING_LINE);
+  if (!match) return null;
+  const text = match[1]
     .replace(MARKDOWN_LINK, "$1")
-    .replace(BARE_URL, "")
-    .replace(/\s+/g, " ")
-    .trim().length;
+    .replace(/[*_`]+/g, "")
+    .trim();
+  return text || null;
+}
+
+/**
+ * The heading the passages behind a link share: the section's heading for a
+ * link to a section, the page's when every passage from it opens with the
+ * same one. Null when they differ, since one section's heading would
+ * mislabel the whole page.
+ */
+function sharedHeading(passages: string[]): string | null {
+  const headings = new Set(passages.map(headingOf));
+  const [only] = headings;
+  return headings.size === 1 ? only : null;
 }
 
 /** The turn this message belongs to: everything after the last human message. */
@@ -177,7 +198,7 @@ function turnBefore(messages: Message[], index: number): Message[] {
 export function answerSources(
   messages: Message[],
   message: Message,
-): AnswerSourcesResult | null {
+): AnswerSource[] | null {
   if (message.type !== "ai" || message.tool_calls?.length) return null;
   // The capability overview is fixed text about the assistant, not a claim
   // that needs a documentation source.
@@ -204,9 +225,9 @@ export function answerSources(
   const seen = new Set<string>();
   for (const link of linksIn(text)) {
     const page = pageKey(link.url);
-    const fragment = page ? fragmentOf(link.url) : "";
-    const key = `${page}${fragment}`;
-    if (!page || seen.has(key)) continue;
+    const key = sourceKey(link.url);
+    if (!page || !key || seen.has(key)) continue;
+    const fragment = fragmentOf(link.url);
     // A link to a section is backed only by passages from that section;
     // a link to the whole page by every passage from it.
     const passages = (retrieved.get(page) ?? [])
@@ -215,26 +236,72 @@ export function answerSources(
     if (!passages.length) continue;
     seen.add(key);
     const url = new URL(link.url);
-    const parts = crumbs(url);
+    const heading = sharedHeading(passages);
+    const words = pathWords(url);
     const linkText =
       link.label && !/^https?:\/\//.test(link.label) ? link.label : null;
     sources.push({
       key,
       url: link.url,
-      title: parts.join(" › "),
-      chipLabel:
-        parts.slice(Math.max(1, parts.length - 2)).join(" › ") || url.hostname,
+      title: heading ?? (words.join(" › ") || url.hostname),
+      chipLabel: heading ?? (words.slice(-2).join(" › ") || url.hostname),
       host: url.hostname,
       linkText,
       passages,
     });
   }
+  return sources;
+}
 
-  const tools = turn.filter((m) => m.type === "tool");
-  const searchedDocs = tools.some((m) => m.name === DOCS_TOOL);
-  const fromMemory = !tools.length && proseLength(text) >= SUBSTANTIVE_LENGTH;
-  let noSource: AnswerSourcesResult["noSource"] = null;
-  if (!sources.length && searchedDocs) noSource = "unlinked";
-  else if (!sources.length && fromMemory) noSource = "not-retrieved";
-  return { sources, noSource };
+/**
+ * A line that opens a sources section: a "Sources" heading, or a bold or
+ * plain "Source:" / "Sources:" label, with whatever follows it on the line.
+ */
+function sourcesLabel(line: string): string | null {
+  const match = line
+    .trim()
+    .match(
+      /^(#{1,6}\s+)?(\*\*|__|\*|_)?sources?(?![a-z])\s*(:)?\s*\2\s*(:)?\s*(.*)$/i,
+    );
+  if (!match) return null;
+  const [, heading, emphasis, colon, trailingColon, rest] = match;
+  if (!heading && !emphasis && !colon && !trailingColon) return null;
+  return rest;
+}
+
+/**
+ * The answer without the sources list the model wrote at its end, when the
+ * chips already show every page that list links: one list per answer. The
+ * list is kept when it links anything that isn't a chip, or has a line that
+ * links nothing (a citation the chips can't stand in for). Links inside the
+ * answer's sentences are never touched.
+ */
+export function withoutSourcesSection(
+  text: string,
+  sources: AnswerSource[],
+): string {
+  if (!sources.length) return text;
+  const chips = new Set(sources.map((s) => s.key));
+  // Code is blanked so a "Sources:" line inside it can't start a section.
+  const lines = text.replace(CODE, blank).split("\n");
+  let start = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const rest = sourcesLabel(lines[i]);
+    if (rest === null) continue;
+    const body = [rest, ...lines.slice(i + 1)].filter((l) => l.trim());
+    const links = body.map(linksIn);
+    const covered =
+      links.length > 0 &&
+      links.every((found) => found.length > 0) &&
+      links.flat().every((l) => chips.has(sourceKey(l.url) ?? ""));
+    if (!covered) break;
+    start = i;
+  }
+  if (start < 0) return text;
+  const kept = text
+    .split("\n")
+    .slice(0, start)
+    .join("\n")
+    .replace(/(?:\n\s*(?:[-*_]\s*){3,})?\s*$/, "");
+  return kept.trim() ? kept : text;
 }

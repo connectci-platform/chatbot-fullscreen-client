@@ -114,7 +114,96 @@ describe("AssistantMessage", () => {
     };
     stream.messages = [search, answer];
     renderMessage(answer);
-    expect(screen.getByRole("button", { name: /user-guide/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /User guide/ })).toBeTruthy();
+  });
+
+  describe("with a sources list the model wrote", () => {
+    const url = "https://www.psc.edu/resources/bridges-2/user-guide/";
+    const search: Message = {
+      id: "tool-5",
+      type: "tool",
+      tool_call_id: "call-5",
+      name: "search_access_documents",
+      content: `Retrieved 1 documentation excerpt(s).\n\n[1] source: ${url}\nUse Globus.`,
+    };
+    const answerWith = (text: string): Message => ({
+      id: "ai-6",
+      type: "ai",
+      content: text,
+    });
+
+    it("shows only the chips when the list links nothing else", () => {
+      const answer = answerWith(
+        `Use Globus.\n\n**Sources:**\n- [Bridges-2 user guide](${url})`,
+      );
+      stream.messages = [search, answer];
+      renderMessage(answer);
+      expect(screen.getByText("Use Globus.")).toBeTruthy();
+      expect(screen.queryByText(/Sources:/)).toBeNull();
+      expect(
+        screen.queryByRole("link", { name: "Bridges-2 user guide" }),
+      ).toBeNull();
+      expect(screen.getByRole("button", { name: /User guide/ })).toBeTruthy();
+    });
+
+    it("keeps the list when it links a page that isn't a chip", () => {
+      const answer = answerWith(
+        `Use Globus.\n\n**Sources:**\n- [Bridges-2 user guide](${url})\n- [Globus](https://www.globus.org/)`,
+      );
+      stream.messages = [search, answer];
+      renderMessage(answer);
+      expect(screen.getByRole("link", { name: "Globus" })).toBeTruthy();
+      expect(
+        screen.getByRole("link", { name: "Bridges-2 user guide" }),
+      ).toBeTruthy();
+    });
+
+    it("keeps the list while the answer streams, before the chips show", () => {
+      const answer = answerWith(`Use Globus.\n\nSources:\n- [guide](${url})`);
+      stream.messages = [search, answer];
+      render(
+        <NuqsTestingAdapter>
+          <AssistantMessage
+            message={answer}
+            isLoading
+          />
+        </NuqsTestingAdapter>,
+      );
+      expect(screen.getByRole("link", { name: "guide" })).toBeTruthy();
+    });
+  });
+
+  it("shows the model's note before a tool call as a status line, not an answer", () => {
+    const narration: Message = {
+      id: "ai-7",
+      type: "ai",
+      content: "Let me first check the documentation for Delta.",
+      tool_calls: [{ id: "call-7", name: "search_access_documents", args: {} }],
+    };
+    stream.messages = [narration];
+    renderMessage(narration);
+    const line = screen.getByText(
+      "Let me first check the documentation for Delta.",
+    );
+    expect(line.tagName).toBe("P");
+    expect(line.className).toContain("text-muted-foreground");
+    expect(screen.queryByTestId("rating")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy content" })).toBeNull();
+  });
+
+  it("keeps real content written before a tool call as an answer", () => {
+    const text =
+      "Delta has CPU and GPU partitions.\n\nLet me check which one fits.";
+    const message: Message = {
+      id: "ai-8",
+      type: "ai",
+      content: text,
+      tool_calls: [{ id: "call-8", name: "search_access_documents", args: {} }],
+    };
+    stream.messages = [message];
+    renderMessage(message);
+    expect(screen.getByText("Delta has CPU and GPU partitions.")).toBeTruthy();
+    expect(screen.getByTestId("rating")).toBeTruthy();
   });
 
   describe("with an XDMoD chart", () => {
