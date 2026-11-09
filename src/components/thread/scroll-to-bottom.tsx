@@ -19,7 +19,7 @@ export function ScrollToBottomSlot({
   return (
     <div
       data-testid="scroll-to-bottom-slot"
-      className="relative flex h-12 w-full shrink-0 items-center justify-center bg-white"
+      className="relative flex h-11 w-full shrink-0 items-center justify-center bg-white sm:h-12"
     >
       {visible && (
         <>
