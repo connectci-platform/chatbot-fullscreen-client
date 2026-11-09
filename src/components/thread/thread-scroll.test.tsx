@@ -126,9 +126,10 @@ describe("Thread scrolling", () => {
       name: "Scroll to bottom",
     });
     // Not floating over the messages: a band in the footer's flow, taller
-    // (h-12, 48px) than the button (h-9, 36px), directly above the box.
+    // (h-11, 44px, on a phone; h-12, 48px, wider) than the button (h-9,
+    // 36px), directly above the box.
     expect(slot).not.toHaveClass("absolute");
-    expect(slot).toHaveClass("h-12");
+    expect(slot).toHaveClass("h-11", "sm:h-12");
     expect(button).toHaveClass("h-9");
     expect(
       slot.compareDocumentPosition(
@@ -144,10 +145,31 @@ describe("Thread scrolling", () => {
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveFocus();
   });
 
+  it("moves focus to the message box without cancelling the smooth scroll", () => {
+    // The message box is inside the scroller, so a focus() that scrolls it
+    // into view stops the smooth scroll to the bottom where it started.
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+    renderThread();
+    fireEvent.click(screen.getByRole("button", { name: "Scroll to bottom" }));
+
+    const box = screen.getByRole("textbox", { name: "Message" });
+    const boxFocus = focus.mock.calls.filter(
+      (_, i) => focus.mock.contexts[i] === box,
+    );
+    expect(boxFocus).not.toHaveLength(0);
+    for (const args of boxFocus) {
+      expect(args[0]).toEqual({ preventScroll: true });
+    }
+    focus.mockRestore();
+  });
+
   it("keeps the band's space when the button is hidden at the end", () => {
     chatScroll.isAtBottom = true;
     renderThread();
-    expect(screen.getByTestId("scroll-to-bottom-slot")).toHaveClass("h-12");
+    expect(screen.getByTestId("scroll-to-bottom-slot")).toHaveClass(
+      "h-11",
+      "sm:h-12",
+    );
     expect(
       screen.queryByRole("button", { name: "Scroll to bottom" }),
     ).toBeNull();

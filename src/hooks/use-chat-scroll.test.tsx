@@ -203,6 +203,42 @@ describe("useChatScroll", () => {
     expect(scroll.isAtBottom).toBe(true);
   });
 
+  it("corrects a question that moved after reaching the top instantly", () => {
+    const rendered = renderLoadedThread();
+    sendFollowUp(rendered);
+    resize(); // Settles at the top: the smooth scroll has arrived.
+    scrollTo.mockClear();
+
+    // The agent's copy of the question renders 8px lower than ours did.
+    geometry.listHeight = 4000;
+    geometry.offsets["q2-agent"] = 1908;
+    rendered.rerender(
+      <Harness
+        threadId="t-1"
+        ids={["q1", "q2-agent"]}
+      />,
+    );
+    expect(scrollTo).toHaveBeenLastCalledWith({
+      top: 1908 - QUESTION_TOP_OFFSET_PX,
+      behavior: "auto",
+    });
+    expect(topInView("q2-agent")).toBe(QUESTION_TOP_OFFSET_PX);
+  });
+
+  it("keeps the first move smooth while it is still under way", () => {
+    const rendered = renderLoadedThread();
+    // A smooth scroll that hasn't moved yet when the next update lands.
+    scrollTo.mockImplementationOnce(() => {});
+    sendFollowUp(rendered);
+    geometry.listHeight = 2300;
+    resize();
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+    expect(scrollTo).toHaveBeenLastCalledWith({
+      top: 1900 - QUESTION_TOP_OFFSET_PX,
+      behavior: "smooth",
+    });
+  });
+
   it("uses an instant scroll when the person prefers reduced motion", () => {
     reducedMotion(true);
     const rendered = renderLoadedThread();
