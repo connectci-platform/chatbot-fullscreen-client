@@ -305,6 +305,23 @@ describe("answerSources", () => {
       ).toBe("not-retrieved");
     });
 
+    it("is not flagged when it is the assistant's capability overview", () => {
+      const overview = {
+        ...answer(
+          "a1",
+          "I can help you find and use ACCESS resources and services. " +
+            "Find the right resource: compare systems by hardware, GPUs, storage and software. " +
+            "Get started and get unstuck: answers from ACCESS and resource provider documentation.",
+        ),
+        additional_kwargs: {
+          capability_overview: true,
+          suggestions: ["Which ACCESS resources have GPUs?"],
+        },
+      } as Message;
+      const messages = [human("h1", "What can you help me with?"), overview];
+      expect(answerSources(messages, overview)).toBeNull();
+    });
+
     it("is not flagged when it is a greeting or a thank-you reply", () => {
       expect(
         flagged("Hello! How can I help you with ACCESS today?"),
