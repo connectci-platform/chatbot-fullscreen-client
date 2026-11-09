@@ -445,6 +445,72 @@ describe("chartViewsByMessage", () => {
     });
   });
 
+  describe("chartLabels edge cases", () => {
+    const wait = (over: Json) =>
+      view(
+        payload({
+          statistic: "avg_waitduration_hours",
+          measure: {
+            label: "Wait Hours: Per Job",
+            description: "Avg wait.",
+            kind: "average",
+            missing: "gap",
+          },
+          ...over,
+        }),
+      )!;
+
+    it("numbers charts that still share a name", () => {
+      const delta = { filters: { notes: ["resource Delta"] } };
+      const a = { ...wait(delta), key: "a" };
+      const b = { ...wait(delta), key: "b" };
+      const c = {
+        ...wait({ filters: { notes: ["resource Anvil"] } }),
+        key: "c",
+      };
+      expect([...chartLabels([a, b, c]).values()]).toEqual([
+        "Wait Hours: Per Job · Delta · chart 1",
+        "Wait Hours: Per Job · Delta · chart 2",
+        "Wait Hours: Per Job · Anvil",
+      ]);
+    });
+
+    it("doesn't call a group_by none chart 'by name'", () => {
+      const total = { ...wait({}), key: "t" };
+      const byResource = {
+        ...wait({
+          group_by: "resource",
+          dimension: { name: "resource", ordered: false },
+        }),
+        key: "r",
+      };
+      const labels = chartLabels([total, byResource]);
+      expect(labels.get("t")).toBe("Wait Hours: Per Job · total");
+      expect(labels.get("r")).toBe("Wait Hours: Per Job · by resource");
+    });
+
+    it("keeps a name's own parentheses, dropping only the unchecked note", () => {
+      const a = {
+        ...wait({
+          filters: { notes: ["institution Foo University (Main Campus)"] },
+        }),
+        key: "a",
+      };
+      const b = {
+        ...wait({
+          filters: {
+            notes: [`institution "Bar U" (not checked against XDMoD's names)`],
+          },
+        }),
+        key: "b",
+      };
+      expect([...chartLabels([a, b]).values()]).toEqual([
+        "Wait Hours: Per Job · Foo University (Main Campus)",
+        "Wait Hours: Per Job · Bar U",
+      ]);
+    });
+  });
+
   describe("latestAnswerHasChart", () => {
     it("is true only when the newest answer drew a chart", () => {
       const charted = turn(payload());

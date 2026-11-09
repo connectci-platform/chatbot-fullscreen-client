@@ -637,7 +637,10 @@ export function latestAnswerHasChart(messages: Message[]): boolean {
 function filterValue(note: string): string {
   const rest = note.replace(/^\S+\s+/, "");
   const quoted = /^"([^"]+)"/.exec(rest);
-  return (quoted ? quoted[1] : rest).replace(/\s+\(.*\)$/, "");
+  return (quoted ? quoted[1] : rest).replace(
+    / \(not checked against XDMoD's names\)$/,
+    "",
+  );
 }
 
 /**
@@ -648,7 +651,11 @@ function filterValue(note: string): string {
 export function chartLabels(views: ChartView[]): Map<string, string> {
   const facets: ((v: ChartView) => string)[] = [
     (v) => v.caption.filters.map(filterValue).join(", ") || "all of ACCESS",
-    (v) => `by ${v.dimension.toLowerCase()}`,
+    // A group_by none chart has no grouping to name.
+    (v) =>
+      v.dimension === DIMENSION_LABELS.none
+        ? "total"
+        : `by ${v.dimension.toLowerCase()}`,
     (v) =>
       `${formatDay(v.caption.counted.start)} to ${formatDay(v.caption.counted.end)}`,
     (v) => (v.caption.unit ? `by ${v.caption.unit.toLowerCase()}` : "total"),
@@ -659,10 +666,16 @@ export function chartLabels(views: ChartView[]): Map<string, string> {
     const parts = facets
       .filter((f) => new Set(same.map(f)).size > 1)
       .map((f) => f(v));
-    if (parts.length === 0 && same.length > 1) {
-      parts.push(`chart ${same.indexOf(v) + 1}`);
-    }
     labels.set(v.key, [v.title, ...parts].join(" · "));
+  }
+  // Charts that still share a name (the same Delta chart twice) are numbered.
+  const names = [...labels.values()];
+  const seen = new Map<string, number>();
+  for (const [key, name] of labels) {
+    if (names.filter((n) => n === name).length < 2) continue;
+    const n = (seen.get(name) ?? 0) + 1;
+    seen.set(name, n);
+    labels.set(key, `${name} · chart ${n}`);
   }
   return labels;
 }
