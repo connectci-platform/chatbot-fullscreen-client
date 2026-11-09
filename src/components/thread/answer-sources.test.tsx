@@ -124,6 +124,17 @@ describe("AnswerSources", () => {
     expect(screen.getByText("panel closed")).toBeTruthy();
   });
 
+  it("renders the panel title as a styled level-2 heading", () => {
+    show(`See the [Bridges-2 user guide](${GUIDE}).`);
+
+    fireEvent.click(chip());
+
+    const heading = screen.getByRole("heading", { level: 2, name: "Source" });
+    expect(heading.className).toContain("text-brand-dark");
+    expect(heading.className).toContain("text-xl");
+    expect(heading.className).toContain("font-bold");
+  });
+
   it("opens the passage and a link to the page when a source is selected", () => {
     show(`See the [Bridges-2 user guide](${GUIDE}).`);
 

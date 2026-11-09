@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { cn } from "@/lib/utils";
 
 type Setter<T> = (value: T | ((value: T) => T)) => void;
 
@@ -79,17 +80,24 @@ export function ArtifactContent(props: HTMLAttributes<HTMLDivElement>) {
   );
 }
 
-export function ArtifactTitle(props: HTMLAttributes<HTMLDivElement>) {
+export function ArtifactTitle({
+  className,
+  ...props
+}: HTMLAttributes<HTMLHeadingElement>) {
   const context = useContext(ArtifactSlotContext);
 
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLHeadingElement>(null);
   const [, setStateRef] = context.title;
 
   useLayoutEffect(() => setStateRef?.(ref.current), [setStateRef]);
 
   return (
-    <div
+    <h2
       {...props}
+      className={cn(
+        "text-brand-dark m-0 text-xl leading-[1.2] font-bold",
+        className,
+      )}
       ref={ref}
     />
   );
