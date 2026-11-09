@@ -7,6 +7,7 @@ import {
   type ComparisonCell,
   type SoftwareComparisonView,
 } from "@/lib/software-comparison";
+import { cn } from "@/lib/utils";
 import { useStreamContext } from "@/providers/Stream";
 import { useArtifact } from "./artifact";
 
@@ -63,7 +64,9 @@ function Cell({ cell }: { cell: ComparisonCell }) {
         <span className="font-semibold text-teal-800 dark:text-teal-300">
           ✓ Listed
         </span>
-        <div className="mt-1 text-xs break-words">
+        {/* Build names such as 29aug2024_update2-kokkos-cuda have no spaces,
+            so let them break anywhere rather than widen the column. */}
+        <div className="mt-1 text-xs [overflow-wrap:anywhere]">
           <Versions versions={cell.versions} />
         </div>
       </td>
@@ -137,7 +140,14 @@ export function SoftwareComparisonGrid({
           tabIndex={0}
           className="max-w-full overflow-x-auto rounded-md border"
         >
-          <table className="min-w-max border-collapse text-left text-sm">
+          <table
+            className={cn(
+              "border-collapse text-left text-sm",
+              // Resources down the side leaves a few package columns, which
+              // fit the panel. Resources across can need to scroll.
+              resourcesDown ? "w-full" : "min-w-max",
+            )}
+          >
             <caption className="sr-only">Where the index lists {names}</caption>
             {resourcesDown ? (
               <>
