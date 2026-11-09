@@ -15,22 +15,32 @@ export function logoutUrl(): string {
 
 const POPUP_POLL_MS = 500;
 
+/** The sign-in popup this page opened, while it's still open. */
+let openPopup: Window | null = null;
+
 /**
  * Opens support's login in a popup and mints again once it closes. When the
  * user is already signed in elsewhere, seamless SSO and CILogon usually bounce
  * the popup straight back without a form. Falls back to a new tab when popups
- * are blocked; the focus re-mint in useAgentAuth covers that case.
+ * are blocked; the focus re-mint in useAgentAuth covers that case. While a
+ * sign-in popup is still open, it's brought forward instead of opening another.
  */
 export function openSignIn(source: AgentTokenSource = getAgentTokenSource()) {
+  if (openPopup && !openPopup.closed) {
+    openPopup.focus();
+    return;
+  }
   const url = loginUrl();
   const popup = window.open(url, "_blank", "popup,width=480,height=720");
   if (!popup) {
     window.open(url, "_blank");
     return;
   }
+  openPopup = popup;
   const timer = window.setInterval(() => {
     if (!popup.closed) return;
     window.clearInterval(timer);
+    if (openPopup === popup) openPopup = null;
     // Closing the popup also refocuses this window, and that may already
     // have minted.
     if (source.getStatus() !== "signed_in") {

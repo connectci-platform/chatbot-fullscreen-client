@@ -14,6 +14,11 @@ import { clearClaimKey } from "@/lib/thread-claim";
 // Login opens in a popup so the user never leaves this tab; useAgentAuth
 // mints again when the popup closes or this window regains focus.
 
+// The ACCESS menus render into a shadow root through a React portal, so
+// React sees one click twice: from the portal's container and from the page.
+// Each click is acted on once.
+const handledClicks = new WeakSet<Event>();
+
 export function SiteChromeTopImpl() {
   const authenticated = useAgentAuth() === "signed_in";
   const login = loginUrl();
@@ -27,6 +32,7 @@ export function SiteChromeTopImpl() {
   // anchor even though `event.target` is retargeted to the shadow host.
   const handleCaptureClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
+      if (handledClicks.has(event.nativeEvent)) return;
       const anchor = event.nativeEvent
         .composedPath()
         .find(
@@ -35,6 +41,7 @@ export function SiteChromeTopImpl() {
             (el.href === login || el.href === logout),
         );
       if (!anchor) return;
+      handledClicks.add(event.nativeEvent);
 
       if (anchor.href === logout) {
         // Logout leaves this page, so this is the last chance to clear it.

@@ -69,6 +69,25 @@ describe("openSignIn", () => {
     expect(source.refresh).not.toHaveBeenCalled();
   });
 
+  it("brings the open popup forward instead of opening a second one", () => {
+    vi.useFakeTimers();
+    const popup = { closed: false, focus: vi.fn() };
+    const open = vi
+      .spyOn(window, "open")
+      .mockReturnValue(popup as unknown as Window);
+    const { source } = fakeSource("signed_out");
+
+    openSignIn(source);
+    openSignIn(source);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(popup.focus).toHaveBeenCalledTimes(1);
+
+    popup.closed = true;
+    vi.advanceTimersByTime(500);
+    openSignIn(source);
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+
   it("falls back to a new tab when the popup is blocked", () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null);
     openSignIn(fakeSource("signed_out").source);
