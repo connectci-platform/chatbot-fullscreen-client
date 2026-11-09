@@ -4,7 +4,7 @@ import {
   answerSources,
   linksIn,
   parsePassages,
-  withoutSourcesSection,
+  answerWithSources,
 } from "./answer-sources";
 
 // Mirrors access-agent's _format_chunks in src/agent/tools/access_documents.py.
@@ -337,78 +337,166 @@ describe("source labels", () => {
     expect(source.title).not.toMatch(/wysiwyg|\.html/);
   });
 
+  it("never labels a page with a generic or low-level heading", () => {
+    const page =
+      "https://docs.ncsa.illinois.edu/systems/delta/en/latest/user_guide/running_jobs.html";
+    expect(
+      sourceFor(["# Troubleshooting\n\nCheck squeue."], page).chipLabel,
+    ).toBe("User guide › Running jobs");
+    expect(
+      sourceFor(["## Step 3: submit\n\nRun sbatch."], page).chipLabel,
+    ).toBe("User guide › Running jobs");
+    expect(
+      sourceFor(["#### Partitions\n\ncpu, gpuA100."], page).chipLabel,
+    ).toBe("User guide › Running jobs");
+  });
+
+  it("labels a link to a section with that section's heading", () => {
+    expect(
+      sourceFor(
+        ["#### Partitions\n\ncpu, gpuA100."],
+        "https://docs.ncsa.illinois.edu/delta/running_jobs.html#partitions",
+      ).chipLabel,
+    ).toBe("Partitions");
+  });
+
+  it("keeps a version number in the path", () => {
+    expect(
+      sourceFor(
+        ["Built with GCC."],
+        "https://example.org/software/openmpi-4.1.5",
+      ).chipLabel,
+    ).toBe("Software › Openmpi 4.1.5");
+  });
+
   it("falls back to the host for a site's home page", () => {
     const source = sourceFor(["Welcome."], "https://www.psc.edu/");
     expect(source.chipLabel).toBe("www.psc.edu");
   });
 });
 
-describe("withoutSourcesSection", () => {
+describe("answerWithSources", () => {
   const GUIDE = "https://www.psc.edu/resources/bridges-2/user-guide/";
   const DELTA =
     "https://docs.ncsa.illinois.edu/systems/delta/en/latest/transfer.html";
-  const chipsFor = (text: string) => {
+  const view = (text: string, search = docsResult) => {
     const messages = [
       human("h1", "How do I use Globus?"),
       call("a1", "c1", "search_access_documents"),
-      result("t1", "c1", "search_access_documents", docsResult),
+      result("t1", "c1", "search_access_documents", search),
       answer("a2", text),
     ];
-    return answerSources(messages, messages[3])!;
+    return answerWithSources(messages, messages[3])!;
   };
-  const strip = (text: string) => withoutSourcesSection(text, chipsFor(text));
+  const shown = (text: string) => view(text).text;
 
   it("drops a trailing sources list whose links are all chips", () => {
     expect(
-      strip(
+      shown(
         `Use Globus.\n\n**Sources:**\n- [Bridges-2 guide](${GUIDE})\n- ${DELTA}\n`,
       ),
     ).toBe("Use Globus.");
-    expect(strip(`Use Globus.\n\n---\n\n### Sources\n\n1. <${GUIDE}>`)).toBe(
+    expect(shown(`Use Globus.\n\n---\n\n### Sources\n\n1. <${GUIDE}>`)).toBe(
       "Use Globus.",
     );
-    expect(strip(`Use Globus.\n\nSource: [guide](${GUIDE})`)).toBe(
+    expect(shown(`Use Globus.\n\nSource: [guide](${GUIDE})`)).toBe(
       "Use Globus.",
     );
     expect(
-      strip(`Use Globus.\n\n*Source:* ${GUIDE}\n**Source:** ${DELTA}`),
+      shown(`Use Globus.\n\n*Source:* ${GUIDE}\n**Source:** ${DELTA}`),
     ).toBe("Use Globus.");
   });
 
-  it("keeps the list when it links a page that isn't a chip", () => {
-    const text = `Use Globus.\n\nSources:\n- ${GUIDE}\n- https://example.org/other`;
-    expect(strip(text)).toBe(text);
+  it("drops the list and adds the pages it links that aren't chips", () => {
+    const other =
+      "https://docs.ncsa.illinois.edu/systems/delta/en/latest/user_guide/software.html";
+    const result = view(
+      `Use Globus, see the [guide](${GUIDE}).\n\n**Sources:**\n- ${GUIDE}\n- ${other}\n- ${GUIDE}#file-spaces`,
+    );
+    expect(result.text).toBe(`Use Globus, see the [guide](${GUIDE}).`);
+    expect(result.sources.map((s) => s.chipLabel)).toEqual([
+      "Bridges 2 › User guide",
+      "User guide › Software",
+    ]);
+    expect(result.sources[1].passages).toEqual([]);
+    expect(result.sources[1].url).toBe(other);
   });
 
   it("keeps the list when a line in it links nothing", () => {
     const text = `Use Globus.\n\nSources:\n- ${GUIDE}\n- The Delta user guide`;
-    expect(strip(text)).toBe(text);
+    expect(shown(text)).toBe(text);
+  });
+
+  it("keeps the list when it has prose beside a link", () => {
+    const text = `Use Globus.\n\nSources: [guide](${GUIDE}) Remember to renew your allocation yearly.`;
+    expect(shown(text)).toBe(text);
+    const described = `Use Globus.\n\nSources:\n- [guide](${GUIDE}) explains file transfer`;
+    expect(shown(described)).toBe(described);
+  });
+
+  it("keeps the list when code follows it", () => {
+    const text = `Use Globus.\n\nSources:\n- [guide](${GUIDE})\n\n\`\`\`bash\nglobus ls\n\`\`\``;
+    expect(shown(text)).toBe(text);
+    const inline = `Use Globus.\n\nSources: \`globus ls\``;
+    expect(shown(inline)).toBe(inline);
   });
 
   it("keeps links inside the answer's sentences", () => {
     const text = `Use Globus, as the [Bridges-2 guide](${GUIDE}) explains.`;
-    expect(strip(text)).toBe(text);
+    expect(shown(text)).toBe(text);
     const prose = `Sources: the [guide](${GUIDE}) says to use Globus.\n\nThen sign in.`;
-    expect(strip(prose)).toBe(prose);
+    expect(shown(prose)).toBe(prose);
   });
 
   it("keeps a sources section that isn't at the end", () => {
     const text = `Sources:\n- ${GUIDE}\n\nUse Globus to move files.`;
-    expect(strip(text)).toBe(text);
+    expect(shown(text)).toBe(text);
   });
 
   it("keeps an answer that is nothing but the list", () => {
     const text = `Sources:\n- ${GUIDE}`;
-    expect(strip(text)).toBe(text);
+    expect(shown(text)).toBe(text);
   });
 
   it("ignores a sources line inside code", () => {
     const text = `Run this:\n\n\`\`\`\nSources: ${GUIDE}\n\`\`\``;
-    expect(strip(text)).toBe(text);
+    expect(shown(text)).toBe(text);
   });
 
-  it("does nothing without chips", () => {
-    const text = `Use Globus.\n\nSources:\n- ${GUIDE}`;
-    expect(withoutSourcesSection(text, [])).toBe(text);
+  it("keeps the list when no chip shows", () => {
+    const text = `Use Globus.\n\nSources:\n- https://example.org/other`;
+    expect(view(text).text).toBe(text);
+    expect(view(text).sources).toEqual([]);
+  });
+
+  it("drops the site prefix every chip's heading shares", () => {
+    const delta = "https://docs.ncsa.illinois.edu/delta";
+    const search = [
+      "Retrieved 2 documentation excerpt(s).",
+      `[1] source: ${delta}/accounts.html\n# Delta (NCSA) — Accounts and allocations\n\nText.`,
+      `[2] source: ${delta}/login.html\n# Delta (NCSA) — Logging in\n\nText.`,
+    ].join("\n\n");
+    const { sources } = view(
+      `See ${delta}/accounts.html and ${delta}/login.html.`,
+      search,
+    );
+    expect(sources.map((s) => s.chipLabel)).toEqual([
+      "Accounts and allocations",
+      "Logging in",
+    ]);
+    expect(sources[0].title).toBe("Delta (NCSA) — Accounts and allocations");
+  });
+
+  it("works the answer out once per turn", () => {
+    const messages = [
+      human("h1", "Q"),
+      call("a1", "c1", "search_access_documents"),
+      result("t1", "c1", "search_access_documents", docsResult),
+      answer("a2", `See ${GUIDE}`),
+    ];
+    const first = answerWithSources(messages, messages[3]);
+    expect(answerWithSources([...messages], messages[3])).toBe(first);
+    const later = [...messages, human("h2", "More"), answer("a3", "Ok.")];
+    expect(answerWithSources(later, messages[3])).toBe(first);
   });
 });

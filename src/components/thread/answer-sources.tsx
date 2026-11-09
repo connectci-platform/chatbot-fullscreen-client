@@ -11,7 +11,7 @@ import {
 import type { Components } from "react-markdown";
 import type { Message } from "@langchain/langgraph-sdk";
 import { ExternalLink, FileText } from "lucide-react";
-import { answerSources, type AnswerSource } from "@/lib/answer-sources";
+import { answerWithSources, type AnswerSource } from "@/lib/answer-sources";
 import { useStreamContext } from "@/providers/Stream";
 import { useArtifact } from "./artifact";
 import { MarkdownText } from "./markdown-text";
@@ -161,7 +161,7 @@ export function AnswerSources({
 }) {
   const { messages } = useStreamContext();
   const sources = useMemo(
-    () => (message ? answerSources(messages, message) : null),
+    () => (message ? answerWithSources(messages, message)?.sources : null),
     [messages, message],
   );
   const [Artifact, { open, setOpen }] = useArtifact();
@@ -221,33 +221,68 @@ export function AnswerSources({
         aria-labelledby={`sources-${message?.id}`}
         className="flex flex-wrap gap-2"
       >
-        {sources.map((source) => (
-          <li key={source.key}>
-            <button
-              type="button"
-              ref={(el) => {
-                if (el) chips.current.set(source.key, el);
-                else chips.current.delete(source.key);
-              }}
-              aria-expanded={open && selectedKey === source.key}
-              aria-controls={panelId}
-              onClick={() => {
-                setSelectedKey(source.key);
-                setOpen(true);
-              }}
-              className="hover:bg-muted flex max-w-xs cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-left text-sm"
-            >
-              <FileText
-                aria-hidden
-                className="size-4 shrink-0"
-              />
+        {sources.map((source) => {
+          const label = (
+            <>
+              {source.passages.length ? (
+                <FileText
+                  aria-hidden
+                  className="size-4 shrink-0"
+                />
+              ) : (
+                <ExternalLink
+                  aria-hidden
+                  className="size-4 shrink-0"
+                />
+              )}
               <span className="truncate font-medium">{source.chipLabel}</span>
               <span className="text-muted-foreground shrink-0">
                 {source.host}
               </span>
-            </button>
-          </li>
-        ))}
+            </>
+          );
+          const chipClass =
+            "hover:bg-muted flex max-w-full cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-left text-sm sm:max-w-md";
+          return (
+            <li
+              key={source.key}
+              className="max-w-full"
+            >
+              {source.passages.length ? (
+                <button
+                  type="button"
+                  title={source.title}
+                  ref={(el) => {
+                    if (el) chips.current.set(source.key, el);
+                    else chips.current.delete(source.key);
+                  }}
+                  aria-expanded={open && selectedKey === source.key}
+                  aria-controls={panelId}
+                  onClick={() => {
+                    setSelectedKey(source.key);
+                    setOpen(true);
+                  }}
+                  className={chipClass}
+                >
+                  {label}
+                </button>
+              ) : (
+                // Linked only by the model's own sources list: no passage
+                // to show, so the chip opens the page.
+                <a
+                  href={source.url}
+                  title={source.title}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={chipClass}
+                >
+                  {label}
+                  <span className="sr-only">(opens in a new tab)</span>
+                </a>
+              )}
+            </li>
+          );
+        })}
       </ul>
       {selected && (
         <Artifact title="Source">

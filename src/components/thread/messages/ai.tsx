@@ -23,8 +23,8 @@ import { BarChart3 } from "lucide-react";
 import { showChart } from "../xdmod-chart-panel";
 import { focusComposer } from "../composer";
 import { useMemo } from "react";
-import { answerSources, withoutSourcesSection } from "@/lib/answer-sources";
-import { isToolCallNarration } from "@/lib/tool-narration";
+import { answerWithSources } from "@/lib/answer-sources";
+import { isToolCallNarration, plainText } from "@/lib/tool-narration";
 
 function CustomComponent({
   message,
@@ -127,10 +127,13 @@ export function AssistantMessage({
   // links only those pages would list them twice.
   const shownText = useMemo(() => {
     if (!message || streaming) return contentString;
-    const sources = answerSources(thread.messages, message) ?? [];
-    return withoutSourcesSection(contentString, sources);
+    return answerWithSources(thread.messages, message)?.text ?? contentString;
   }, [thread.messages, message, streaming, contentString]);
-  const narration = isToolCallNarration(message, contentString);
+  const narration = isToolCallNarration(
+    message,
+    contentString,
+    !!threadInterrupt,
+  );
 
   if (message?.type === "tool") {
     return null;
@@ -141,7 +144,7 @@ export function AssistantMessage({
       <div className="flex w-full flex-col gap-2">
         {narration ? (
           <p className="text-muted-foreground text-sm">
-            {contentString.trim()}
+            {plainText(contentString)}
           </p>
         ) : (
           contentString.length > 0 && (

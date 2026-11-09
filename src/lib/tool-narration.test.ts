@@ -1,12 +1,12 @@
 import type { Message } from "@langchain/langgraph-sdk";
 import { describe, expect, it } from "vitest";
-import { isToolCallNarration } from "./tool-narration";
+import { isToolCallNarration, plainText } from "./tool-narration";
 
-const calling = (text: string): Message => ({
+const calling = (text: string, name = "search_access_documents"): Message => ({
   id: "a1",
   type: "ai",
   content: text,
-  tool_calls: [{ id: "c1", name: "search_access_documents", args: {} }],
+  tool_calls: [{ id: "c1", name, args: {} }],
 });
 
 describe("isToolCallNarration", () => {
@@ -32,5 +32,29 @@ describe("isToolCallNarration", () => {
 
   it("is nothing for a tool call with no text", () => {
     expect(isToolCallNarration(calling(""), "")).toBe(false);
+  });
+
+  it("is not the text before a tool that changes something", () => {
+    const text = "I'll register you for the Globus workshop on Friday.";
+    expect(isToolCallNarration(calling(text, "register_for_event"), text)).toBe(
+      false,
+    );
+    expect(isToolCallNarration(calling(text, "create_event"), text)).toBe(
+      false,
+    );
+  });
+
+  it("is not the text before a pause for approval", () => {
+    const text = "Let me look that up.";
+    expect(isToolCallNarration(calling(text), text, true)).toBe(false);
+    expect(isToolCallNarration(calling(text, "get_resource"), text)).toBe(true);
+  });
+});
+
+describe("plainText", () => {
+  it("drops inline markdown", () => {
+    expect(
+      plainText(" Let me check **Delta**'s `squeue` [docs](https://x.org). "),
+    ).toBe("Let me check Delta's squeue docs.");
   });
 });

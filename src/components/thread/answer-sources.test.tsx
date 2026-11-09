@@ -119,6 +119,9 @@ describe("AnswerSources", () => {
     expect(items).toHaveLength(1);
     expect(items[0].textContent).toContain("Bridges 2 › User guide");
     expect(items[0].textContent).toContain("www.psc.edu");
+    expect(items[0].getAttribute("title")).toBe(
+      "Resources › Bridges 2 › User guide",
+    );
     expect(items[0].textContent).not.toContain("Bridges-2 user guide");
     expect(screen.queryByText(/NCSA Delta/)).toBeNull();
     expect(screen.getByText("panel closed")).toBeTruthy();

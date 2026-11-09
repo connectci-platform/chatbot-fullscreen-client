@@ -146,15 +146,21 @@ describe("AssistantMessage", () => {
       expect(screen.getByRole("button", { name: /User guide/ })).toBeTruthy();
     });
 
-    it("keeps the list when it links a page that isn't a chip", () => {
+    it("moves a page only the list links into the chips", () => {
       const answer = answerWith(
-        `Use Globus.\n\n**Sources:**\n- [Bridges-2 user guide](${url})\n- [Globus](https://www.globus.org/)`,
+        `Use Globus.\n\n**Sources:**\n- [Bridges-2 user guide](${url})\n- [Globus](https://www.globus.org/docs/how-to/)`,
       );
       stream.messages = [search, answer];
       renderMessage(answer);
-      expect(screen.getByRole("link", { name: "Globus" })).toBeTruthy();
+      expect(screen.queryByText(/Sources:/)).toBeNull();
+      const list = screen.getByRole("list", { name: "Sources" });
+      const extra = within(list).getByRole("link", { name: /How to/ });
+      expect(extra.getAttribute("href")).toBe(
+        "https://www.globus.org/docs/how-to/",
+      );
+      expect(extra.getAttribute("title")).toBe("Docs › How to");
       expect(
-        screen.getByRole("link", { name: "Bridges-2 user guide" }),
+        within(list).getByRole("button", { name: /User guide/ }),
       ).toBeTruthy();
     });
 
@@ -189,6 +195,35 @@ describe("AssistantMessage", () => {
     expect(line.className).toContain("text-muted-foreground");
     expect(screen.queryByTestId("rating")).toBeNull();
     expect(screen.queryByRole("button", { name: "Copy content" })).toBeNull();
+  });
+
+  it("keeps text before a tool that changes something as an answer", () => {
+    const message: Message = {
+      id: "ai-9",
+      type: "ai",
+      content: "I'll **cancel** your Globus workshop registration.",
+      tool_calls: [{ id: "call-9", name: "cancel_registration", args: {} }],
+    };
+    stream.messages = [message];
+    renderMessage(message);
+    expect(screen.getByText("cancel").tagName).toBe("STRONG");
+    expect(screen.getByTestId("rating")).toBeTruthy();
+  });
+
+  it("shows a status line's markdown as plain text", () => {
+    const narration: Message = {
+      id: "ai-10",
+      type: "ai",
+      content: "Let me check the **Delta** documentation.",
+      tool_calls: [
+        { id: "call-10", name: "search_access_documents", args: {} },
+      ],
+    };
+    stream.messages = [narration];
+    renderMessage(narration);
+    expect(
+      screen.getByText("Let me check the Delta documentation."),
+    ).toBeTruthy();
   });
 
   it("keeps real content written before a tool call as an answer", () => {
