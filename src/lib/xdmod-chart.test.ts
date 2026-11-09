@@ -269,6 +269,20 @@ describe("chartViewsByMessage", () => {
     expect(view(payload({ data_through: 7 }))).toBeNull();
   });
 
+  it("marks the data_through period partial only when the flag says so", () => {
+    const through = { data_through: "2026-02-01" };
+    expect(view(payload(through))!.caption.partialPeriod).toBe(undefined);
+    expect(
+      view(payload({ ...through, last_data_period_partial: false }))!.caption
+        .partialPeriod,
+    ).toBe(undefined);
+    expect(
+      view(payload({ ...through, last_data_period_partial: true }))!.caption
+        .partialPeriod,
+    ).toBe("2026-02-01");
+    expect(view(payload({ last_data_period_partial: "yes" }))).toBeNull();
+  });
+
   it("returns null with no charts", () => {
     expect(latestChartView([human("h"), ai("a")])).toBeNull();
   });

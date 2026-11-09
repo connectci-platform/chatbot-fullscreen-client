@@ -11,7 +11,12 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { captionLines, formatDay, parseDay, periods } from "@/lib/chart-export";
+import {
+  captionLines,
+  formatDay,
+  formatPeriod,
+  periods,
+} from "@/lib/chart-export";
 import type { ChartView } from "@/lib/xdmod-chart";
 
 /**
@@ -67,27 +72,6 @@ function formatValue(value: number | null | undefined): string {
   return value === null || value === undefined ? "—" : NUMBER.format(value);
 }
 
-/** A period's start date, named at the chart's unit: "Aug 2026", "Q3 2026". */
-function formatPeriod(start: string, unit?: string): string {
-  const day = parseDay(start);
-  if (!day) return start;
-  const year = day.getUTCFullYear();
-  switch (unit) {
-    case "Year":
-      return String(year);
-    case "Quarter":
-      return `Q${Math.floor(day.getUTCMonth() / 3) + 1} ${year}`;
-    case "Month":
-      return day.toLocaleDateString("en-US", {
-        month: "short",
-        year: "numeric",
-        timeZone: "UTC",
-      });
-    default:
-      return formatDay(start);
-  }
-}
-
 const shortLabel = (s: string) =>
   s.length > LABEL_CHARS ? `${s.slice(0, LABEL_CHARS - 1)}…` : s;
 
@@ -112,24 +96,38 @@ const solidKey = (i: number) => `s${i}`;
 const dashedKey = (i: number) => `d${i}`;
 
 /**
- * One row per period. When the last period is still running, each series'
- * last segment moves to a second, dashed key: the solid line stops at the
- * second-to-last point and the dashed one runs from there to the last.
+ * Where the dashed tail starts: the period XDMoD's data may only partly
+ * cover, else a last period still running. Past it nothing is settled, so
+ * the line from the period before it on is dashed.
+ */
+function dashFrom(view: ChartView, starts: string[]): number | null {
+  const last = starts.length - 1;
+  const partial = view.caption.partialPeriod
+    ? starts.indexOf(view.caption.partialPeriod)
+    : -1;
+  if (partial >= 1) return partial;
+  if (view.caption.incomplete && last >= 1) return last;
+  return null;
+}
+
+/**
+ * One row per period. From `dashFrom` on, each series moves to a second,
+ * dashed key: the solid line stops at the period before it and the dashed
+ * one runs from there to the end, sharing that one point.
  */
 function lineRows(view: ChartView): { rows: Row[]; dashed: boolean } {
   const starts = periods(view);
-  const last = starts.length - 1;
-  const dashed = view.caption.incomplete && starts.length >= 2;
+  const from = dashFrom(view, starts);
   const rows = starts.map((start, p) => {
     const row: Row = { start };
     view.series.forEach((s, i) => {
       const value = s.points[p]?.value ?? null;
-      row[solidKey(i)] = dashed && p === last ? null : value;
-      if (dashed) row[dashedKey(i)] = p >= last - 1 ? value : null;
+      row[solidKey(i)] = from !== null && p >= from ? null : value;
+      if (from !== null) row[dashedKey(i)] = p >= from - 1 ? value : null;
     });
     return row;
   });
-  return { rows, dashed };
+  return { rows, dashed: from !== null };
 }
 
 /**

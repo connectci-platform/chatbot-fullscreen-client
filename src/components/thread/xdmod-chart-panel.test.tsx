@@ -221,6 +221,87 @@ describe("XdmodChartPanel", () => {
     );
   });
 
+  it("draws the line into a partial data_through month dashed", () => {
+    useMessages(
+      turn(
+        payload({
+          counted: { start: "2026-06-01", end: "2026-11-08" },
+          data_through: "2026-10-01",
+          last_data_period_partial: true,
+          series: [
+            {
+              name: "All",
+              points: [
+                { start: "2026-06-01", value: 10 },
+                { start: "2026-07-01", value: 20 },
+                { start: "2026-08-01", value: 15 },
+                { start: "2026-09-01", value: 25 },
+                { start: "2026-10-01", value: 1 },
+                { start: "2026-11-01", value: null },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    const { container } = render(tree());
+    const [dashed] = dashedLines(container);
+    expect(dashed.getAttribute("d")).toMatch(/^M[\d.,]+L[\d.,]+$/);
+    // The solid line stops at September: four points, three segments.
+    expect(
+      solidLines(container)[0].getAttribute("d")?.match(/L/g),
+    ).toHaveLength(3);
+    expect(
+      screen.getByText(
+        "XDMoD has data through Oct 1, 2026, so Oct 2026 may be partial.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("names a partial day by its date", () => {
+    const days = ["2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01"];
+    useMessages(
+      turn(
+        payload({
+          unit: "Day",
+          counted: { start: "2026-09-28", end: "2026-10-05" },
+          data_through: "2026-10-01",
+          last_data_period_partial: true,
+          series: [
+            {
+              name: "All",
+              points: days.map((start, i) => ({ start, value: 5 + i })),
+            },
+          ],
+        }),
+      ),
+    );
+    const { container } = render(tree());
+    expect(dashedLines(container)).toHaveLength(1);
+    expect(
+      screen.getByText(
+        "XDMoD has data through Oct 1, 2026, so Oct 1, 2026 may be partial.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("draws no partial dashes without the flag", () => {
+    useMessages(
+      turn(
+        payload({
+          counted: { start: "2026-06-01", end: "2026-11-08" },
+          data_through: "2026-10-01",
+        }),
+      ),
+    );
+    const { container } = render(tree());
+    expect(dashedLines(container)).toHaveLength(0);
+    expect(
+      screen.getByText("XDMoD has data through Oct 1, 2026."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/may be partial/)).toBeNull();
+  });
+
   it("leaves a gap where a value is missing", () => {
     useMessages(
       turn(

@@ -30,6 +30,27 @@ export function formatDay(iso: string): string {
   });
 }
 
+/** A period's start date, named at the chart's unit: "Aug 2026", "Q3 2026". */
+export function formatPeriod(start: string, unit?: string): string {
+  const day = parseDay(start);
+  if (!day) return start;
+  const year = day.getUTCFullYear();
+  switch (unit) {
+    case "Year":
+      return String(year);
+    case "Quarter":
+      return `Q${Math.floor(day.getUTCMonth() / 3) + 1} ${year}`;
+    case "Month":
+      return day.toLocaleDateString("en-US", {
+        month: "short",
+        year: "numeric",
+        timeZone: "UTC",
+      });
+    default:
+      return formatDay(start);
+  }
+}
+
 /**
  * The caption under a chart, one line per fact, in reading order. The panel
  * and the PNG both draw these, so they always say the same thing. `shown` is
@@ -42,7 +63,11 @@ export function captionLines(caption: CaptionFacts, shown: number): string[] {
     caption.unit ? `${range}, by ${caption.unit.toLowerCase()}` : range,
   ];
   // XDMoD's public data often stops weeks before the range does.
-  if (caption.dataThrough && caption.dataThrough < caption.counted.end) {
+  if (caption.dataThrough && caption.partialPeriod) {
+    lines.push(
+      `XDMoD has data through ${formatDay(caption.dataThrough)}, so ${formatPeriod(caption.partialPeriod, caption.unit)} may be partial.`,
+    );
+  } else if (caption.dataThrough && caption.dataThrough < caption.counted.end) {
     lines.push(`XDMoD has data through ${formatDay(caption.dataThrough)}.`);
   }
   if (caption.filters.length > 0) {
@@ -85,6 +110,14 @@ export function chartCsv(view: ChartView): string {
     ["Counted", `${caption.counted.start} to ${caption.counted.end}`],
     ...(caption.dataThrough
       ? [["Data through", caption.dataThrough] as [string, string]]
+      : []),
+    ...(caption.partialPeriod
+      ? [
+          [
+            "Partial period",
+            formatPeriod(caption.partialPeriod, caption.unit),
+          ] as [string, string],
+        ]
       : []),
     ["Filters", caption.filters.length ? caption.filters.join("; ") : "None"],
     ["Retrieved", caption.retrieved],

@@ -124,6 +124,36 @@ describe("captionLines with data_through", () => {
   });
 });
 
+describe("captionLines with a partial period", () => {
+  const partial = {
+    ...CAPTION,
+    counted: { start: "2026-08-01", end: "2026-11-08" },
+    dataThrough: "2026-10-01",
+    partialPeriod: "2026-10-01",
+  };
+
+  it("names the partial month in place of the data-through line", () => {
+    const lines = captionLines(partial, 1);
+    expect(lines[2]).toBe(
+      "XDMoD has data through Oct 1, 2026, so Oct 2026 may be partial.",
+    );
+    expect(lines.join("\n")).not.toContain("has data through Oct 1, 2026.");
+  });
+
+  it("names the period at the chart's unit", () => {
+    const line = (unit: string) => captionLines({ ...partial, unit }, 1)[2];
+    expect(line("Day")).toBe(
+      "XDMoD has data through Oct 1, 2026, so Oct 1, 2026 may be partial.",
+    );
+    expect(line("Quarter")).toBe(
+      "XDMoD has data through Oct 1, 2026, so Q4 2026 may be partial.",
+    );
+    expect(line("Year")).toBe(
+      "XDMoD has data through Oct 1, 2026, so 2026 may be partial.",
+    );
+  });
+});
+
 describe("chartCsv", () => {
   it("starts with what was counted, then one row per period", () => {
     expect(chartCsv(lineView()).split("\n")).toEqual([
@@ -169,6 +199,23 @@ describe("chartCsv", () => {
     expect(chartCsv(view).split("\n").slice(1, 3)).toEqual([
       "Counted,2026-08-01 to 2026-10-31",
       "Data through,2026-09-01",
+    ]);
+  });
+});
+
+describe("chartCsv with a partial period", () => {
+  it("adds the partial period after the data-through row", () => {
+    const view = lineView({
+      caption: {
+        ...lineView().caption,
+        dataThrough: "2026-10-01",
+        partialPeriod: "2026-10-01",
+      },
+    });
+    expect(chartCsv(view).split("\n").slice(1, 4)).toEqual([
+      "Counted,2026-08-01 to 2026-10-31",
+      "Data through,2026-10-01",
+      "Partial period,Oct 2026",
     ]);
   });
 });

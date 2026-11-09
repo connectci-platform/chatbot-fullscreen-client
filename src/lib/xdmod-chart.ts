@@ -38,6 +38,8 @@ interface ChartPayload {
   has_more: boolean;
   /** Start of the last period with any value; absent from older payloads. */
   data_through?: string | null;
+  /** XDMoD's data likely covers only part of the data_through period. */
+  last_data_period_partial?: boolean;
   ranked_by: "value";
   link: string;
   source: "XDMoD";
@@ -53,6 +55,8 @@ export type CaptionFacts = {
   counted: { start: string; end: string };
   /** Start of the last period XDMoD has any data for, when it says. */
   dataThrough?: string;
+  /** The data_through period, when XDMoD's data likely covers only part of it. */
+  partialPeriod?: string;
   unit?: string;
   filters: string[];
   hasMore: boolean;
@@ -143,6 +147,12 @@ function parsePayload(raw: unknown): ChartPayload | null {
     raw.data_through !== undefined &&
     raw.data_through !== null &&
     !isString(raw.data_through)
+  ) {
+    return null;
+  }
+  if (
+    raw.last_data_period_partial !== undefined &&
+    typeof raw.last_data_period_partial !== "boolean"
   ) {
     return null;
   }
@@ -305,6 +315,9 @@ function toView(
       definition: chart.measure.description,
       counted: { ...chart.counted },
       ...(chart.data_through ? { dataThrough: chart.data_through } : {}),
+      ...(chart.data_through && chart.last_data_period_partial
+        ? { partialPeriod: chart.data_through }
+        : {}),
       unit: chart.unit,
       filters: [...chart.filters.notes],
       hasMore: chart.has_more,
