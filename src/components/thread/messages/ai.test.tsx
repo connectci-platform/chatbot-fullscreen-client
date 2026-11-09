@@ -192,7 +192,7 @@ describe("AssistantMessage", () => {
       "Let me first check the documentation for Delta.",
     );
     expect(line.tagName).toBe("P");
-    expect(line.className).toContain("text-muted-foreground");
+    expect(line.closest(".text-muted-foreground")).toBeTruthy();
     expect(screen.queryByTestId("rating")).toBeNull();
     expect(screen.queryByRole("button", { name: "Copy content" })).toBeNull();
   });
@@ -239,6 +239,51 @@ describe("AssistantMessage", () => {
     renderMessage(message);
     expect(screen.getByText("Delta has CPU and GPU partitions.")).toBeTruthy();
     expect(screen.getByTestId("rating")).toBeTruthy();
+  });
+
+  it("shows long working notes as status lines once the answer follows them", () => {
+    const text =
+      "The curated documentation for Delta and Anvil shows `wait_times: null`, " +
+      "meaning there's no reliable per-queue wait time data published by these " +
+      "resource providers, so the documentation alone can't answer this.\n\n" +
+      "Let me check whether XDMoD has a metric like avg_waitduration_hours.";
+    const notes: Message = {
+      id: "ai-11",
+      type: "ai",
+      content: text,
+      tool_calls: [{ id: "call-11", name: "get_chart_data", args: {} }],
+    };
+    const answer: Message = {
+      id: "ai-12",
+      type: "ai",
+      content: "Here's the monthly average wait time per job for 2026.",
+    };
+    const result: Message = {
+      id: "tool-11",
+      type: "tool",
+      tool_call_id: "call-11",
+      content: "{}",
+    };
+
+    // While the lookup runs, nothing follows: the text stays an answer.
+    stream.messages = [notes];
+    const { unmount } = renderMessage(notes);
+    expect(screen.getByText("wait_times: null").tagName).toBe("CODE");
+    unmount();
+
+    stream.messages = [notes, result, answer];
+    renderMessage(notes);
+    const first = screen.getByText(/^The curated documentation/);
+    expect(first.tagName).toBe("P");
+    expect(first.closest(".text-muted-foreground")).toBeTruthy();
+    expect(first.textContent).toContain("shows wait times: null,");
+    expect(
+      screen.getByText(
+        "Let me check whether XDMoD has a metric like avg waitduration hours.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("code")).toBeNull();
+    expect(screen.queryByTestId("rating")).toBeNull();
   });
 
   describe("with an XDMoD chart", () => {

@@ -24,7 +24,11 @@ import { showChart } from "../xdmod-chart-panel";
 import { focusComposer } from "../composer";
 import { useMemo } from "react";
 import { answerWithSources } from "@/lib/answer-sources";
-import { isToolCallNarration, plainText } from "@/lib/tool-narration";
+import {
+  continuedAfter,
+  isToolCallNarration,
+  narrationParagraphs,
+} from "@/lib/tool-narration";
 
 function CustomComponent({
   message,
@@ -133,6 +137,7 @@ export function AssistantMessage({
     message,
     contentString,
     !!threadInterrupt,
+    !!message && continuedAfter(thread.messages, message),
   );
 
   if (message?.type === "tool") {
@@ -143,9 +148,11 @@ export function AssistantMessage({
     <div className="group mr-auto flex w-full items-start gap-2">
       <div className="flex w-full flex-col gap-2">
         {narration ? (
-          <p className="text-muted-foreground text-sm">
-            {plainText(contentString)}
-          </p>
+          <div className="text-muted-foreground flex flex-col gap-2 text-sm">
+            {narrationParagraphs(contentString).map((paragraph, i) => (
+              <p key={i}>{paragraph}</p>
+            ))}
+          </div>
         ) : (
           contentString.length > 0 && (
             <div className="py-1">
