@@ -101,6 +101,14 @@ describe("RegistrationDetails", () => {
     );
   });
 
+  it("says it's checking, not that nothing was submitted, while a reply runs", () => {
+    show({ ...preview, actionable: false }, true);
+
+    const status = screen.getByRole("status").textContent;
+    expect(status).toContain("Checking with the assistant");
+    expect(status).not.toContain("Nothing has been submitted");
+  });
+
   it("doesn't claim a seat when the outcome is unknown", () => {
     show({ ...preview, outcome: null });
 
