@@ -56,6 +56,12 @@ export function afterStop(
  * question when nothing answered it and no run is going, which also covers a
  * reloaded thread. `stopped` is set when the person stopped this turn here,
  * so the note also shows under the answer text that had streamed.
+ *
+ * A thread reloaded while the agent is still answering also reads as
+ * unanswered: the agent doesn't report a thread's active run (its history has
+ * no `next`, and search always says idle), and this client doesn't rejoin
+ * runs. Retry there is refused by the agent's per-thread run lock with a 409,
+ * so it can't start a second run.
  */
 export function unansweredQuestion({
   messages,

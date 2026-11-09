@@ -263,19 +263,31 @@ export function Thread() {
     return { text, blocks: blocks as unknown as typeof contentBlocks };
   };
 
+  // Held from a Retry click until its run starts, so a double click sends once.
+  const retrying = useRef(false);
+  useEffect(() => {
+    if (isLoading) retrying.current = false;
+  }, [isLoading]);
+
   /** Asks the unanswered question again as a new run. */
   const retryQuestion = () => {
     const parts = unansweredParts();
-    if (!parts || awaitingCheck) return;
+    if (!parts || awaitingCheck || retrying.current) return;
+    retrying.current = true;
     submitMessage(parts.text, parts.blocks);
   };
 
-  /** Puts the unanswered question back in the message box, unsent. */
+  /**
+   * Puts the unanswered question in the message box, unsent. A draft already
+   * there is kept, with the question on a new line after it.
+   */
   const editQuestion = () => {
     const parts = unansweredParts();
     if (!parts) return;
-    setInput(parts.text);
-    setContentBlocks(parts.blocks);
+    setInput((draft) =>
+      draft.trim() ? `${draft}\n${parts.text}` : parts.text,
+    );
+    setContentBlocks((blocks) => [...blocks, ...parts.blocks]);
     focusComposer();
   };
 

@@ -15,6 +15,7 @@ const sdk = vi.hoisted(() => ({
   authStatus: "signed_out",
   messages: [] as unknown[],
   onStop: undefined as StopHandler | undefined,
+  onThreadId: undefined as ((id: string) => void) | undefined,
   // What the app's onStop gave the SDK's mutate, in order.
   stopUpdates: [] as StopUpdate[],
 }));
@@ -26,9 +27,11 @@ vi.mock("@langchain/langgraph-sdk/react", () => ({
   useStream: (options: {
     onCustomEvent: CustomEventHandler;
     onStop: StopHandler;
+    onThreadId: (id: string) => void;
   }) => {
     sdk.onCustomEvent = options.onCustomEvent;
     sdk.onStop = options.onStop;
+    sdk.onThreadId = options.onThreadId;
     return {
       isLoading: sdk.isLoading,
       messages: sdk.messages,
@@ -391,6 +394,29 @@ describe("stopping a run", () => {
     expect(result.current.stopped).toBe(true);
     sdk.isLoading = true;
     rerender();
+    expect(result.current.stopped).toBe(false);
+  });
+
+  it("isn't stopped by a Cancel that lands after the run finished", async () => {
+    sdk.isLoading = false;
+    const { result } = setup();
+    await act(() => result.current.stop());
+    expect(result.current.stopped).toBe(false);
+    expect(sdk.stopUpdates).toEqual([]);
+  });
+
+  it("uses the stop handler once", async () => {
+    const { result } = setup();
+    await stopWith(result, [saved]);
+    sdk.onStop?.({ mutate: (update) => sdk.stopUpdates.push(update) });
+    expect(sdk.stopUpdates).toHaveLength(1);
+  });
+
+  it("clears when another conversation opens", async () => {
+    const { result } = setup();
+    await stopWith(result, [saved]);
+    expect(result.current.stopped).toBe(true);
+    act(() => sdk.onThreadId?.("t-2"));
     expect(result.current.stopped).toBe(false);
   });
 });

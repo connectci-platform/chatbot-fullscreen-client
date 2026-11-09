@@ -356,12 +356,19 @@ const StreamSession = ({
   useEffect(() => setStopped(false), [threadId]);
 
   const stop: TypedStream["stop"] = () => {
+    // A Cancel that lands as the run finishes stops nothing: the answer is in.
+    if (!streamValue.isLoading) {
+      onStop.current = null;
+      return streamValue.stop();
+    }
     const turn = stoppedTurn(streamValue.messages);
     setStopped(true);
-    // The SDK calls this once at the stop, on what is on screen, and once more
-    // on the thread as the agent saved it, which it then shows.
+    // The SDK calls this update once at the stop, on what is on screen, and
+    // once more on the thread as the agent saved it, which it then shows. The
+    // handler is used up at once, so a later stop can't run it again.
     let calls = 0;
-    onStop.current = (mutate) =>
+    onStop.current = (mutate) => {
+      onStop.current = null;
       mutate((prev) => {
         if (calls++ === 0) return {};
         const result = afterStop(prev.messages ?? [], turn);
@@ -369,6 +376,7 @@ const StreamSession = ({
         setStopped(false);
         return {};
       });
+    };
     return streamValue.stop();
   };
 

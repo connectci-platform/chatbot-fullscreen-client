@@ -147,6 +147,26 @@ describe("the Stopped note", () => {
     expect(stream.submit).not.toHaveBeenCalled();
   });
 
+  it("Retry sends once on a double click", () => {
+    stream.stopped = true;
+    renderThread();
+    const retry = screen.getByRole("button", { name: "Retry" });
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    expect(stream.submit).toHaveBeenCalledOnce();
+  });
+
+  it("Edit question keeps a draft and adds the question after it", () => {
+    stream.stopped = true;
+    renderThread();
+    const box = screen.getByRole("textbox", { name: "Message" });
+    fireEvent.change(box, { target: { value: "Also, Delta?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Edit question" }));
+
+    expect(box).toHaveValue("Also, Delta?\nWhat is Anvil?");
+    expect(box).toHaveFocus();
+  });
+
   it("doesn't show under a completed answer", () => {
     stream.messages = [
       question,
