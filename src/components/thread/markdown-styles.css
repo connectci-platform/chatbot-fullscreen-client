@@ -1,7 +1,7 @@
 /* Base markdown styles */
 .markdown-content {
   /* Long paths, hostnames and URLs break instead of overflowing a phone. */
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .markdown-content code:not(pre code) {
