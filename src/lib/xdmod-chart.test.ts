@@ -387,6 +387,15 @@ describe("chartViewsByMessage", () => {
     });
   });
 
+  it("keeps a chart whose link is null, missing or not https, with no link", () => {
+    const filtered = { filters: { notes: ["Resource is Delta"] } };
+    expect(view(payload({ ...filtered, link: null }))!.link).toBeNull();
+    expect(view(payload({ ...filtered, link: undefined }))!.link).toBeNull();
+    expect(view(payload({ link: "javascript:alert(1)" }))!.link).toBeNull();
+    expect(view(payload())!.link).toBe("https://xdmod.access-ci.org/#chart");
+    expect(view(payload({ link: 5 }))).toBeNull();
+  });
+
   it("returns null with no charts", () => {
     expect(latestChartViews([human("h"), ai("a")])).toEqual([]);
   });

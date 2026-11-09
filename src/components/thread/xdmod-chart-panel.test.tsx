@@ -842,6 +842,22 @@ describe("XdmodChartPanel", () => {
     );
   });
 
+  it("opens a filtered chart that has no XDMoD link", () => {
+    useMessages(
+      turn(
+        payload({
+          link: null,
+          filters: { notes: ["Resource is Delta"] },
+        }),
+      ),
+    );
+    render(tree());
+    expect(screen.getByText("panel open")).toBeTruthy();
+    expect(screen.getByText("Filtered to Resource is Delta")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /XDMoD/ })).toBeNull();
+    expect(screen.queryByText(/default dates/)).toBeNull();
+  });
+
   it("links to XDMoD only over https", () => {
     useMessages(turn(payload({ link: "javascript:alert(1)" })));
     render(tree());

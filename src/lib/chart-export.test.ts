@@ -253,10 +253,8 @@ describe("chartCsv", () => {
     ]);
   });
 
-  it("leaves out a link that isn't https", () => {
-    expect(chartCsv(lineView({ link: "javascript:alert(1)" }))).not.toContain(
-      "XDMoD link",
-    );
+  it("leaves out the link when there is none", () => {
+    expect(chartCsv(lineView({ link: null }))).not.toContain("XDMoD link");
   });
 
   it("adds where the data stops to the header", () => {

@@ -532,8 +532,8 @@ export function ChartCaption({
       ))}
       <p className="text-muted-foreground">
         <span>{source}</span>
-        {/* The link comes from a tool result: only a web link is followed. */}
-        {view.link.startsWith("https:") && (
+        {/* None for a filtered chart, which XDMoD's link can't carry. */}
+        {view.link && (
           <>
             {" "}
             <a

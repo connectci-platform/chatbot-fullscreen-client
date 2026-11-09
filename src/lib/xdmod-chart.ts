@@ -47,7 +47,8 @@ interface ChartPayload {
   /** XDMoD's data likely covers only part of the data_through period. */
   last_data_period_partial?: boolean;
   ranked_by: "value";
-  link: string;
+  /** Null for a filtered chart: XDMoD's portal link can't carry filters. */
+  link?: string | null;
   source: "XDMoD";
   retrieved: string;
 }
@@ -100,7 +101,8 @@ export type ChartView = {
   series: { name: string; points: { start: string; value: Value }[] }[];
   bars: { name: string; value: Value }[];
   caption: CaptionFacts;
-  link: string;
+  /** An https link into XDMoD, or null when there is none to offer. */
+  link: string | null;
   followUps: string[];
 };
 
@@ -143,7 +145,6 @@ function parsePayload(raw: unknown): ChartPayload | null {
     !isPeriod(raw.counted) ||
     typeof raw.last_period_incomplete !== "boolean" ||
     typeof raw.has_more !== "boolean" ||
-    !isString(raw.link) ||
     !isString(raw.source) ||
     !isString(raw.retrieved)
   ) {
@@ -167,6 +168,9 @@ function parsePayload(raw: unknown): ChartPayload | null {
   }
   if (!isRecord(filters) || !isList(filters.notes, isString)) return null;
   if (raw.unit !== undefined && !isString(raw.unit)) return null;
+  if (raw.link !== undefined && raw.link !== null && !isString(raw.link)) {
+    return null;
+  }
   if (
     raw.data_through !== undefined &&
     raw.data_through !== null &&
@@ -431,7 +435,8 @@ function toView(
       source: chart.source,
       retrieved: chart.retrieved,
     },
-    link: chart.link,
+    // The payload crossed a network boundary: only a web link is followed.
+    link: chart.link?.startsWith("https:") ? chart.link : null,
     followUps: followUpsFor(chart, kind, warnings),
   };
 }
