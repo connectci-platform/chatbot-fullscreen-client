@@ -302,6 +302,42 @@ describe("XdmodChartPanel", () => {
     expect(screen.queryByText(/may be partial/)).toBeNull();
   });
 
+  it("draws nothing after the data_through point", () => {
+    useMessages(
+      turn(
+        payload({
+          measure: {
+            label: "Number of Jobs Ended",
+            description: "Jobs that ended.",
+            kind: "total",
+            missing: "zero",
+          },
+          statistic: "job_count",
+          counted: { start: "2026-06-01", end: "2026-11-08" },
+          data_through: "2026-09-01",
+          series: [
+            {
+              name: "All",
+              points: [
+                { start: "2026-06-01", value: 10 },
+                { start: "2026-07-01", value: 20 },
+                { start: "2026-08-01", value: 15 },
+                { start: "2026-09-01", value: 25 },
+                { start: "2026-10-01", value: null },
+                { start: "2026-11-01", value: null },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    const { container } = render(tree());
+    const [line] = solidLines(container);
+    // One run, June to September: three segments, nothing dropping to zero.
+    expect(line.getAttribute("d")?.match(/M/g)).toHaveLength(1);
+    expect(line.getAttribute("d")?.match(/L/g)).toHaveLength(3);
+  });
+
   it("leaves a gap where a value is missing", () => {
     useMessages(
       turn(

@@ -266,6 +266,11 @@ function toView(
 ): ChartView {
   const zero = chart.measure.missing === "zero";
   const fill = (v: Value): Value => (v === null && zero ? 0 : v);
+  // Past the last period XDMoD has data for, missing means unknown, not
+  // zero: filling it would draw a drop that didn't happen.
+  const through = chart.data_through;
+  const fillPoint = (p: { start: string; value: Value }): Value =>
+    through && p.start.slice(0, 10) > through ? p.value : fill(p.value);
 
   let kind: ChartView["kind"];
   let series: ChartView["series"] = [];
@@ -274,7 +279,7 @@ function toView(
     kind = "line";
     series = (chart.series ?? []).map((s) => ({
       name: s.name,
-      points: s.points.map((p) => ({ start: p.start, value: fill(p.value) })),
+      points: s.points.map((p) => ({ start: p.start, value: fillPoint(p) })),
     }));
   } else {
     bars = (chart.categories ?? []).map((c) => ({

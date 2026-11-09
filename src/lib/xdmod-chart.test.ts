@@ -283,6 +283,52 @@ describe("chartViewsByMessage", () => {
     expect(view(payload({ last_data_period_partial: "yes" }))).toBeNull();
   });
 
+  describe("zero-filling around data_through", () => {
+    const points = [
+      { start: "2026-01-01", value: 10 },
+      { start: "2026-02-01", value: null },
+      { start: "2026-03-01", value: 30 },
+      { start: "2026-04-01", value: null },
+      { start: "2026-05-01", value: null },
+    ];
+    const values = (over: Json) =>
+      view(
+        payload({ series: [{ name: "All", points }], ...over }),
+      )!.series[0].points.map((p) => p.value);
+
+    it("keeps periods after data_through as gaps for a total", () => {
+      expect(values({ data_through: "2026-03-01" })).toEqual([
+        10,
+        0,
+        30,
+        null,
+        null,
+      ]);
+    });
+
+    it("still zero-fills a total without data_through", () => {
+      expect(values({})).toEqual([10, 0, 30, 0, 0]);
+      expect(values({ data_through: null })).toEqual([10, 0, 30, 0, 0]);
+    });
+
+    it("leaves an average's gaps alone", () => {
+      const average = {
+        label: "Wait",
+        description: "Avg wait.",
+        kind: "average",
+        missing: "gap",
+      };
+      expect(values({ measure: average, data_through: "2026-03-01" })).toEqual([
+        10,
+        null,
+        30,
+        null,
+        null,
+      ]);
+      expect(values({ measure: average })).toEqual([10, null, 30, null, null]);
+    });
+  });
+
   it("returns null with no charts", () => {
     expect(latestChartView([human("h"), ai("a")])).toBeNull();
   });
