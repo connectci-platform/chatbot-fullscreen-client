@@ -152,13 +152,13 @@ const defaultComponents: any = {
     />
   ),
   table: ({ className, ...props }: { className?: string }) => (
-    <table
-      className={cn(
-        "my-5 w-full border-separate border-spacing-0 overflow-y-auto",
-        className,
-      )}
-      {...props}
-    />
+    // A wide table scrolls inside its own box instead of widening the chat.
+    <div className="my-5 overflow-x-auto">
+      <table
+        className={cn("w-full border-separate border-spacing-0", className)}
+        {...props}
+      />
+    </div>
   ),
   th: ({ className, ...props }: { className?: string }) => (
     <th

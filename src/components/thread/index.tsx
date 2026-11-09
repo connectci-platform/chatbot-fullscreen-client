@@ -370,7 +370,11 @@ export function Thread() {
                 "absolute inset-0 overflow-y-scroll px-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent",
                 !chatStarted &&
                   "flex flex-col items-stretch pt-[4vh] sm:pt-[16vh]",
-                chatStarted && "grid grid-rows-[1fr_auto]",
+                // minmax(0,1fr): without it the grid column grows to fit
+                // the widest unbreakable text (a long path or URL) and the
+                // whole chat scrolls sideways on a phone.
+                chatStarted &&
+                  "grid grid-cols-[minmax(0,1fr)] grid-rows-[1fr_auto]",
               )}
               contentClassName="pt-8 pb-16 max-w-3xl mx-auto flex flex-col gap-4 w-full"
               content={
