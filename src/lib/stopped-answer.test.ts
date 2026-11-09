@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { Message } from "@langchain/langgraph-sdk";
 import {
   afterStop,
+  cutOffNote,
+  stopReason,
   isStoppedAnswer,
   stoppedTurn,
   unansweredQuestion,
@@ -77,6 +79,7 @@ describe("unansweredQuestion", () => {
     expect(unansweredQuestion({ ...idle, messages: [question] })).toEqual({
       question,
       stoppedHere: false,
+      reason: "user",
     });
   });
 
@@ -94,7 +97,7 @@ describe("unansweredQuestion", () => {
         stopped: true,
         messages: [question, partial],
       }),
-    ).toEqual({ question, stoppedHere: true });
+    ).toEqual({ question, stoppedHere: true, reason: "user" });
   });
 
   it("ignores hidden tool responses after the question", () => {
@@ -127,7 +130,7 @@ describe("unansweredQuestion", () => {
     const cancelled = Object.assign(new Error(), { name: "cancelled" });
     expect(
       unansweredQuestion({ ...idle, messages: [question], error: cancelled }),
-    ).toEqual({ question, stoppedHere: true });
+    ).toEqual({ question, stoppedHere: true, reason: "user" });
   });
 });
 
@@ -160,7 +163,7 @@ describe("a stopped answer the agent saved", () => {
       interrupted: false,
       stopped: false,
     });
-    expect(at).toEqual({ question, stoppedHere: true });
+    expect(at).toEqual({ question, stoppedHere: true, reason: "user" });
   });
 
   it("is what Retry and Edit replace, with its question", () => {
@@ -176,5 +179,52 @@ describe("a stopped answer the agent saved", () => {
       earlierReply,
     ]);
     expect(withoutUnansweredTurn([])).toEqual([]);
+  });
+});
+
+describe("why an answer was cut off", () => {
+  const cut = (reason?: string): Message => ({
+    id: "a-1",
+    type: "ai",
+    content: "Anvil is",
+    response_metadata: { stopped: true, ...(reason && { reason }) },
+  });
+
+  it("reads the reason, as a stop when an older agent gave none", () => {
+    expect(stopReason(cut("timeout"))).toBe("timeout");
+    expect(stopReason(cut("error"))).toBe("error");
+    expect(stopReason(cut("user"))).toBe("user");
+    expect(stopReason(cut())).toBe("user");
+    expect(stopReason(cut("something else"))).toBe("user");
+    expect(stopReason(earlierReply)).toBeNull();
+  });
+
+  it("says a timeout or a failure didn't finish", () => {
+    expect(cutOffNote("user")).toBe("You stopped this answer.");
+    expect(cutOffNote("timeout")).toBe("This answer didn't finish.");
+    expect(cutOffNote("error")).toBe("This answer didn't finish.");
+  });
+
+  it("gives the saved reason for the latest question", () => {
+    const args = {
+      isLoading: false,
+      error: undefined,
+      interrupted: false,
+    };
+    expect(
+      unansweredQuestion({
+        ...args,
+        messages: [question, cut("error")],
+        stopped: false,
+      })?.reason,
+    ).toBe("error");
+    // A stop the person made here is theirs, whatever was saved.
+    expect(
+      unansweredQuestion({
+        ...args,
+        messages: [question, cut("timeout")],
+        stopped: true,
+      })?.reason,
+    ).toBe("user");
   });
 });

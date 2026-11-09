@@ -23,6 +23,26 @@ export function isStoppedAnswer(message: Message | undefined): boolean {
 }
 
 /**
+ * Why an answer was cut off: the person stopped it ("user"), the turn ran out
+ * of time, or the agent failed. An agent from before reasons were saved only
+ * marked stops, so a stopped answer without one is a stop.
+ */
+export type StopReason = "user" | "timeout" | "error";
+
+export function stopReason(message: Message | undefined): StopReason | null {
+  if (!isStoppedAnswer(message)) return null;
+  const reason = message?.response_metadata?.reason;
+  return reason === "timeout" || reason === "error" ? reason : "user";
+}
+
+/** The note under a cut-off answer. */
+export function cutOffNote(reason: StopReason): string {
+  return reason === "user"
+    ? "You stopped this answer."
+    : "This answer didn't finish.";
+}
+
+/**
  * Where the latest question starts, when nothing but a stopped answer, or
  * nothing at all, came after it. Else -1.
  */
@@ -108,7 +128,7 @@ export function unansweredQuestion({
   error: unknown;
   interrupted: boolean;
   stopped: boolean;
-}): { question: Message; stoppedHere: boolean } | null {
+}): { question: Message; stoppedHere: boolean; reason: StopReason } | null {
   if (isLoading || interrupted) return null;
   // Other failures have their own message, and a Turnstile check its panel.
   if (error && !isStopError(error)) return null;
@@ -119,8 +139,11 @@ export function unansweredQuestion({
   const savedStopped =
     unansweredFrom(visible) === at && at < visible.length - 1;
   const stoppedHere = stopped || savedStopped || isStopError(error);
+  // A stop seen here is the person's; a saved one says why it ended.
+  const reason =
+    (savedStopped && !stopped && stopReason(visible.at(-1))) || "user";
   if (at === visible.length - 1 || savedStopped) {
-    return { question, stoppedHere };
+    return { question, stoppedHere, reason };
   }
-  return stopped ? { question, stoppedHere } : null;
+  return stopped ? { question, stoppedHere, reason } : null;
 }

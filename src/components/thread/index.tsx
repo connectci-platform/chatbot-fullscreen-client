@@ -51,7 +51,8 @@ import {
   useRestoreQuestion,
 } from "@/hooks/use-restore-question";
 import {
-  isStoppedAnswer,
+  cutOffNote,
+  stopReason,
   unansweredQuestion,
   withoutUnansweredTurn,
 } from "@/lib/stopped-answer";
@@ -515,10 +516,10 @@ export function Thread() {
                           />
                           {/* An earlier stopped turn keeps its note; the
                             latest one's, with Retry and Edit, is below. */}
-                          {isStoppedAnswer(message) &&
+                          {stopReason(message) &&
                             shownMessages[index + 1]?.type === "human" && (
                               <p className="text-muted-foreground text-sm">
-                                You stopped this answer.
+                                {cutOffNote(stopReason(message)!)}
                               </p>
                             )}
                         </Fragment>

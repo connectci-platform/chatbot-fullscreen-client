@@ -1,4 +1,5 @@
 import type { Ref } from "react";
+import { cutOffNote, type StopReason } from "@/lib/stopped-answer";
 import { Button } from "../ui/button";
 
 /**
@@ -14,7 +15,7 @@ export function StoppedNote({
   retryRef,
 }: {
   /** Null while there's nothing to show. */
-  turn: { stoppedHere: boolean } | null;
+  turn: { stoppedHere: boolean; reason: StopReason } | null;
   onRetry: () => void;
   onEdit: () => void;
   /** Retry, so focus can move to it when Cancel goes away. */
@@ -29,7 +30,7 @@ export function StoppedNote({
         <div className="flex flex-col items-start gap-2 text-sm">
           <p className="text-muted-foreground">
             {turn.stoppedHere
-              ? "You stopped this answer."
+              ? cutOffNote(turn.reason)
               : "This question didn't get an answer."}
           </p>
           <div className="flex gap-2">

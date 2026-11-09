@@ -312,4 +312,34 @@ describe("the Stopped note", () => {
     );
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveFocus();
   });
+
+  it("says a turn that timed out or failed didn't finish, with Retry", () => {
+    for (const reason of ["timeout", "error"]) {
+      stream.messages = [
+        question,
+        { ...savedStop, response_metadata: { stopped: true, reason } },
+      ];
+      const { unmount } = renderThread();
+      expect(screen.getByText("This answer didn't finish.")).toBeTruthy();
+      expect(note()).toBeNull();
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: "Edit question" }),
+      ).toBeTruthy();
+      expect(screen.queryByText(/No documentation was retrieved/)).toBeNull();
+      unmount();
+    }
+  });
+
+  it("keeps an earlier unfinished turn's note after the next answer", () => {
+    stream.messages = [
+      question,
+      { ...savedStop, response_metadata: { stopped: true, reason: "error" } },
+      later,
+      laterAnswer,
+    ];
+    renderThread();
+    expect(screen.getByText("This answer didn't finish.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
 });
