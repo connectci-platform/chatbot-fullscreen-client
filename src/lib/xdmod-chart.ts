@@ -36,6 +36,8 @@ interface ChartPayload {
   }[];
   categories?: { name: string; value: number | null }[];
   has_more: boolean;
+  /** Start of the last period with any value; absent from older payloads. */
+  data_through?: string | null;
   ranked_by: "value";
   link: string;
   source: "XDMoD";
@@ -49,6 +51,8 @@ export type CaptionFacts = {
   measure: string;
   definition: string;
   counted: { start: string; end: string };
+  /** Start of the last period XDMoD has any data for, when it says. */
+  dataThrough?: string;
   unit?: string;
   filters: string[];
   hasMore: boolean;
@@ -67,6 +71,8 @@ export type ChartView = {
   messageId: string;
   kind: "line" | "bar-ranked" | "bar-ordered";
   title: string;
+  /** What the bars are, readable: "Resource", "Field of science". */
+  dimension: string;
   series: { name: string; points: { start: string; value: Value }[] }[];
   bars: { name: string; value: Value }[];
   caption: CaptionFacts;
@@ -133,6 +139,13 @@ function parsePayload(raw: unknown): ChartPayload | null {
   }
   if (!isRecord(filters) || !isList(filters.notes, isString)) return null;
   if (raw.unit !== undefined && !isString(raw.unit)) return null;
+  if (
+    raw.data_through !== undefined &&
+    raw.data_through !== null &&
+    !isString(raw.data_through)
+  ) {
+    return null;
+  }
   if (raw.series !== undefined && !isList(raw.series, isSeries)) return null;
   if (raw.categories !== undefined && !isList(raw.categories, isCategory)) {
     return null;
@@ -159,6 +172,38 @@ function isChartWorthy(chart: ChartPayload): boolean {
     for (const p of s.points) if (p.value !== null) nonNull++;
   }
   return nonNull > 1;
+}
+
+const DIMENSION_LABELS: Record<string, string> = {
+  none: "Name",
+  resource: "Resource",
+  resource_type: "Resource type",
+  fieldofscience: "Field of science",
+  parentscience: "Parent science",
+  nsfdirectorate: "NSF directorate",
+  jobsize: "Job size",
+  jobwalltime: "Job wall time",
+  jobwaittime: "Job wait time",
+  queue: "Queue",
+  person: "User",
+  username: "User",
+  pi: "PI",
+  institution: "Institution",
+  provider: "Service provider",
+  allocation: "Allocation",
+  gpucount: "GPU count",
+};
+
+/** A readable column name for an XDMoD dimension id. */
+function dimensionLabel(name: string): string {
+  const known = DIMENSION_LABELS[name.toLowerCase()];
+  if (known) return known;
+  return name
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join(" ");
 }
 
 function warningsFor(chart: ChartPayload): CaptionWarning[] {
@@ -252,12 +297,14 @@ function toView(
     messageId,
     kind,
     title: chart.measure.label,
+    dimension: dimensionLabel(chart.dimension.name),
     series,
     bars,
     caption: {
       measure: chart.measure.label,
       definition: chart.measure.description,
       counted: { ...chart.counted },
+      ...(chart.data_through ? { dataThrough: chart.data_through } : {}),
       unit: chart.unit,
       filters: [...chart.filters.notes],
       hasMore: chart.has_more,

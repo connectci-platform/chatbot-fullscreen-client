@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { ReactNode, useCallback, useEffect, useRef } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useStreamContext } from "@/providers/Stream";
@@ -56,6 +56,7 @@ import {
 import { RegistrationPanel } from "./registration-panel";
 import { SoftwareComparisonPanel } from "./software-comparison-panel";
 import { XdmodChartPanel } from "./xdmod-chart-panel";
+import { chartViewsByMessage } from "@/lib/xdmod-chart";
 
 function StickyToBottomContent(props: {
   content: ReactNode;
@@ -131,6 +132,8 @@ export function Thread() {
 
   const stream = useStreamContext();
   const messages = stream.messages;
+  // Once per update, not once per message: each answer only needs its key.
+  const chartViews = useMemo(() => chartViewsByMessage(messages), [messages]);
   const [firstTokenReceived, setFirstTokenReceived] = useFirstTokenReceived(
     messages,
     stream.runStatus,
@@ -400,6 +403,11 @@ export function Thread() {
                           message={message}
                           isLoading={isLoading}
                           onAsk={(question) => submitMessage(question, [])}
+                          chartKey={
+                            message.id
+                              ? chartViews.get(message.id)?.key
+                              : undefined
+                          }
                         />
                       ),
                     )}
@@ -569,8 +577,6 @@ export function Thread() {
       </div>
       <RegistrationPanel onConfirm={(text) => submitMessage(text, [])} />
       <SoftwareComparisonPanel />
-      {/* After the other panels: on a reopened thread, its newest-step check
-          runs last and wins when the chart came last. */}
       <XdmodChartPanel onAsk={(text) => submitMessage(text, [])} />
     </div>
   );

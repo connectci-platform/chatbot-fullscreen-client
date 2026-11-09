@@ -1,5 +1,6 @@
 import type { Message } from "@langchain/langgraph-sdk";
 import { latestRegistration } from "./registration";
+import { latestChartView } from "./xdmod-chart";
 
 const COMPARE_TOOL = "compare_software_availability";
 const VERSION_TOOLS = new Set(["get_software_details", "search_software"]);
@@ -282,19 +283,28 @@ function toolIndex(messages: Message[], toolCallId: string): number {
   );
 }
 
-export type PanelStep = "registration" | "comparison";
+export type PanelStep = "registration" | "comparison" | "chart";
 
 /**
  * Which panel should hold the shared side panel: the newest step in the
- * conversation that still has something to show.
+ * conversation that still has something to show, by where its tool result
+ * sits in the messages.
  */
 export function newestPanelStep(messages: Message[]): PanelStep | null {
-  const registration = latestRegistration(messages);
-  const comparison = latestComparison(messages);
-  if (!registration) return comparison ? "comparison" : null;
-  if (!comparison) return "registration";
-  return toolIndex(messages, registration.key) <
-    toolIndex(messages, comparison.key)
-    ? "comparison"
-    : "registration";
+  const steps: [PanelStep, string | undefined][] = [
+    ["registration", latestRegistration(messages)?.key],
+    ["comparison", latestComparison(messages)?.key],
+    ["chart", latestChartView(messages)?.key],
+  ];
+  let newest: PanelStep | null = null;
+  let newestIndex = -Infinity;
+  for (const [step, key] of steps) {
+    if (key === undefined) continue;
+    const index = toolIndex(messages, key);
+    if (index > newestIndex) {
+      newest = step;
+      newestIndex = index;
+    }
+  }
+  return newest;
 }

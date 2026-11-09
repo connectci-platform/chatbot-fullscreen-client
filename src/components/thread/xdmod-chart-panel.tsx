@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Message } from "@langchain/langgraph-sdk";
 import { toast } from "sonner";
 import {
   chartFileName,
@@ -9,8 +8,7 @@ import {
   downloadChartPng,
   shownCount,
 } from "@/lib/chart-export";
-import { latestRegistration } from "@/lib/registration";
-import { latestComparison } from "@/lib/software-comparison";
+import { newestPanelStep } from "@/lib/software-comparison";
 import { cn } from "@/lib/utils";
 import { chartViewsByMessage, type ChartView } from "@/lib/xdmod-chart";
 import { useStreamContext } from "@/providers/Stream";
@@ -28,25 +26,6 @@ const SHOW_CHART = "xdmod-chart:show";
 /** Opens the chart panel on the chart with this key (its tool_call_id). */
 export function showChart(key: string): void {
   window.dispatchEvent(new CustomEvent<string>(SHOW_CHART, { detail: key }));
-}
-
-function toolIndex(messages: Message[], toolCallId: string): number {
-  return messages.findIndex(
-    (m) => m.type === "tool" && m.tool_call_id === toolCallId,
-  );
-}
-
-/**
- * Whether the chart is the newest thing that wants the shared side panel, so
- * a reopened thread shows whichever came last.
- */
-function chartIsNewest(messages: Message[], key: string | null): boolean {
-  if (key === null) return false;
-  const chart = toolIndex(messages, key);
-  const others = [latestRegistration(messages), latestComparison(messages)];
-  return others.every(
-    (other) => !other || toolIndex(messages, other.key) < chart,
-  );
 }
 
 const BUTTON =
@@ -173,8 +152,8 @@ export function XdmodChartPanel({ onAsk }: { onAsk: (text: string) => void }) {
 
   const [Artifact, { open, setOpen }] = useArtifact();
   const owns = useMemo(
-    () => chartIsNewest(stream.messages, latestKey),
-    [stream.messages, latestKey],
+    () => newestPanelStep(stream.messages) === "chart",
+    [stream.messages],
   );
   const shownKey = useRef<string | null>(null);
   useEffect(() => {

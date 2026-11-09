@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "@langchain/langgraph-sdk";
+import { chartViewsByMessage } from "@/lib/xdmod-chart";
 import { showChart } from "../xdmod-chart-panel";
 import { AssistantMessage, AssistantMessageLoading } from "./ai";
 
@@ -41,12 +42,17 @@ vi.mock("./answer-rating", () => ({
   ),
 }));
 
+/** Renders the message with its chart key, as the thread passes it. */
 function renderMessage(message: Message, searchParams = "") {
+  const chartKey = message.id
+    ? chartViewsByMessage(stream.messages).get(message.id)?.key
+    : undefined;
   return render(
     <NuqsTestingAdapter searchParams={searchParams}>
       <AssistantMessage
         message={message}
         isLoading={false}
+        chartKey={chartKey}
       />
     </NuqsTestingAdapter>,
   );

@@ -230,6 +230,45 @@ describe("chartViewsByMessage", () => {
     expect([...v.keys()]).toEqual(["a0"]);
   });
 
+  it("names the dimension for the bar table", () => {
+    expect(view(aggregate())!.dimension).toBe("Resource");
+    expect(
+      view(
+        aggregate({
+          group_by: "fieldofscience",
+          dimension: { name: "fieldofscience", ordered: false },
+        }),
+      )!.dimension,
+    ).toBe("Field of science");
+    expect(
+      view(
+        aggregate({
+          group_by: "jobsize",
+          dimension: { name: "jobsize", ordered: true },
+        }),
+      )!.dimension,
+    ).toBe("Job size");
+    expect(
+      view(
+        aggregate({
+          group_by: "gpu_count_bucket",
+          dimension: { name: "gpu_count_bucket", ordered: false },
+        }),
+      )!.dimension,
+    ).toBe("Gpu Count Bucket");
+  });
+
+  it("carries data_through when the payload has it", () => {
+    expect(
+      view(payload({ data_through: "2026-02-01" }))!.caption.dataThrough,
+    ).toBe("2026-02-01");
+    expect(view(payload({ data_through: null }))!.caption.dataThrough).toBe(
+      undefined,
+    );
+    expect(view(payload())!.caption.dataThrough).toBe(undefined);
+    expect(view(payload({ data_through: 7 }))).toBeNull();
+  });
+
   it("returns null with no charts", () => {
     expect(latestChartView([human("h"), ai("a")])).toBeNull();
   });

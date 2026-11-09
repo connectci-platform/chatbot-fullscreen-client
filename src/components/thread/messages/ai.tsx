@@ -15,9 +15,7 @@ import { GenericInterruptView } from "./generic-interrupt";
 import { useArtifact } from "../artifact";
 import { AnswerSources } from "../answer-sources";
 import { AnswerRating } from "./answer-rating";
-import { useMemo } from "react";
 import { BarChart3 } from "lucide-react";
-import { chartViewsByMessage } from "@/lib/xdmod-chart";
 import { showChart } from "../xdmod-chart-panel";
 
 function CustomComponent({
@@ -83,9 +81,12 @@ export function AssistantMessage({
   message,
   isLoading,
   onAsk,
+  chartKey,
 }: {
   message: Message | undefined;
   isLoading: boolean;
+  /** The chart under this answer (its tool_call_id), if it has one. */
+  chartKey?: string;
   /** Sends a suggested question as if typed. */
   onAsk?: (question: string) => void;
 }) {
@@ -100,11 +101,6 @@ export function AssistantMessage({
     (m) => m.type === "ai" || m.type === "tool",
   );
   const threadInterrupt = thread.interrupt;
-  const charts = useMemo(
-    () => chartViewsByMessage(thread.messages),
-    [thread.messages],
-  );
-  const chart = message?.id ? charts.get(message.id) : undefined;
 
   if (message?.type === "tool") {
     return null;
@@ -122,10 +118,10 @@ export function AssistantMessage({
           message={message}
           streaming={isLoading && isLastMessage}
         />
-        {chart && (
+        {chartKey && (
           <button
             type="button"
-            onClick={() => showChart(chart.key)}
+            onClick={() => showChart(chartKey)}
             className="hover:text-brand hover:border-brand focus-visible:ring-brand mr-auto flex cursor-pointer items-center gap-2 border px-3 py-1.5 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
           >
             <BarChart3

@@ -132,14 +132,43 @@ function lineRows(view: ChartView): { rows: Row[]; dashed: boolean } {
   return { rows, dashed };
 }
 
-/** Points with no neighbor on either side, which a line alone can't show. */
-function isolatedPoints(rows: Row[], key: string): Set<number> {
-  const has = (i: number) => rows[i]?.[key] != null;
+/**
+ * Points with no neighbor on either side, which a line alone can't show.
+ * Read from the series' real values, not the solid/dashed split, so the
+ * newest value still shows when the period before it is missing.
+ */
+function isolatedPoints(values: (number | null)[]): Set<number> {
+  const has = (i: number) => values[i] != null;
   const out = new Set<number>();
-  rows.forEach((_, i) => {
+  values.forEach((_, i) => {
     if (has(i) && !has(i - 1) && !has(i + 1)) out.add(i);
   });
   return out;
+}
+
+type DotProps = { cx?: number; cy?: number; index?: number };
+
+/** Draws a dot at the isolated points this line holds. */
+function isolatedDot(
+  show: (index: number) => boolean,
+  color: string,
+): (props: DotProps) => ReactElement {
+  function IsolatedDot(props: DotProps) {
+    return props.index !== undefined && show(props.index) ? (
+      <circle
+        key={props.index}
+        cx={props.cx}
+        cy={props.cy}
+        r={4}
+        fill={color}
+        stroke="#ffffff"
+        strokeWidth={2}
+      />
+    ) : (
+      <g key={props.index} />
+    );
+  }
+  return IsolatedDot;
 }
 
 function ChartTooltip({
@@ -252,7 +281,10 @@ function TimeChart({ view, width }: { view: ChartView; width: number }) {
       />
       {view.series.flatMap((s, i) => {
         const color = colors.get(s.name)!;
-        const isolated = isolatedPoints(rows, solidKey(i));
+        const isolated = isolatedPoints(
+          rows.map((_, p) => s.points[p]?.value ?? null),
+        );
+        const holds = (key: string, p: number) => rows[p]?.[key] != null;
         const lines = [
           <Line
             key={solidKey(i)}
@@ -265,21 +297,10 @@ function TimeChart({ view, width }: { view: ChartView; width: number }) {
             connectNulls={false}
             isAnimationActive={false}
             activeDot={{ r: 4, stroke: "#ffffff", strokeWidth: 2 }}
-            dot={(props: { cx?: number; cy?: number; index?: number }) =>
-              props.index !== undefined && isolated.has(props.index) ? (
-                <circle
-                  key={props.index}
-                  cx={props.cx}
-                  cy={props.cy}
-                  r={4}
-                  fill={color}
-                  stroke="#ffffff"
-                  strokeWidth={2}
-                />
-              ) : (
-                <g key={props.index} />
-              )
-            }
+            dot={isolatedDot(
+              (p) => isolated.has(p) && holds(solidKey(i), p),
+              color,
+            )}
           />,
         ];
         if (dashed) {
@@ -294,7 +315,14 @@ function TimeChart({ view, width }: { view: ChartView; width: number }) {
               strokeLinecap="round"
               connectNulls={false}
               isAnimationActive={false}
-              dot={false}
+              // Only where the solid line doesn't already draw it.
+              dot={isolatedDot(
+                (p) =>
+                  isolated.has(p) &&
+                  holds(dashedKey(i), p) &&
+                  !holds(solidKey(i), p),
+                color,
+              )}
               activeDot={false}
             />,
           );
@@ -556,7 +584,7 @@ export function ChartTable({ view }: { view: ChartView }) {
                   scope="col"
                   className={head}
                 >
-                  Name
+                  {view.dimension}
                 </th>
                 <th
                   scope="col"

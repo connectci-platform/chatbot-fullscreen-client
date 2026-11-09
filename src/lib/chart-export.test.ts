@@ -28,6 +28,7 @@ function lineView(over: Partial<ChartView> = {}): ChartView {
     messageId: "ai-1",
     kind: "line",
     title: "CPU Hours: Total",
+    dimension: "Name",
     series: [
       {
         name: "Delta",
@@ -105,6 +106,24 @@ describe("captionLines", () => {
   });
 });
 
+describe("captionLines with data_through", () => {
+  it("says where XDMoD's data stops, right after the range", () => {
+    expect(
+      captionLines({ ...CAPTION, dataThrough: "2026-10-01" }, 1).slice(0, 3),
+    ).toEqual([
+      "CPU Hours: Total: Total CPU hours used by jobs.",
+      "Aug 1, 2026 to Oct 31, 2026, by month",
+      "XDMoD has data through Oct 1, 2026.",
+    ]);
+  });
+
+  it("says nothing when the data reaches the end of the range", () => {
+    expect(
+      captionLines({ ...CAPTION, dataThrough: "2026-10-31" }, 1).join("\n"),
+    ).not.toContain("has data through");
+  });
+});
+
 describe("chartCsv", () => {
   it("starts with what was counted, then one row per period", () => {
     expect(chartCsv(lineView()).split("\n")).toEqual([
@@ -125,6 +144,7 @@ describe("chartCsv", () => {
     const view = lineView({
       kind: "bar-ranked",
       series: [],
+      dimension: "Resource",
       bars: [
         { name: 'The "big" one', value: 50 },
         { name: "Small", value: null },
@@ -136,9 +156,19 @@ describe("chartCsv", () => {
       "Retrieved,2026-11-09",
       "Source,XDMoD",
       "",
-      "Name,CPU Hours: Total",
+      "Resource,CPU Hours: Total",
       '"The ""big"" one",50',
       "Small,",
+    ]);
+  });
+
+  it("adds where the data stops to the header", () => {
+    const view = lineView({
+      caption: { ...lineView().caption, dataThrough: "2026-09-01" },
+    });
+    expect(chartCsv(view).split("\n").slice(1, 3)).toEqual([
+      "Counted,2026-08-01 to 2026-10-31",
+      "Data through,2026-09-01",
     ]);
   });
 });
@@ -216,12 +246,20 @@ describe("downloadChartPng", () => {
       legend: [
         { name: "Delta", color: "#2a78d6" },
         { name: "Anvil", color: "#eb6834" },
+        // 6px a character: the legend text fits 400 - 2*16 - 18 = 350px.
+        {
+          name: "Expanse GPU at " + "x".repeat(50) + " SDSC",
+          color: "#1baf7a",
+        },
       ],
       shown: 2,
     });
 
     expect(ctx.drawImage).toHaveBeenCalledOnce();
     expect(drawn).toContain("Delta");
+    // A long series name wraps instead of running off the image.
+    expect(drawn).toContain("Expanse GPU at");
+    expect(drawn).toContain(`${"x".repeat(50)} SDSC`);
     expect(drawn).toContain("Source: XDMoD, retrieved Nov 9, 2026");
     expect(drawn.join(" ")).toContain("Aug 1, 2026 to Oct 31, 2026, by month");
     expect(clicks).toEqual([{ download: "my-chart.png", href: "blob:png" }]);

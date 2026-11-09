@@ -121,9 +121,10 @@ function tree(onAsk: (text: string) => void = () => {}) {
   return (
     <ArtifactProvider>
       <Slots />
+      {/* First, so winning the panel can't depend on mounting last. */}
+      <XdmodChartPanel onAsk={onAsk} />
       <RegistrationPanel onConfirm={() => {}} />
       <SoftwareComparisonPanel />
-      <XdmodChartPanel onAsk={onAsk} />
     </ArtifactProvider>
   );
 }
@@ -244,6 +245,34 @@ describe("XdmodChartPanel", () => {
     expect(d.match(/M/g)).toHaveLength(2);
   });
 
+  it("still draws the newest value when the period before it is missing", () => {
+    useMessages(
+      turn(
+        payload({
+          last_period_incomplete: true,
+          series: [
+            {
+              name: "All",
+              points: [
+                { start: "2026-06-01", value: 10 },
+                { start: "2026-07-01", value: 20 },
+                { start: "2026-08-01", value: 15 },
+                { start: "2026-09-01", value: null },
+                { start: "2026-10-01", value: 30 },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    const { container } = render(tree());
+    const stroke = solidLines(container)[0].getAttribute("stroke");
+    const dots = [...container.querySelectorAll("circle")].filter(
+      (c) => c.getAttribute("fill") === stroke,
+    );
+    expect(dots).toHaveLength(1);
+  });
+
   it("draws ranked bars across, biggest first", () => {
     useMessages(turn(bars()));
     const { container } = render(tree());
@@ -297,6 +326,19 @@ describe("XdmodChartPanel", () => {
     }
   });
 
+  it("says where XDMoD's data stops when it's before the range ends", () => {
+    useMessages(turn(payload({ data_through: "2026-10-01" })));
+    const { unmount } = render(tree());
+    expect(
+      screen.getByText("XDMoD has data through Oct 1, 2026."),
+    ).toBeTruthy();
+    unmount();
+
+    useMessages(turn(payload()));
+    render(tree());
+    expect(screen.queryByText(/has data through/)).toBeNull();
+  });
+
   it("warns that CPU hours aren't comparable across resources", () => {
     useMessages(turn(bars()));
     render(tree());
@@ -347,7 +389,7 @@ describe("XdmodChartPanel", () => {
       .getAllByRole("row")
       .map((r) => r.textContent);
     expect(rows).toEqual([
-      "NameCPU Hours: Total",
+      "ResourceCPU Hours: Total",
       "Delta50",
       "Anvil20",
       "Bridges-25",
@@ -398,6 +440,54 @@ describe("XdmodChartPanel", () => {
     act(() => showChart("old"));
     expect(screen.getByText("panel open")).toBeTruthy();
     expect(ticks(container, "y")).toEqual(["Delta", "Anvil", "Bridges-2"]);
+  });
+
+  const registration = [
+    {
+      type: "tool",
+      name: "register_for_event",
+      tool_call_id: "reg",
+      content: JSON.stringify({ status: "preview", data: {} }),
+    },
+  ] as Message[];
+  const comparisonResult = [
+    {
+      type: "tool",
+      name: "compare_software_availability",
+      tool_call_id: "cmp",
+      content: JSON.stringify({
+        requested_software: ["gromacs"],
+        requested_resources: ["delta"],
+        all_resources_found: ["delta"],
+        comparison: [
+          {
+            software: "gromacs",
+            found: true,
+            available_on: ["delta"],
+            resource_count: 1,
+          },
+        ],
+      }),
+    },
+  ] as Message[];
+
+  it("takes the panel on reload when the chart is newer than a registration", () => {
+    useMessages([...registration, ...turn(payload())]);
+    render(tree());
+    expect(screen.getByText("panel open")).toBeTruthy();
+    expect(
+      screen.getByText("CPU Hours: Total: Total CPU hours used by jobs."),
+    ).toBeTruthy();
+    expect(screen.queryByText("Not registered yet")).toBeNull();
+  });
+
+  it("takes the panel on reload when the chart is newer than a comparison", () => {
+    useMessages([...comparisonResult, ...turn(payload())]);
+    render(tree());
+    expect(
+      screen.getByText("CPU Hours: Total: Total CPU hours used by jobs."),
+    ).toBeTruthy();
+    expect(screen.queryByText("Software availability")).toBeNull();
   });
 
   it("gives the panel to a newer software comparison on reload", () => {

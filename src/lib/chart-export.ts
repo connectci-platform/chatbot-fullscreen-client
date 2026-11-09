@@ -41,6 +41,10 @@ export function captionLines(caption: CaptionFacts, shown: number): string[] {
     `${caption.measure}: ${caption.definition}`,
     caption.unit ? `${range}, by ${caption.unit.toLowerCase()}` : range,
   ];
+  // XDMoD's public data often stops weeks before the range does.
+  if (caption.dataThrough && caption.dataThrough < caption.counted.end) {
+    lines.push(`XDMoD has data through ${formatDay(caption.dataThrough)}.`);
+  }
   if (caption.filters.length > 0) {
     lines.push(`Filtered to ${caption.filters.join("; ")}`);
   }
@@ -79,6 +83,9 @@ export function chartCsv(view: ChartView): string {
   const rows: (string | number | null)[][] = [
     ["Measure", caption.measure],
     ["Counted", `${caption.counted.start} to ${caption.counted.end}`],
+    ...(caption.dataThrough
+      ? [["Data through", caption.dataThrough] as [string, string]]
+      : []),
     ["Filters", caption.filters.length ? caption.filters.join("; ") : "None"],
     ["Retrieved", caption.retrieved],
     ["Source", caption.source],
@@ -93,7 +100,7 @@ export function chartCsv(view: ChartView): string {
       );
     }
   } else {
-    lines.push(csvRow(["Name", caption.measure]));
+    lines.push(csvRow([view.dimension, caption.measure]));
     for (const bar of view.bars) lines.push(csvRow([bar.name, bar.value]));
   }
   return lines.join("\n");
@@ -180,6 +187,8 @@ const MUTED = "#52514e";
 const CAPTION_SIZE = 12;
 const CAPTION_LINE = 17;
 const LEGEND_LINE = 20;
+const LEGEND_FONT = `13px ${FONT}`;
+const LEGEND_INDENT = 18;
 
 /**
  * Saves the chart as a PNG with its legend and caption, so the picture
@@ -216,7 +225,17 @@ export async function downloadChartPng(
   const lines = captionLines(caption, shown).flatMap((line) =>
     wrapText(line, textWidth, (s) => ctx.measureText(s).width),
   );
-  const legendHeight = legend.length > 1 ? legend.length * LEGEND_LINE : 0;
+  ctx.font = LEGEND_FONT;
+  const legendLines = (legend.length > 1 ? legend : []).map((entry) => ({
+    color: entry.color,
+    lines: wrapText(
+      entry.name,
+      textWidth - LEGEND_INDENT,
+      (s) => ctx.measureText(s).width,
+    ),
+  }));
+  const legendHeight =
+    legendLines.reduce((n, entry) => n + entry.lines.length, 0) * LEGEND_LINE;
   const total =
     PAD + legendHeight + height + PAD / 2 + lines.length * CAPTION_LINE + PAD;
 
@@ -228,13 +247,13 @@ export async function downloadChartPng(
   ctx.textBaseline = "top";
 
   let y = PAD;
-  if (legend.length > 1) {
-    ctx.font = `13px ${FONT}`;
-    for (const entry of legend) {
-      ctx.fillStyle = entry.color;
-      ctx.fillRect(PAD, y + 5, 12, 3);
-      ctx.fillStyle = TEXT;
-      ctx.fillText(entry.name, PAD + 18, y);
+  ctx.font = LEGEND_FONT;
+  for (const entry of legendLines) {
+    ctx.fillStyle = entry.color;
+    ctx.fillRect(PAD, y + 5, 12, 3);
+    ctx.fillStyle = TEXT;
+    for (const line of entry.lines) {
+      ctx.fillText(line, PAD + LEGEND_INDENT, y);
       y += LEGEND_LINE;
     }
   }

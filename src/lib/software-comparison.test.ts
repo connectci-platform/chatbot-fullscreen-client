@@ -649,6 +649,53 @@ describe("newestPanelStep", () => {
     ).toBe("comparison");
   });
 
+  it("is the chart when a chart result is the newest step", () => {
+    const chart = {
+      type: "tool",
+      name: "get_chart_data",
+      tool_call_id: "chart1",
+      content: "chart",
+      artifact: {
+        structured_content: {
+          chart: {
+            version: 1,
+            realm: "Jobs",
+            statistic: "job_count",
+            group_by: "resource",
+            dataset_type: "aggregate",
+            requested: { start: "2026-01-01", end: "2026-01-31" },
+            counted: { start: "2026-01-01", end: "2026-01-31" },
+            last_period_incomplete: false,
+            measure: {
+              label: "Jobs",
+              description: "Jobs.",
+              kind: "total",
+              missing: "zero",
+            },
+            dimension: { name: "resource", ordered: false },
+            filters: { notes: [] },
+            categories: [
+              { name: "A", value: 1 },
+              { name: "B", value: 2 },
+            ],
+            has_more: false,
+            ranked_by: "value",
+            link: "https://xdmod.access-ci.org/",
+            source: "XDMoD",
+            retrieved: "2026-11-09",
+          },
+        },
+      },
+    } as unknown as Message;
+    const ai = { id: "a", type: "ai", content: "" } as Message;
+    expect(
+      newestPanelStep([...registration, ...compare(COMPARE_ALL), chart, ai]),
+    ).toBe("chart");
+    expect(newestPanelStep([chart, ai, ...compare(COMPARE_ALL)])).toBe(
+      "comparison",
+    );
+  });
+
   it("stays with the registration when a newer comparison failed", () => {
     expect(newestPanelStep([...registration, ...compare(ERROR, "bad")])).toBe(
       "registration",
