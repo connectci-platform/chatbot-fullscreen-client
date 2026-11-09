@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { access } from "./programs/access";
 
 export type ProgramConfig = {
@@ -5,6 +6,12 @@ export type ProgramConfig = {
   name: string;
   siteName: string;
   logo: { src: string; alt: string; width: number; height: number };
+  /**
+   * Browser tab and home-screen icons, under public/programs/<id>/. The SVG
+   * is the favicon; the 32px PNG is for browsers without SVG favicons and the
+   * 180px PNG is the Apple touch icon.
+   */
+  icons: { svg: string; png: string; apple: string };
   description: string;
   accountName: string;
   supportUrl: string;
@@ -43,6 +50,19 @@ export function colorVariables({
     "--primary-foreground": colors.primaryForeground,
     "--brand-teal": colors.brand,
     "--brand-foreground": colors.brandForeground,
+  };
+}
+
+/** A program's icons as Next metadata. */
+export function iconMetadata({
+  icons,
+}: Pick<ProgramConfig, "icons">): Metadata["icons"] {
+  return {
+    icon: [
+      { url: icons.svg, type: "image/svg+xml" },
+      { url: icons.png, type: "image/png", sizes: "32x32" },
+    ],
+    apple: { url: icons.apple, sizes: "180x180" },
   };
 }
 

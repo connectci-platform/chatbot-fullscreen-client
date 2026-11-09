@@ -10,6 +10,11 @@ export const access: ProgramConfig = {
     width: 269,
     height: 41,
   },
+  icons: {
+    svg: "/programs/access/icon.svg",
+    png: "/programs/access/icon-32.png",
+    apple: "/programs/access/apple-icon.png",
+  },
   description: "Chat with the ACCESS-CI AI assistant.",
   accountName: "ACCESS account",
   supportUrl: "https://support.access-ci.org",
