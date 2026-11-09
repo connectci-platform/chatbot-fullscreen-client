@@ -1,6 +1,11 @@
 import type { Message } from "@langchain/langgraph-sdk";
 import { describe, expect, it } from "vitest";
-import { chartViewsByMessage, latestChartViews } from "./xdmod-chart";
+import {
+  chartLabels,
+  chartViewsByMessage,
+  latestAnswerHasChart,
+  latestChartViews,
+} from "./xdmod-chart";
 
 type Json = Record<string, unknown>;
 
@@ -309,19 +314,14 @@ describe("chartViewsByMessage", () => {
         payload({ series: [{ name: "All", points }], ...over }),
       )!.series[0].points.map((p) => p.value);
 
-    it("keeps periods after data_through as gaps for a total", () => {
-      expect(values({ data_through: "2026-03-01" })).toEqual([
-        10,
-        0,
-        30,
-        null,
-        null,
-      ]);
+    it("ends the axis at the last period with any data", () => {
+      // April and May hold nothing for any series, so they aren't drawn.
+      expect(values({ data_through: "2026-03-01" })).toEqual([10, 0, 30]);
     });
 
     it("zero-fills a total only up to the series' own last value", () => {
-      expect(values({})).toEqual([10, 0, 30, null, null]);
-      expect(values({ data_through: null })).toEqual([10, 0, 30, null, null]);
+      expect(values({})).toEqual([10, 0, 30]);
+      expect(values({ data_through: null })).toEqual([10, 0, 30]);
     });
 
     it("stops a series that ends early at its own last value", () => {
@@ -340,20 +340,9 @@ describe("chartViewsByMessage", () => {
           ],
         }),
       )!;
-      expect(v.series[0].points.map((p) => p.value)).toEqual([
-        10,
-        0,
-        30,
-        null,
-        null,
-      ]);
-      expect(v.series[1].points.map((p) => p.value)).toEqual([
-        1,
-        1,
-        1,
-        1,
-        null,
-      ]);
+      // Delta reaches April, so the axis does; May has no data at all.
+      expect(v.series[0].points.map((p) => p.value)).toEqual([10, 0, 30, null]);
+      expect(v.series[1].points.map((p) => p.value)).toEqual([1, 1, 1, 1]);
     });
 
     it("drops a series with no values", () => {
@@ -380,10 +369,8 @@ describe("chartViewsByMessage", () => {
         10,
         null,
         30,
-        null,
-        null,
       ]);
-      expect(values({ measure: average })).toEqual([10, null, 30, null, null]);
+      expect(values({ measure: average })).toEqual([10, null, 30]);
     });
   });
 
@@ -398,6 +385,75 @@ describe("chartViewsByMessage", () => {
 
   it("returns null with no charts", () => {
     expect(latestChartViews([human("h"), ai("a")])).toEqual([]);
+  });
+
+  describe("chartLabels", () => {
+    const wait = (over: Json) =>
+      view(
+        aggregate({
+          statistic: "avg_waitduration_hours",
+          measure: {
+            label: "Wait Hours: Per Job",
+            description: "Avg wait.",
+            kind: "average",
+            missing: "gap",
+          },
+          ...over,
+        }),
+      )!;
+
+    it("names charts of the same measure by what differs", () => {
+      const a = {
+        ...wait({ filters: { notes: ['resource "Delta" included A, B'] } }),
+        key: "a",
+      };
+      const b = {
+        ...wait({ filters: { notes: ["resource Anvil"] } }),
+        key: "b",
+      };
+      const c = { ...wait({}), key: "c" };
+      expect([...chartLabels([a, b, c]).values()]).toEqual([
+        "Wait Hours: Per Job · Delta",
+        "Wait Hours: Per Job · Anvil",
+        "Wait Hours: Per Job · all of ACCESS",
+      ]);
+    });
+
+    it("uses the range or grouping when that is the difference", () => {
+      const a = { ...wait({}), key: "a" };
+      const b = {
+        ...wait({
+          group_by: "queue",
+          dimension: { name: "queue", ordered: false },
+          counted: { start: "2025-01-01", end: "2025-12-31" },
+        }),
+        key: "b",
+      };
+      expect(chartLabels([a, b]).get("b")).toBe(
+        "Wait Hours: Per Job · by queue · Jan 1, 2025 to Dec 31, 2025",
+      );
+    });
+
+    it("keeps a lone measure's title, and numbers identical charts", () => {
+      const a = { ...wait({}), key: "a" };
+      const other = { ...view(aggregate())!, key: "o" };
+      expect(chartLabels([a, other]).get("a")).toBe("Wait Hours: Per Job");
+      expect([...chartLabels([a, { ...a, key: "b" }]).values()]).toEqual([
+        "Wait Hours: Per Job · chart 1",
+        "Wait Hours: Per Job · chart 2",
+      ]);
+    });
+  });
+
+  describe("latestAnswerHasChart", () => {
+    it("is true only when the newest answer drew a chart", () => {
+      const charted = turn(payload());
+      expect(latestAnswerHasChart(charted)).toBe(true);
+      expect(latestAnswerHasChart([...charted, human("h2"), ai("a2")])).toBe(
+        false,
+      );
+      expect(latestAnswerHasChart([])).toBe(false);
+    });
   });
 
   describe("offset and early ends", () => {

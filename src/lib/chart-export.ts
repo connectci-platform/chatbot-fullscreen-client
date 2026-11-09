@@ -112,8 +112,13 @@ function earlyEndWhen(end: EarlyEnd, unit?: string): string {
     : formatPeriod(end.through, unit);
 }
 
-/** "A", "A and B", "A, B and C". */
+const MAX_LISTED_NAMES = 6;
+
+/** "A", "A and B", "A, B and C", past six "A, B, C, D, E, F and 2 more". */
 function listNames(names: string[]): string {
+  if (names.length > MAX_LISTED_NAMES) {
+    return `${names.slice(0, MAX_LISTED_NAMES).join(", ")} and ${names.length - MAX_LISTED_NAMES} more`;
+  }
   return names.length < 2
     ? names.join("")
     : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
@@ -178,7 +183,8 @@ export function captionLines(caption: CaptionFacts, shown: number): string[] {
   }
   const showing = shownLine(caption, shown);
   if (showing) lines.push(showing);
-  if (caption.incomplete) {
+  // A partial period already says the end isn't settled.
+  if (caption.incomplete && !caption.partialPeriod) {
     lines.push(
       caption.unit
         ? "The last period is still in progress."
@@ -375,6 +381,8 @@ const CAPTION_LINE = 17;
 const LEGEND_LINE = 20;
 const LEGEND_FONT = `13px ${FONT}`;
 const LEGEND_INDENT = 18;
+const TITLE_FONT = `600 15px ${FONT}`;
+const TITLE_LINE = 21;
 
 /**
  * Saves the chart as a PNG with its legend and caption, so the picture
@@ -385,7 +393,11 @@ export async function downloadChartPng(
   svg: SVGSVGElement,
   caption: CaptionFacts,
   fileName: string,
-  { legend = [], shown = 1 }: { legend?: LegendEntry[]; shown?: number } = {},
+  {
+    legend = [],
+    shown = 1,
+    title,
+  }: { legend?: LegendEntry[]; shown?: number; title?: string } = {},
 ): Promise<void> {
   const width =
     Number(svg.getAttribute("width")) || svg.getBoundingClientRect().width;
@@ -411,6 +423,13 @@ export async function downloadChartPng(
   const lines = captionLines(caption, shown).flatMap((line) =>
     wrapText(line, textWidth, (s) => ctx.measureText(s).width),
   );
+  ctx.font = TITLE_FONT;
+  const titleLines = title
+    ? wrapText(title, textWidth, (s) => ctx.measureText(s).width)
+    : [];
+  const titleHeight = titleLines.length
+    ? titleLines.length * TITLE_LINE + PAD / 2
+    : 0;
   ctx.font = LEGEND_FONT;
   const legendLines = (legend.length > 1 ? legend : []).map((entry) => ({
     color: entry.color,
@@ -423,7 +442,13 @@ export async function downloadChartPng(
   const legendHeight =
     legendLines.reduce((n, entry) => n + entry.lines.length, 0) * LEGEND_LINE;
   const total =
-    PAD + legendHeight + height + PAD / 2 + lines.length * CAPTION_LINE + PAD;
+    PAD +
+    titleHeight +
+    legendHeight +
+    height +
+    PAD / 2 +
+    lines.length * CAPTION_LINE +
+    PAD;
 
   canvas.width = width * SCALE;
   canvas.height = total * SCALE;
@@ -433,6 +458,13 @@ export async function downloadChartPng(
   ctx.textBaseline = "top";
 
   let y = PAD;
+  ctx.font = TITLE_FONT;
+  ctx.fillStyle = TEXT;
+  for (const line of titleLines) {
+    ctx.fillText(line, PAD, y);
+    y += TITLE_LINE;
+  }
+  if (titleLines.length) y += PAD / 2;
   ctx.font = LEGEND_FONT;
   for (const entry of legendLines) {
     ctx.fillStyle = entry.color;

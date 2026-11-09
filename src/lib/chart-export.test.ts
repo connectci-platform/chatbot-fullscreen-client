@@ -177,6 +177,28 @@ describe("captionLines with early ends", () => {
   });
 });
 
+describe("captionLines with a partial, still-running period", () => {
+  it("says it once, not also that the last period is in progress", () => {
+    const lines = captionLines(
+      {
+        ...CAPTION,
+        counted: { start: "2026-08-01", end: "2026-11-30" },
+        dataThrough: "2026-11-08",
+        partialPeriod: "2026-11-08",
+        incomplete: true,
+      },
+      1,
+    );
+    expect(lines).toContain(
+      "XDMoD has data through Nov 8, 2026, so Nov 2026 may be partial.",
+    );
+    expect(lines.join("\n")).not.toContain("still in progress");
+    expect(captionLines({ ...CAPTION, incomplete: true }, 1)).toContain(
+      "The last period is still in progress.",
+    );
+  });
+});
+
 describe("captionLines with early ends on the same date", () => {
   it("names them together", () => {
     const end = (name: string, through: string) => ({
@@ -200,6 +222,20 @@ describe("captionLines with early ends on the same date", () => {
       ),
     ).toContain(
       "XDMoD has no data from A, B and D after Nov 7, 2026; XDMoD has no data from C after Oct 19, 2026.",
+    );
+  });
+});
+
+describe("captionLines with many early ends", () => {
+  it("lists at most six names per date", () => {
+    const earlyEnds = Array.from({ length: 8 }, (_, i) => ({
+      name: `q${i}`,
+      through: "2026-11-07",
+      precision: "day" as const,
+      source: "series" as const,
+    }));
+    expect(captionLines({ ...CAPTION, earlyEnds }, 8)).toContain(
+      "Nothing is recorded for q0, q1, q2, q3, q4, q5 and 2 more after Nov 7, 2026.",
     );
   });
 });
@@ -538,9 +574,12 @@ describe("downloadChartPng", () => {
         },
       ],
       shown: 2,
+      title: "CPU Hours: Total · Delta",
     });
 
     expect(ctx.drawImage).toHaveBeenCalledOnce();
+    // The title comes first, so a pasted image says what it is.
+    expect(drawn[0]).toBe("CPU Hours: Total · Delta");
     expect(drawn).toContain("Delta");
     // A long series name wraps instead of running off the image.
     expect(drawn).toContain("Expanse GPU at");

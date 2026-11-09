@@ -121,6 +121,7 @@ export function AssistantMessage({
         {chartKey && (
           <button
             type="button"
+            data-chart-key={chartKey}
             onClick={() => showChart(chartKey)}
             className="hover:text-brand hover:border-brand focus-visible:ring-brand mr-auto flex cursor-pointer items-center gap-2 border px-3 py-1.5 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
           >

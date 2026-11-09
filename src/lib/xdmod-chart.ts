@@ -1,4 +1,5 @@
 import type { Message } from "@langchain/langgraph-sdk";
+import { formatDay } from "./chart-export";
 
 const CHART_TOOL = "get_chart_data";
 const MAX_FOLLOW_UPS = 3;
@@ -435,6 +436,16 @@ function toView(
       ];
     });
     arrived = filled.length;
+    // A trailing period no series has any value for draws nothing, so the
+    // axis stops at the last period with data.
+    let periodsWithData = 0;
+    for (const s of filled) {
+      s.points.forEach((p, i) => {
+        if (p.value !== null)
+          periodsWithData = Math.max(periodsWithData, i + 1);
+      });
+    }
+    for (const s of filled) s.points = s.points.slice(0, periodsWithData);
     const drawn = filled.slice(0, MAX_SERIES);
     series = drawn.map(({ name, points }) => ({ name, points }));
     earlyEnds = drawn.flatMap((s) => (s.end ? [s.end] : []));
@@ -606,6 +617,68 @@ export function chartViewsByMessage(
   }
   flush();
   return views;
+}
+
+/**
+ * Whether the newest answer (the messages after the last human message) drew
+ * a chart. A reloaded thread whose newest answer has none shouldn't reopen an
+ * older answer's chart.
+ */
+export function latestAnswerHasChart(messages: Message[]): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.type === "human") return false;
+    if (chartOf(m)) return true;
+  }
+  return false;
+}
+
+/** A filter note's value, short: 'resource "Delta" included …' is "Delta". */
+function filterValue(note: string): string {
+  const rest = note.replace(/^\S+\s+/, "");
+  const quoted = /^"([^"]+)"/.exec(rest);
+  return (quoted ? quoted[1] : rest).replace(/\s+\(.*\)$/, "");
+}
+
+/**
+ * A name for each of one answer's charts that tells them apart: the measure,
+ * then whatever differs between charts of the same measure (filter, grouping,
+ * range, period): "Wait Hours: Per Job · Delta".
+ */
+export function chartLabels(views: ChartView[]): Map<string, string> {
+  const facets: ((v: ChartView) => string)[] = [
+    (v) => v.caption.filters.map(filterValue).join(", ") || "all of ACCESS",
+    (v) => `by ${v.dimension.toLowerCase()}`,
+    (v) =>
+      `${formatDay(v.caption.counted.start)} to ${formatDay(v.caption.counted.end)}`,
+    (v) => (v.caption.unit ? `by ${v.caption.unit.toLowerCase()}` : "total"),
+  ];
+  const labels = new Map<string, string>();
+  for (const v of views) {
+    const same = views.filter((o) => o.title === v.title);
+    const parts = facets
+      .filter((f) => new Set(same.map(f)).size > 1)
+      .map((f) => f(v));
+    if (parts.length === 0 && same.length > 1) {
+      parts.push(`chart ${same.indexOf(v) + 1}`);
+    }
+    labels.set(v.key, [v.title, ...parts].join(" · "));
+  }
+  return labels;
+}
+
+/**
+ * What a screen reader hears for the drawing, in place of its tick labels.
+ * The Table view holds the values themselves.
+ */
+export function chartSummary(view: ChartView): string {
+  const { start, end } = view.caption.counted;
+  const range = `${formatDay(start)} to ${formatDay(end)}`;
+  const what =
+    view.kind === "line"
+      ? `Line chart of ${view.title}, ${view.series.length} series`
+      : `Bar chart of ${view.title} by ${view.dimension.toLowerCase()}, ${view.bars.length} ${view.bars.length === 1 ? "bar" : "bars"}`;
+  return `${what}, ${range}. The Table view lists the values.`;
 }
 
 /** The charts from the newest turn that has any, in tool-call order. */

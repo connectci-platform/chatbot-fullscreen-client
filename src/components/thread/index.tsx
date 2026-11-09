@@ -26,7 +26,6 @@ import {
   PanelRightOpen,
   PanelRightClose,
   SquarePen,
-  XIcon,
   Plus,
 } from "lucide-react";
 import { useQueryState, parseAsBoolean } from "nuqs";
@@ -42,17 +41,13 @@ import { useAuthStatus } from "@/hooks/use-agent-auth";
 import { useRestoreQuestion } from "@/hooks/use-restore-question";
 import { TurnstileChallengePanel } from "./turnstile-challenge";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { SidePanel } from "./side-panel";
 import { Label } from "../ui/label";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { useInitialQuestion } from "@/hooks/use-initial-question";
 import { useFirstTokenReceived } from "@/hooks/use-first-token-received";
 import { ContentBlocksPreview } from "./ContentBlocksPreview";
-import {
-  useArtifactOpen,
-  ArtifactContent,
-  ArtifactTitle,
-  useArtifactContext,
-} from "./artifact";
+import { useArtifactOpen, useArtifactContext } from "./artifact";
 import { RegistrationPanel } from "./registration-panel";
 import { SoftwareComparisonPanel } from "./software-comparison-panel";
 import { XdmodChartPanel } from "./xdmod-chart-panel";
@@ -554,26 +549,10 @@ export function Thread() {
             />
           </StickToBottom>
         </motion.div>
-        <div
-          className={cn(
-            "relative flex flex-col border-l",
-            !artifactOpen && "hidden",
-          )}
-        >
-          <div className="absolute inset-0 flex min-w-[30vw] flex-col">
-            <div className="grid grid-cols-[1fr_auto] border-b p-4">
-              <ArtifactTitle className="truncate overflow-hidden" />
-              <button
-                onClick={closeArtifact}
-                aria-label="Close panel"
-                className="cursor-pointer"
-              >
-                <XIcon className="size-5" />
-              </button>
-            </div>
-            <ArtifactContent className="relative min-h-0 flex-grow overflow-hidden" />
-          </div>
-        </div>
+        <SidePanel
+          open={artifactOpen}
+          onClose={closeArtifact}
+        />
       </div>
       <RegistrationPanel onConfirm={(text) => submitMessage(text, [])} />
       <SoftwareComparisonPanel />

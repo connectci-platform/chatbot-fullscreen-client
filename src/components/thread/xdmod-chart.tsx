@@ -24,7 +24,7 @@ import {
   periodContaining,
   periods,
 } from "@/lib/chart-export";
-import type { ChartView } from "@/lib/xdmod-chart";
+import { chartSummary, type ChartView } from "@/lib/xdmod-chart";
 
 /**
  * Categorical series colors, checked with the dataviz skill's palette
@@ -250,6 +250,7 @@ function TimeChart({ view, width }: { view: ChartView; width: number }) {
   );
   return (
     <LineChart
+      accessibilityLayer={false}
       width={width}
       height={LINE_HEIGHT}
       data={rows}
@@ -383,6 +384,7 @@ function BarsChart({ view, width }: { view: ChartView; width: number }) {
   if (across) {
     return (
       <BarChart
+        accessibilityLayer={false}
         layout="vertical"
         width={width}
         height={Math.max(160, view.bars.length * 32 + 56)}
@@ -418,6 +420,7 @@ function BarsChart({ view, width }: { view: ChartView; width: number }) {
   }
   return (
     <BarChart
+      accessibilityLayer={false}
       width={width}
       height={LINE_HEIGHT}
       data={view.bars}
@@ -495,17 +498,22 @@ export const XdmodChart = memo(function XdmodChart({
           ))}
         </ul>
       )}
-      {view.kind === "line" ? (
-        <TimeChart
-          view={view}
-          width={width}
-        />
-      ) : (
-        <BarsChart
-          view={view}
-          width={width}
-        />
-      )}
+      <div
+        role="img"
+        aria-label={chartSummary(view)}
+      >
+        {view.kind === "line" ? (
+          <TimeChart
+            view={view}
+            width={width}
+          />
+        ) : (
+          <BarsChart
+            view={view}
+            width={width}
+          />
+        )}
+      </div>
     </div>
   );
 });
@@ -565,7 +573,9 @@ export const ChartTable = memo(function ChartTable({
       role="region"
       aria-label="Chart data"
       tabIndex={0}
-      className="max-w-full overflow-x-auto border"
+      // shrink-0: in the scrolling panel a flex child would otherwise be
+      // squeezed to a row or two on a phone.
+      className="max-w-full shrink-0 overflow-x-auto border"
     >
       <table className="w-full border-collapse text-sm">
         <caption className="sr-only">{view.title}</caption>
