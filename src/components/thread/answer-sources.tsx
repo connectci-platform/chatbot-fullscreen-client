@@ -11,7 +11,11 @@ import {
 import type { Components } from "react-markdown";
 import type { Message } from "@langchain/langgraph-sdk";
 import { ExternalLink, FileText } from "lucide-react";
-import { answerWithSources, type AnswerSource } from "@/lib/answer-sources";
+import {
+  answerWithSources,
+  readablePassage,
+  type AnswerSource,
+} from "@/lib/answer-sources";
 import { useStreamContext } from "@/providers/Stream";
 import { useArtifact } from "./artifact";
 import { MarkdownText } from "./markdown-text";
@@ -94,8 +98,15 @@ export function SourceDetails({
           tabIndex={-1}
           className="text-lg font-bold break-words outline-none"
         >
-          {source.title}
+          {source.chipLabel}
         </h2>
+        {/* The chip's label, so the panel reads as the chip that opened
+            it; the fuller name it was shortened from, when it was. */}
+        {source.title !== source.chipLabel && (
+          <p className="text-muted-foreground text-sm break-words">
+            {source.title}
+          </p>
+        )}
         <p className="text-muted-foreground text-sm break-words">
           {source.host}
         </p>
@@ -126,7 +137,7 @@ export function SourceDetails({
               components={PASSAGE_COMPONENTS}
               math={false}
             >
-              {passage}
+              {readablePassage(passage)}
             </MarkdownText>
           </blockquote>
         ))}

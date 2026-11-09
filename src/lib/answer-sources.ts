@@ -71,6 +71,40 @@ export function parsePassages(content: string): Passage[] {
   return passages;
 }
 
+/**
+ * Index fields a curated document opens with, under its title: "Source:"
+ * repeats the page the panel already links and "Keywords:" is for search,
+ * so both go; a "Description:" or "Summary:" is the document's own summary,
+ * so it stays, without its label.
+ */
+const DOC_FIELD =
+  /^(\*\*|__)?(source|keywords|tags|description|summary)\1?:\1?[ \t]*/i;
+
+/**
+ * A passage as the source panel shows it: the index fields at its start
+ * are tidied away, the rest is left as retrieved. Only paragraphs before
+ * the first that isn't a field (after an optional title) are looked at, so
+ * a "Source:" line further down is the document's own text.
+ */
+export function readablePassage(passage: string): string {
+  const paragraphs = passage.trim().split(/\n[ \t]*\n/);
+  const out: string[] = [];
+  let i = 0;
+  if (paragraphs[0] && !DOC_FIELD.test(paragraphs[0]))
+    out.push(paragraphs[i++]);
+  for (; i < paragraphs.length; i++) {
+    const field = paragraphs[i].match(DOC_FIELD);
+    if (!field) break;
+    const name = field[2].toLowerCase();
+    if (name === "description" || name === "summary") {
+      const text = paragraphs[i].slice(field[0].length).trim();
+      if (text) out.push(text);
+    }
+  }
+  const tidied = [...out, ...paragraphs.slice(i)].join("\n\n");
+  return tidied.trim() ? tidied : passage;
+}
+
 const MARKDOWN_LINK =
   /\[([^\]]*)\]\(<?(https?:\/\/[^\s)>]+)>?(?:\s+"[^"]*")?\)/g;
 const BARE_URL = /https?:\/\/[^\s<>()[\]"'`]+/g;

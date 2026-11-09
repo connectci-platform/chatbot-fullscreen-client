@@ -5,6 +5,7 @@ import {
   linksIn,
   parsePassages,
   answerWithSources,
+  readablePassage,
 } from "./answer-sources";
 
 // Mirrors access-agent's _format_chunks in src/agent/tools/access_documents.py.
@@ -498,5 +499,43 @@ describe("answerWithSources", () => {
     expect(answerWithSources([...messages], messages[3])).toBe(first);
     const later = [...messages, human("h2", "More"), answer("a3", "Ok.")];
     expect(answerWithSources(later, messages[3])).toBe(first);
+  });
+});
+
+describe("readablePassage", () => {
+  const curated = [
+    "# SDSC Expanse Storage",
+    "Source: https://www.sdsc.edu/systems/expanse/user_guide.html",
+    "Keywords: SDSC Expanse Storage, Storage, quotas, file transfer",
+    "Description: SDSC Expanse Storage is the persistent storage resource at SDSC.",
+    "## Identity",
+    "- **Name:** SDSC Expanse Projects Storage",
+  ].join("\n\n");
+
+  it("drops a curated document's index fields and keeps its summary", () => {
+    expect(readablePassage(curated)).toBe(
+      [
+        "# SDSC Expanse Storage",
+        "SDSC Expanse Storage is the persistent storage resource at SDSC.",
+        "## Identity",
+        "- **Name:** SDSC Expanse Projects Storage",
+      ].join("\n\n"),
+    );
+  });
+
+  it("reads bold labels too", () => {
+    expect(
+      readablePassage("**Keywords:** a, b\n\n**Description**: The summary."),
+    ).toBe("The summary.");
+  });
+
+  it("leaves field-like lines in the body alone", () => {
+    const passage =
+      "## Transfers\n\nUse Globus.\n\nSource: the SDSC transfer guide.";
+    expect(readablePassage(passage)).toBe(passage);
+  });
+
+  it("keeps a passage that is nothing but fields as it was", () => {
+    expect(readablePassage("Keywords: a, b")).toBe("Keywords: a, b");
   });
 });

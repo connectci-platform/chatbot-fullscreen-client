@@ -144,10 +144,17 @@ describe("AnswerSources", () => {
     fireEvent.click(chip());
 
     expect(screen.getByText("panel open")).toBeTruthy();
+    // Named as the chip is, with the fuller name it was shortened from.
+    expect(chip().textContent).toContain("Bridges 2 › User guide");
     expect(
       screen.getByRole("heading", {
         level: 2,
-        name: "Resources › Bridges 2 › User guide",
+        name: "Bridges 2 › User guide",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Resources › Bridges 2 › User guide", {
+        selector: "p",
       }),
     ).toBeTruthy();
     expect(screen.getAllByText("www.psc.edu").length).toBeGreaterThan(0);
