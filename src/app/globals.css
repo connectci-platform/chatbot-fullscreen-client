@@ -136,6 +136,17 @@
     @apply bg-background text-foreground;
   }
 
+  /* ACCESS links: black and underlined, teal with no underline on hover. */
+  a {
+    color: #000;
+    text-decoration-line: underline;
+  }
+
+  a:hover {
+    color: var(--brand-teal);
+    text-decoration-line: none;
+  }
+
   :root {
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;

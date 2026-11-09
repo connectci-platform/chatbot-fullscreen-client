@@ -36,7 +36,7 @@ export function OfficeHours({
               href={hour.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-brand font-medium underline-offset-2 hover:underline"
+              className="font-medium"
             >
               <time dateTime={hour.start.toISOString()}>
                 {formatOfficeHourStart(hour.start)}
@@ -49,7 +49,7 @@ export function OfficeHours({
         href={`${supportUrl}/events`}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-muted-foreground mt-2 inline-block underline underline-offset-2 hover:text-black"
+        className="mt-2 inline-block"
       >
         All upcoming events
       </a>

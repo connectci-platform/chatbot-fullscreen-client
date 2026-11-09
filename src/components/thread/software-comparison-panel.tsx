@@ -43,7 +43,7 @@ function Versions({ versions }: { versions: string[] }) {
       </ul>
       {rest.length > 0 && (
         <details>
-          <summary className="cursor-pointer underline">
+          <summary className="hover:text-brand cursor-pointer underline hover:no-underline">
             {rest.length} more
           </summary>
           <ul className="flex flex-col">
@@ -97,7 +97,6 @@ function SoftwareName({
       href={row.documentation}
       target="_blank"
       rel="noopener noreferrer"
-      className="underline"
     >
       {row.software}
     </a>
