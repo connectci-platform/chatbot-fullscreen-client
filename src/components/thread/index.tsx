@@ -55,6 +55,7 @@ import {
 } from "./artifact";
 import { RegistrationPanel } from "./registration-panel";
 import { SoftwareComparisonPanel } from "./software-comparison-panel";
+import { XdmodChartPanel } from "./xdmod-chart-panel";
 
 function StickyToBottomContent(props: {
   content: ReactNode;
@@ -568,6 +569,9 @@ export function Thread() {
       </div>
       <RegistrationPanel onConfirm={(text) => submitMessage(text, [])} />
       <SoftwareComparisonPanel />
+      {/* After the other panels: on a reopened thread, its newest-step check
+          runs last and wins when the chart came last. */}
+      <XdmodChartPanel onAsk={(text) => submitMessage(text, [])} />
     </div>
   );
 }
