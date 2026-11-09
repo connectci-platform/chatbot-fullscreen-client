@@ -33,6 +33,7 @@ import {
   shouldResendAfterSignIn,
 } from "@/lib/run-errors";
 import { isRunStatusEvent, type RunStatusEvent } from "@/lib/run-status";
+import { afterStop, stoppedTurn } from "@/lib/stopped-answer";
 import { claimThread, noteAuthStatus } from "@/lib/thread-claim";
 import { viewerTimeZone } from "@/lib/time-zone";
 import { createClient } from "./client";
@@ -67,7 +68,13 @@ type StreamContextType = TypedStream & {
   failChallenge: () => void;
   /** The human message of the run that was challenged. */
   challengedQuestion: () => Message | null;
+  /** The person stopped the latest run before its answer was delivered. */
+  stopped: boolean;
 };
+
+type StopMutate = Parameters<
+  NonNullable<Parameters<typeof useTypedStream>[0]["onStop"]>
+>[0]["mutate"];
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
 
 function submittedMessages(values: unknown): Message[] {
@@ -165,6 +172,8 @@ const StreamSession = ({
   const [threadId, setThreadId] = useQueryState("threadId");
   const { getThreads, setThreads } = useThreads();
   const [runStatus, setRunStatus] = useState<RunStatusEvent | null>(null);
+  const [stopped, setStopped] = useState(false);
+  const onStop = useRef<((mutate: StopMutate) => void) | null>(null);
   // A Client of our own rather than useStream's apiUrl/apiKey options, so the
   // stream and history requests carry the Bearer token (see createClient).
   const client = useMemo(
@@ -196,6 +205,7 @@ const StreamSession = ({
     onThreadId: (id) => {
       setThreadId(id);
     },
+    onStop: ({ mutate }) => onStop.current?.(mutate),
     // The agent lists a user's threads from turn reports written when a turn
     // ends, so a new thread only shows up in the sidebar once its run finishes.
     // Zero-arity on purpose: declaring a parameter makes useStream refetch the
@@ -339,6 +349,29 @@ const StreamSession = ({
     if (!streamValue.isLoading) setRunStatus(null);
   }, [streamValue.isLoading]);
 
+  // A new run, or another conversation, isn't the stopped turn.
+  useEffect(() => {
+    if (streamValue.isLoading) setStopped(false);
+  }, [streamValue.isLoading]);
+  useEffect(() => setStopped(false), [threadId]);
+
+  const stop: TypedStream["stop"] = () => {
+    const turn = stoppedTurn(streamValue.messages);
+    setStopped(true);
+    // The SDK calls this once at the stop, on what is on screen, and once more
+    // on the thread as the agent saved it, which it then shows.
+    let calls = 0;
+    onStop.current = (mutate) =>
+      mutate((prev) => {
+        if (calls++ === 0) return {};
+        const result = afterStop(prev.messages ?? [], turn);
+        if (result !== "delivered") return result;
+        setStopped(false);
+        return {};
+      });
+    return streamValue.stop();
+  };
+
   useEffect(() => {
     checkGraphStatus(apiUrl, apiKey, authScheme).then((ok) => {
       if (!ok) {
@@ -358,6 +391,8 @@ const StreamSession = ({
       value={{
         ...streamValue,
         submit,
+        stop,
+        stopped,
         apiUrl,
         runStatus,
         resendWithToken: resend,

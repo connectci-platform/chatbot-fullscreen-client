@@ -13,16 +13,30 @@ const sdk = vi.hoisted(() => ({
   error: undefined as unknown,
   submit: vi.fn(),
   authStatus: "signed_out",
+  messages: [] as unknown[],
+  onStop: undefined as StopHandler | undefined,
+  // What the app's onStop gave the SDK's mutate, in order.
+  stopUpdates: [] as StopUpdate[],
 }));
 
+type StopUpdate = (prev: { messages?: unknown[] }) => { messages?: unknown[] };
+type StopHandler = (args: { mutate: (update: StopUpdate) => void }) => void;
+
 vi.mock("@langchain/langgraph-sdk/react", () => ({
-  useStream: (options: { onCustomEvent: CustomEventHandler }) => {
+  useStream: (options: {
+    onCustomEvent: CustomEventHandler;
+    onStop: StopHandler;
+  }) => {
     sdk.onCustomEvent = options.onCustomEvent;
+    sdk.onStop = options.onStop;
     return {
       isLoading: sdk.isLoading,
-      messages: [],
+      messages: sdk.messages,
       error: sdk.error,
       submit: sdk.submit,
+      stop: async () => {
+        sdk.onStop?.({ mutate: (update) => sdk.stopUpdates.push(update) });
+      },
     };
   },
 }));
@@ -323,5 +337,60 @@ describe("resending a challenged question", () => {
         optimisticValues,
       );
     });
+  });
+});
+
+describe("stopping a run", () => {
+  const question = { id: "h-1", type: "human", content: "Anvil?" };
+  const saved = { id: "srv-1", type: "human", content: "Anvil?" };
+  const partial = { id: "a-1", type: "ai", content: "Anvil is" };
+
+  beforeEach(() => {
+    sdk.isLoading = true;
+    sdk.error = undefined;
+    sdk.messages = [question, partial];
+    sdk.stopUpdates = [];
+  });
+
+  // The SDK applies each update on the screen at the stop, then again on the
+  // thread as the agent saved it.
+  const stopWith = async (
+    result: ReturnType<typeof setup>["result"],
+    head: unknown[],
+  ) => {
+    await act(() => result.current.stop());
+    const [update] = sdk.stopUpdates;
+    let next: { messages?: unknown[] } = {};
+    act(() => {
+      expect(update({ messages: sdk.messages })).toEqual({});
+      next = update({ messages: head });
+    });
+    return next;
+  };
+
+  it("marks the turn stopped and keeps the streamed text", async () => {
+    const { result } = setup();
+    const next = await stopWith(result, [saved]);
+    expect(result.current.stopped).toBe(true);
+    expect(next.messages).toEqual([saved, { ...partial, tool_calls: [] }]);
+  });
+
+  it("isn't stopped when the agent had saved the answer", async () => {
+    const { result } = setup();
+    const reply = { id: "a-1", type: "ai", content: "Anvil is big." };
+    const next = await stopWith(result, [saved, reply]);
+    expect(next).toEqual({});
+    expect(result.current.stopped).toBe(false);
+  });
+
+  it("clears when the next run starts", async () => {
+    const { result, rerender } = setup();
+    await stopWith(result, [saved]);
+    sdk.isLoading = false;
+    rerender();
+    expect(result.current.stopped).toBe(true);
+    sdk.isLoading = true;
+    rerender();
+    expect(result.current.stopped).toBe(false);
   });
 });
