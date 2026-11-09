@@ -11,7 +11,9 @@ export function ProgramLogo({ size = "large" }: { size?: "large" | "small" }) {
         "flex items-center",
         // Logo and name don't fit side by side on a phone, so the large
         // version stacks the name under the logo until there is room.
-        small ? "gap-3" : "flex-col gap-1 sm:flex-row sm:gap-3",
+        small
+          ? "flex-wrap gap-x-3 gap-y-1"
+          : "flex-col gap-1 sm:flex-row sm:gap-3",
       )}
     >
       <Image
