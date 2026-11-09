@@ -172,7 +172,14 @@ function ChartSwitcher({
  * its first (the model's first call, the answer to the question) with a
  * switcher for the rest.
  */
-export function XdmodChartPanel({ onAsk }: { onAsk: (text: string) => void }) {
+export function XdmodChartPanel({
+  onAsk,
+  awaitingCheck = false,
+}: {
+  onAsk: (text: string) => void;
+  /** The Turnstile check is showing: nothing can be sent until it passes. */
+  awaitingCheck?: boolean;
+}) {
   const stream = useStreamContext();
   const turns = useMemo(
     () => [...chartViewsByMessage(stream.messages).values()],
@@ -248,7 +255,7 @@ export function XdmodChartPanel({ onAsk }: { onAsk: (text: string) => void }) {
           key={view.key}
           view={view}
           questions={questions}
-          busy={stream.isLoading}
+          busy={stream.isLoading || awaitingCheck}
           onAsk={onAsk}
         />
       </div>

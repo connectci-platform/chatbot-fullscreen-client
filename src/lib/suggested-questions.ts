@@ -1,14 +1,14 @@
 import type { Message } from "@langchain/langgraph-sdk";
 
 const MAX_QUESTIONS = 3;
-const MAX_LENGTH = 200;
+const MAX_LENGTH = 100;
 
 /**
  * The follow-up questions the agent attaches to an answer, as
  * additional_kwargs.suggested_questions. They can arrive a few seconds after
  * the answer's text, and older threads, refusals and errors have none.
- * Anything that isn't a non-empty string is dropped, repeats are dropped,
- * and at most three are kept.
+ * Anything that isn't a non-empty string of at most 100 characters is
+ * dropped, repeats are dropped, and at most three are kept.
  */
 export function getSuggestedQuestions(message: Message | undefined): string[] {
   if (!message || message.type !== "ai") return [];

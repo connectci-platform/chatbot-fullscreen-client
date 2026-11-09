@@ -176,12 +176,15 @@ const stream = vi.mocked(useStreamContext);
 const useMessages = (messages: Message[], isLoading = false) =>
   stream.mockReturnValue({ messages, isLoading } as never);
 
-function tree(onAsk: (text: string) => void = () => {}) {
+function tree(onAsk: (text: string) => void = () => {}, awaitingCheck = false) {
   return (
     <ArtifactProvider>
       <Slots />
       {/* First, so winning the panel can't depend on mounting last. */}
-      <XdmodChartPanel onAsk={onAsk} />
+      <XdmodChartPanel
+        onAsk={onAsk}
+        awaitingCheck={awaitingCheck}
+      />
       <RegistrationPanel onConfirm={() => {}} />
       <SoftwareComparisonPanel />
     </ArtifactProvider>
@@ -948,6 +951,21 @@ describe("XdmodChartPanel", () => {
       }),
     );
     expect(onAsk).toHaveBeenCalledWith("Which resources used the most?");
+  });
+
+  it("sends nothing while the Turnstile check is showing", () => {
+    const onAsk = vi.fn();
+    const messages = turn(payload());
+    messages[3] = {
+      ...messages[3],
+      additional_kwargs: { suggested_questions: ["What about Delta?"] },
+    } as Message;
+    useMessages(messages);
+    render(tree(onAsk, true));
+    const button = screen.getByRole("button", { name: "What about Delta?" });
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(button);
+    expect(onAsk).not.toHaveBeenCalled();
   });
 
   it("has no Ask next when the answer suggests nothing", () => {

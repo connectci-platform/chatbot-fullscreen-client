@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "@langchain/langgraph-sdk";
 import { chartViewsByMessage } from "@/lib/xdmod-chart";
 import { showChart } from "../xdmod-chart-panel";
+import { COMPOSER_ID } from "../composer";
 import { AssistantMessage, AssistantMessageLoading } from "./ai";
 
 const toolMessage: Message = {
@@ -223,7 +224,11 @@ describe("AssistantMessage", () => {
         content: "Here's how.",
         additional_kwargs: { suggested_questions: questions },
       }) as Message;
-    const ask = (message: Message, isLoading = false) => {
+    const ask = (
+      message: Message,
+      isLoading = false,
+      awaitingCheck = false,
+    ) => {
       const onAsk = vi.fn();
       render(
         <NuqsTestingAdapter>
@@ -231,6 +236,11 @@ describe("AssistantMessage", () => {
             message={message}
             isLoading={isLoading}
             onAsk={onAsk}
+            awaitingCheck={awaitingCheck}
+          />
+          <textarea
+            id={COMPOSER_ID}
+            aria-label="Message"
           />
         </NuqsTestingAdapter>,
       );
@@ -255,6 +265,47 @@ describe("AssistantMessage", () => {
       const onAsk = ask(answer);
       fireEvent.click(screen.getByRole("button", { name: "What is Delta?" }));
       expect(onAsk).toHaveBeenCalledWith("What is Delta?");
+    });
+
+    it("moves focus to the message box after asking", () => {
+      const answer = withNext("ai-n", ["What is Delta?"]);
+      stream.messages = [question, answer];
+      ask(answer);
+      const button = screen.getByRole("button", { name: "What is Delta?" });
+      button.focus();
+      fireEvent.click(button);
+      expect(document.activeElement).toBe(
+        screen.getByRole("textbox", { name: "Message" }),
+      );
+    });
+
+    it("sends nothing while the Turnstile check is showing", () => {
+      const answer = withNext("ai-n", ["What is Delta?"]);
+      stream.messages = [question, answer];
+      const onAsk = ask(answer, false, true);
+      const button = screen.getByRole("button", { name: "What is Delta?" });
+      expect(button.getAttribute("aria-disabled")).toBe("true");
+      fireEvent.click(button);
+      expect(onAsk).not.toHaveBeenCalled();
+    });
+
+    it("offers none on a capability answer with no examples", () => {
+      const overview = {
+        id: "ai-cap",
+        type: "ai",
+        content: "I can help with these.",
+        additional_kwargs: {
+          capability_overview: true,
+          suggestions: [],
+          suggested_questions: ["What is Delta?"],
+        },
+      } as Message;
+      stream.messages = [question, overview];
+      ask(overview);
+      expect(screen.queryByText("Ask next")).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "What is Delta?" }),
+      ).toBeNull();
     });
 
     it("drops them from an earlier answer", () => {

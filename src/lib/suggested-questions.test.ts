@@ -55,6 +55,12 @@ describe("getSuggestedQuestions", () => {
     expect(getSuggestedQuestions(answer(["", "   ", "A?"]))).toEqual(["A?"]);
   });
 
+  it("keeps a question of 100 characters and drops one of 101", () => {
+    const fits = `${"a".repeat(99)}?`;
+    const tooLong = `${"b".repeat(100)}?`;
+    expect(getSuggestedQuestions(answer([tooLong, fits]))).toEqual([fits]);
+  });
+
   it("ignores them on a human message", () => {
     expect(
       getSuggestedQuestions({

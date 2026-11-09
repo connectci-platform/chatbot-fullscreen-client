@@ -6,7 +6,10 @@ import { CommandBar } from "./shared";
 import { MarkdownText } from "../markdown-text";
 import { LoadExternalComponent } from "@langchain/langgraph-sdk/react-ui";
 import { cn } from "@/lib/utils";
-import { getCapabilitySuggestions } from "@/lib/capability-suggestions";
+import {
+  getCapabilitySuggestions,
+  isCapabilityOverview,
+} from "@/lib/capability-suggestions";
 import { getSuggestedQuestions } from "@/lib/suggested-questions";
 import { SuggestedQuestions } from "../suggested-questions";
 import { Fragment } from "react/jsx-runtime";
@@ -18,6 +21,7 @@ import { AnswerSources } from "../answer-sources";
 import { AnswerRating } from "./answer-rating";
 import { BarChart3 } from "lucide-react";
 import { showChart } from "../xdmod-chart-panel";
+import { focusComposer } from "../composer";
 
 function CustomComponent({
   message,
@@ -83,9 +87,12 @@ export function AssistantMessage({
   isLoading,
   onAsk,
   chartKey,
+  awaitingCheck = false,
 }: {
   message: Message | undefined;
   isLoading: boolean;
+  /** The Turnstile check is showing: nothing can be sent until it passes. */
+  awaitingCheck?: boolean;
   /** The chart under this answer (its tool_call_id), if it has one. */
   chartKey?: string;
   /** Sends a suggested question as if typed. */
@@ -108,7 +115,7 @@ export function AssistantMessage({
     !!message?.id &&
     thread.messages.findLast((m) => m.type !== "tool")?.id === message.id;
   const nextQuestions =
-    isLatestAnswer && !isLoading && suggestions.length === 0
+    isLatestAnswer && !isLoading && !isCapabilityOverview(message)
       ? getSuggestedQuestions(message)
       : [];
 
@@ -147,7 +154,7 @@ export function AssistantMessage({
             heading="Try one of these"
             questions={suggestions}
             onAsk={onAsk}
-            disabled={isLoading}
+            disabled={isLoading || awaitingCheck}
             compact
           />
         )}
@@ -155,7 +162,13 @@ export function AssistantMessage({
           <SuggestedQuestions
             heading="Ask next"
             questions={nextQuestions}
-            onAsk={onAsk}
+            onAsk={(question) => {
+              onAsk(question);
+              // Asking starts a run, which removes these buttons: keep the
+              // keyboard user's focus somewhere useful.
+              focusComposer();
+            }}
+            disabled={awaitingCheck}
             compact
           />
         )}

@@ -56,6 +56,7 @@ import {
 import { RegistrationPanel } from "./registration-panel";
 import { SoftwareComparisonPanel } from "./software-comparison-panel";
 import { XdmodChartPanel } from "./xdmod-chart-panel";
+import { COMPOSER_ID } from "./composer";
 import { chartViewsByMessage } from "@/lib/xdmod-chart";
 
 function StickyToBottomContent(props: {
@@ -234,6 +235,12 @@ export function Thread() {
     setContentBlocks([]);
   };
 
+  /** A one-click question; held back while the Turnstile check is showing. */
+  const askSuggested = (question: string) => {
+    if (awaitingCheck) return;
+    submitMessage(question, []);
+  };
+
   useInitialQuestion((question) => submitMessage(question, []));
 
   const chatStarted = !!threadId || !!messages.length;
@@ -402,7 +409,8 @@ export function Thread() {
                           key={message.id || `${message.type}-${index}`}
                           message={message}
                           isLoading={isLoading}
-                          onAsk={(question) => submitMessage(question, [])}
+                          onAsk={askSuggested}
+                          awaitingCheck={awaitingCheck}
                           chartKey={
                             message.id
                               ? chartViews.get(message.id)?.[0]?.key
@@ -466,6 +474,7 @@ export function Thread() {
                           onRemove={removeBlock}
                         />
                         <textarea
+                          id={COMPOSER_ID}
                           value={input}
                           onChange={(e) => setInput(e.target.value)}
                           onPaste={handlePaste}
@@ -577,7 +586,10 @@ export function Thread() {
       </div>
       <RegistrationPanel onConfirm={(text) => submitMessage(text, [])} />
       <SoftwareComparisonPanel />
-      <XdmodChartPanel onAsk={(text) => submitMessage(text, [])} />
+      <XdmodChartPanel
+        onAsk={askSuggested}
+        awaitingCheck={awaitingCheck}
+      />
     </div>
   );
 }
