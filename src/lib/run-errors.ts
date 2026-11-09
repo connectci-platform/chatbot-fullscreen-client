@@ -5,6 +5,11 @@ const GENERIC = "Something went wrong. Please try again.";
 // Names the SDK reports when the user stopped the run on purpose.
 const SILENT = new Set(["cancelled", "AbortError"]);
 
+/** True when the run ended because it was stopped, not because it failed. */
+export function isStopError(error: unknown): boolean {
+  return error instanceof Error && SILENT.has(error.name);
+}
+
 /**
  * The agent wants a signed-out person to pass a Turnstile check before it
  * answers. Shows no error toast, because the challenge panel explains it.
@@ -88,7 +93,7 @@ export function runErrorMessage(
       : "That conversation isn't available. Start a new one, or sign in if it was yours.";
   }
   const name = error instanceof Error ? error.name : "";
-  if (SILENT.has(name) || isTurnstileChallenge(error)) return null;
+  if (isStopError(error) || isTurnstileChallenge(error)) return null;
   if (name === "timeout") return "That took too long. Please try again.";
   return GENERIC;
 }

@@ -39,7 +39,12 @@ import {
   runErrorToastOptions,
 } from "@/lib/run-errors";
 import { useAuthStatus } from "@/hooks/use-agent-auth";
-import { useRestoreQuestion } from "@/hooks/use-restore-question";
+import {
+  questionParts,
+  useRestoreQuestion,
+} from "@/hooks/use-restore-question";
+import { unansweredQuestion } from "@/lib/stopped-answer";
+import { StoppedNote } from "./stopped-note";
 import { TurnstileChallengePanel } from "./turnstile-challenge";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Label } from "../ui/label";
@@ -56,7 +61,7 @@ import {
 import { RegistrationPanel } from "./registration-panel";
 import { SoftwareComparisonPanel } from "./software-comparison-panel";
 import { XdmodChartPanel } from "./xdmod-chart-panel";
-import { COMPOSER_ID } from "./composer";
+import { COMPOSER_ID, focusComposer } from "./composer";
 import { chartViewsByMessage } from "@/lib/xdmod-chart";
 
 function StickyToBottomContent(props: {
@@ -243,6 +248,49 @@ export function Thread() {
 
   useInitialQuestion((question) => submitMessage(question, []));
 
+  const unanswered = unansweredQuestion({
+    messages,
+    isLoading,
+    error: stream.error,
+    interrupted: !!stream.interrupt,
+    stopped: stream.stopped,
+  });
+
+  // The blocks came from this box, so they're the kind it holds.
+  const unansweredParts = () => {
+    if (!unanswered) return null;
+    const { text, blocks } = questionParts(unanswered.question);
+    return { text, blocks: blocks as unknown as typeof contentBlocks };
+  };
+
+  // Held from a Retry click until its run starts, so a double click sends once.
+  const retrying = useRef(false);
+  useEffect(() => {
+    if (isLoading) retrying.current = false;
+  }, [isLoading]);
+
+  /** Asks the unanswered question again as a new run. */
+  const retryQuestion = () => {
+    const parts = unansweredParts();
+    if (!parts || awaitingCheck || retrying.current) return;
+    retrying.current = true;
+    submitMessage(parts.text, parts.blocks);
+  };
+
+  /**
+   * Puts the unanswered question in the message box, unsent. A draft already
+   * there is kept, with the question on a new line after it.
+   */
+  const editQuestion = () => {
+    const parts = unansweredParts();
+    if (!parts) return;
+    setInput((draft) =>
+      draft.trim() ? `${draft}\n${parts.text}` : parts.text,
+    );
+    setContentBlocks((blocks) => [...blocks, ...parts.blocks]);
+    focusComposer();
+  };
+
   const chatStarted = !!threadId || !!messages.length;
   const showOfficeHours = !chatStarted && !chatHistoryOpen;
   const hasNoAIOrToolMessages = !messages.find(
@@ -428,6 +476,11 @@ export function Thread() {
                       isLoading={isLoading}
                     />
                   )}
+                  <StoppedNote
+                    turn={unanswered}
+                    onRetry={retryQuestion}
+                    onEdit={editQuestion}
+                  />
                   {isLoading && !firstTokenReceived && (
                     <AssistantMessageLoading
                       status={stream.runStatus?.message}
