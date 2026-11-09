@@ -1,6 +1,12 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type ReactElement } from "react";
+import {
+  memo,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactElement,
+} from "react";
 import {
   Bar,
   BarChart,
@@ -54,7 +60,8 @@ const LABEL_CHARS = 18;
 
 /**
  * Each series' color, by name in sorted order, so a resource keeps its color
- * however XDMoD ranks it.
+ * however XDMoD ranks it. A view holds at most MAX_SERIES (the palette's
+ * size), so no two series share a color.
  */
 function seriesColors(names: string[]): Map<string, string> {
   const sorted = [...new Set(names)].sort((a, b) => a.localeCompare(b));
@@ -64,13 +71,22 @@ function seriesColors(names: string[]): Map<string, string> {
 }
 
 const NUMBER = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+// Small averages (0.004 hours) would round to 0 at two decimals.
+const SMALL = new Intl.NumberFormat("en-US", { maximumSignificantDigits: 3 });
 const COMPACT = new Intl.NumberFormat("en-US", {
   notation: "compact",
   maximumFractionDigits: 1,
 });
 
+/** A value as the table and tooltip show it; never "0" for a value that isn't 0. */
+export function formatNumber(value: number): string {
+  return value !== 0 && Math.abs(value) < 1
+    ? SMALL.format(value)
+    : NUMBER.format(value);
+}
+
 function formatValue(value: number | null | undefined): string {
-  return value === null || value === undefined ? "—" : NUMBER.format(value);
+  return value === null || value === undefined ? "—" : formatNumber(value);
 }
 
 const shortLabel = (s: string) =>
@@ -222,7 +238,7 @@ function ChartTooltip({
 
 function ticksFor(values: (number | null)[]) {
   const max = Math.max(0, ...values.map((v) => v ?? 0));
-  return (v: number) => (max >= 10_000 ? COMPACT.format(v) : NUMBER.format(v));
+  return (v: number) => (max >= 10_000 ? COMPACT.format(v) : formatNumber(v));
 }
 
 function TimeChart({ view, width }: { view: ChartView; width: number }) {
@@ -442,8 +458,16 @@ export function chartLegend(view: ChartView) {
   return view.series.map((s) => ({ name: s.name, color: colors.get(s.name)! }));
 }
 
-/** The chart, sized to its container, with a legend for two or more series. */
-export function XdmodChart({ view }: { view: ChartView }): ReactElement {
+/**
+ * The chart, sized to its container, with a legend for two or more series.
+ * Memoized: views are cached per tool message, so a streamed token that
+ * leaves the chart's message alone doesn't redraw it.
+ */
+export const XdmodChart = memo(function XdmodChart({
+  view,
+}: {
+  view: ChartView;
+}): ReactElement {
   const [ref, width] = useWidth();
   const legend = chartLegend(view);
   return (
@@ -484,7 +508,7 @@ export function XdmodChart({ view }: { view: ChartView }): ReactElement {
       )}
     </div>
   );
-}
+});
 
 /** What the chart counts and its caveats, in the same words as the PNG. */
 export function ChartCaption({
@@ -507,21 +531,31 @@ export function ChartCaption({
         </p>
       ))}
       <p className="text-muted-foreground">
-        <span>{source}</span>{" "}
-        <a
-          href={view.link}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Open in XDMoD
-        </a>
+        <span>{source}</span>
+        {/* The link comes from a tool result: only a web link is followed. */}
+        {view.link.startsWith("https:") && (
+          <>
+            {" "}
+            <a
+              href={view.link}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open in XDMoD
+            </a>
+          </>
+        )}
       </p>
     </div>
   );
 }
 
 /** The chart's numbers, one row per period or bar. */
-export function ChartTable({ view }: { view: ChartView }) {
+export const ChartTable = memo(function ChartTable({
+  view,
+}: {
+  view: ChartView;
+}) {
   const cell = "border-b px-3 py-2 text-right tabular-nums";
   const head = "border-b px-3 py-2 text-left align-bottom";
   return (
@@ -611,4 +645,4 @@ export function ChartTable({ view }: { view: ChartView }) {
       </table>
     </div>
   );
-}
+});

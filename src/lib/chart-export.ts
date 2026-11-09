@@ -52,6 +52,36 @@ export function formatPeriod(start: string, unit?: string): string {
 }
 
 /**
+ * Where XDMoD's data stops, as far as the caption can honestly say. A day
+ * is said when it's before the counted end. A period start is not a day the
+ * data stops (the period may be full), so it's said only as "no data after"
+ * that period, and only when later periods in the range are empty.
+ */
+function dataEnd(
+  caption: CaptionFacts,
+): { day: string } | { period: string } | null {
+  const through = caption.dataThrough;
+  if (!through) return null;
+  if ((caption.dataThroughPrecision ?? "day") === "day") {
+    return through < caption.counted.end ? { day: through } : null;
+  }
+  return caption.noDataAfter
+    ? { period: formatPeriod(through, caption.unit) }
+    : null;
+}
+
+/** How many of how many the chart shows, or null when it shows them all. */
+function shownLine(caption: CaptionFacts, shown: number): string | null {
+  if (!caption.hasMore) return null;
+  if (caption.total === undefined) {
+    return `Showing the top ${shown}; XDMoD has more.`;
+  }
+  return caption.ordered
+    ? `Showing ${shown} of ${caption.total} buckets.`
+    : `Showing the top ${shown} of ${caption.total} ${caption.groupNoun ?? "groups"}.`;
+}
+
+/**
  * The caption under a chart, one line per fact, in reading order. The panel
  * and the PNG both draw these, so they always say the same thing. `shown` is
  * how many series or bars the chart draws.
@@ -63,20 +93,30 @@ export function captionLines(caption: CaptionFacts, shown: number): string[] {
     caption.unit ? `${range}, by ${caption.unit.toLowerCase()}` : range,
   ];
   // XDMoD's public data often stops weeks before the range does.
-  if (caption.dataThrough && caption.partialPeriod) {
+  const end = dataEnd(caption);
+  if (end) {
+    const lead =
+      "day" in end
+        ? `XDMoD has data through ${formatDay(end.day)}`
+        : `XDMoD has no data after ${end.period}`;
     lines.push(
-      `XDMoD has data through ${formatDay(caption.dataThrough)}, so ${formatPeriod(caption.partialPeriod, caption.unit)} may be partial.`,
+      caption.partialPeriod
+        ? `${lead}, so ${formatPeriod(caption.partialPeriod, caption.unit)} may be partial.`
+        : `${lead}.`,
     );
-  } else if (caption.dataThrough && caption.dataThrough < caption.counted.end) {
-    lines.push(`XDMoD has data through ${formatDay(caption.dataThrough)}.`);
   }
   if (caption.filters.length > 0) {
     lines.push(`Filtered to ${caption.filters.join("; ")}`);
   }
-  if (caption.hasMore) {
-    lines.push(`Showing the top ${shown}; XDMoD has more.`);
+  const showing = shownLine(caption, shown);
+  if (showing) lines.push(showing);
+  if (caption.incomplete) {
+    lines.push(
+      caption.unit
+        ? "The last period is still in progress."
+        : "The range runs to today, so it's still in progress.",
+    );
   }
-  if (caption.incomplete) lines.push("The last period is still in progress.");
   for (const warning of caption.warnings) lines.push(WARNING_TEXT[warning]);
   lines.push(
     `Source: ${caption.source}, retrieved ${formatDay(caption.retrieved)}`,
@@ -91,7 +131,12 @@ export function shownCount(view: ChartView): number {
 
 function csvCell(value: string | number | null): string {
   if (value === null) return "";
-  const text = String(value);
+  // A spreadsheet runs a text cell that starts like a formula; names come
+  // from XDMoD, so they're kept as text. Numbers stay numbers.
+  const text =
+    typeof value === "string" && /^[=+\-@\t\r]/.test(value)
+      ? `'${value}`
+      : String(value);
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
@@ -105,11 +150,16 @@ const csvRow = (cells: (string | number | null)[]) =>
  */
 export function chartCsv(view: ChartView): string {
   const { caption } = view;
+  const end = dataEnd(caption);
   const rows: (string | number | null)[][] = [
     ["Measure", caption.measure],
     ["Counted", `${caption.counted.start} to ${caption.counted.end}`],
-    ...(caption.dataThrough
-      ? [["Data through", caption.dataThrough] as [string, string]]
+    ...(end
+      ? [
+          ("day" in end
+            ? ["Data through", end.day]
+            : ["No data after", end.period]) as [string, string],
+        ]
       : []),
     ...(caption.partialPeriod
       ? [

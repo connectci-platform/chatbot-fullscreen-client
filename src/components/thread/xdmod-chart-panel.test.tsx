@@ -11,6 +11,7 @@ import {
 import { RegistrationPanel } from "./registration-panel";
 import { SoftwareComparisonPanel } from "./software-comparison-panel";
 import { XdmodChartPanel, showChart } from "./xdmod-chart-panel";
+import { ChartTable, XdmodChart } from "./xdmod-chart";
 
 vi.mock("@/providers/Stream", () => ({ useStreamContext: vi.fn() }));
 
@@ -253,7 +254,7 @@ describe("XdmodChartPanel", () => {
     ).toHaveLength(3);
     expect(
       screen.getByText(
-        "XDMoD has data through Oct 1, 2026, so Oct 2026 may be partial.",
+        "XDMoD has no data after Oct 2026, so Oct 2026 may be partial.",
       ),
     ).toBeTruthy();
   });
@@ -264,6 +265,7 @@ describe("XdmodChartPanel", () => {
         payload({
           counted: { start: "2026-06-01", end: "2026-11-08" },
           data_through: "2026-10-19",
+          data_through_precision: "day",
           last_data_period_partial: true,
           series: [
             {
@@ -302,6 +304,7 @@ describe("XdmodChartPanel", () => {
           unit: "Quarter",
           counted: { start: "2026-01-01", end: "2026-12-31" },
           data_through: "2026-08-15",
+          data_through_precision: "day",
           last_data_period_partial: true,
           series: [
             {
@@ -362,6 +365,7 @@ describe("XdmodChartPanel", () => {
         payload({
           counted: { start: "2026-06-01", end: "2026-11-08" },
           data_through: "2026-10-01",
+          data_through_precision: "day",
         }),
       ),
     );
@@ -515,16 +519,208 @@ describe("XdmodChartPanel", () => {
   });
 
   it("says where XDMoD's data stops when it's before the range ends", () => {
-    useMessages(turn(payload({ data_through: "2026-10-01" })));
+    useMessages(
+      turn(
+        payload({ data_through: "2026-10-01", data_through_precision: "day" }),
+      ),
+    );
     const { unmount } = render(tree());
     expect(
       screen.getByText("XDMoD has data through Oct 1, 2026."),
     ).toBeTruthy();
     unmount();
 
+    // A month start isn't where the data stops: October may be full.
+    useMessages(
+      turn(
+        payload({
+          data_through: "2026-10-01",
+          data_through_precision: "period",
+        }),
+      ),
+    );
+    const second = render(tree());
+    expect(
+      screen.queryByText(/XDMoD has (data through|no data after)/),
+    ).toBeNull();
+    second.unmount();
+
     useMessages(turn(payload()));
     render(tree());
     expect(screen.queryByText(/has data through/)).toBeNull();
+  });
+
+  it("gives an aggregate the recent-data warning and where its data stops", () => {
+    useMessages(
+      turn(
+        bars({
+          group_by: "fieldofscience",
+          dimension: { name: "fieldofscience", ordered: false },
+          requested: { start: "2026-01-01", end: "2026-11-09" },
+          counted: { start: "2026-01-01", end: "2026-11-09" },
+          last_period_incomplete: true,
+          data_through: "2026-10-01",
+          data_through_precision: "day",
+        }),
+      ),
+    );
+    render(tree());
+    for (const text of [
+      "XDMoD has data through Oct 1, 2026.",
+      "The range runs to today, so it's still in progress.",
+      "Jobs still waiting aren't counted, and the last few days may be incomplete.",
+    ]) {
+      expect(screen.getByText(text)).toBeTruthy();
+    }
+  });
+
+  it("doesn't draw a series as dropping to 0 after its own data ends", () => {
+    const day = (d: number) => `2026-10-${String(d).padStart(2, "0")}`;
+    useMessages(
+      turn(
+        payload({
+          unit: "Day",
+          measure: {
+            label: "Number of Jobs Ended",
+            description: "Jobs.",
+            kind: "total",
+            missing: "zero",
+          },
+          group_by: "resource",
+          dimension: { name: "resource", ordered: false },
+          counted: { start: day(18), end: day(21) },
+          data_through: day(21),
+          data_through_precision: "day",
+          series: [
+            {
+              name: "Anvil",
+              points: [18, 19, 20, 21].map((d) => ({
+                start: day(d),
+                value: d <= 19 ? 5 : null,
+              })),
+            },
+            {
+              name: "Delta",
+              points: [18, 19, 20, 21].map((d) => ({
+                start: day(d),
+                value: 7,
+              })),
+            },
+            {
+              name: "Empty",
+              points: [18, 19, 20, 21].map((d) => ({
+                start: day(d),
+                value: null,
+              })),
+            },
+          ],
+        }),
+      ),
+    );
+    const { container } = render(tree());
+    // Anvil's line has two points (one segment), not four.
+    const [anvil] = solidLines(container);
+    expect(anvil.getAttribute("d")?.match(/L/g)).toHaveLength(1);
+    const legend = screen.getByRole("list", { name: "Legend" });
+    expect(within(legend).queryByText("Empty")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Table" }));
+    const table = screen.getByRole("table");
+    expect(within(table).getAllByText("—")).toHaveLength(2);
+    expect(within(table).queryByText("0")).toBeNull();
+  });
+
+  it("draws at most ten series and says how many there were", () => {
+    const series = Array.from({ length: 12 }, (_, i) => ({
+      name: `R${String(i).padStart(2, "0")}`,
+      points: [
+        { start: "2026-06-01", value: 12 - i },
+        { start: "2026-07-01", value: 12 - i },
+      ],
+    }));
+    useMessages(
+      turn(
+        payload({
+          group_by: "resource",
+          dimension: { name: "resource", ordered: false },
+          series,
+        }),
+      ),
+    );
+    const { container } = render(tree());
+    expect(solidLines(container)).toHaveLength(10);
+    expect(
+      screen.getByText("Showing the top 10 of 12 resources."),
+    ).toBeTruthy();
+  });
+
+  it("says how many XDMoD left out when it says", () => {
+    useMessages(
+      turn(
+        bars({
+          group_by: "fieldofscience",
+          dimension: { name: "fieldofscience", ordered: false },
+          has_more: true,
+          others_count: 38,
+        }),
+      ),
+    );
+    const { unmount } = render(tree());
+    expect(
+      screen.getByText("Showing the top 3 of 41 fields of science."),
+    ).toBeTruthy();
+    unmount();
+
+    useMessages(
+      turn(
+        bars({
+          group_by: "jobsize",
+          dimension: { name: "jobsize", ordered: true },
+          has_more: true,
+          others_count: 2,
+        }),
+      ),
+    );
+    render(tree());
+    expect(screen.getByText("Showing 3 of 5 buckets.")).toBeTruthy();
+  });
+
+  it("shows a small average without rounding it to 0", () => {
+    useMessages(
+      turn(
+        bars({
+          statistic: "avg_waitduration_hours",
+          categories: [
+            { name: "Delta", value: 0.004 },
+            { name: "Anvil", value: 1234.567 },
+          ],
+        }),
+      ),
+    );
+    render(tree());
+    fireEvent.click(screen.getByRole("button", { name: "Table" }));
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("0.004")).toBeTruthy();
+    expect(within(table).getByText("1,234.57")).toBeTruthy();
+  });
+
+  it("redraws the chart only when its view changes", () => {
+    // The views are cached per tool message, so memo skips a streamed token.
+    const memoType = Symbol.for("react.memo");
+    expect((XdmodChart as unknown as { $$typeof: symbol }).$$typeof).toBe(
+      memoType,
+    );
+    expect((ChartTable as unknown as { $$typeof: symbol }).$$typeof).toBe(
+      memoType,
+    );
+  });
+
+  it("links to XDMoD only over https", () => {
+    useMessages(turn(payload({ link: "javascript:alert(1)" })));
+    render(tree());
+    expect(screen.queryByRole("link", { name: "Open in XDMoD" })).toBeNull();
+    expect(
+      screen.getByText("Source: XDMoD, retrieved Nov 9, 2026"),
+    ).toBeTruthy();
   });
 
   it("warns that CPU hours aren't comparable across resources", () => {

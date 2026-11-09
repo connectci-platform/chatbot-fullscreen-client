@@ -306,9 +306,54 @@ describe("chartViewsByMessage", () => {
       ]);
     });
 
-    it("still zero-fills a total without data_through", () => {
-      expect(values({})).toEqual([10, 0, 30, 0, 0]);
-      expect(values({ data_through: null })).toEqual([10, 0, 30, 0, 0]);
+    it("zero-fills a total only up to the series' own last value", () => {
+      expect(values({})).toEqual([10, 0, 30, null, null]);
+      expect(values({ data_through: null })).toEqual([10, 0, 30, null, null]);
+    });
+
+    it("stops a series that ends early at its own last value", () => {
+      const v = view(
+        payload({
+          data_through: "2026-04-01",
+          series: [
+            { name: "Anvil", points },
+            {
+              name: "Delta",
+              points: points.map((p) => ({
+                ...p,
+                value: p.start < "2026-05-01" ? 1 : null,
+              })),
+            },
+          ],
+        }),
+      )!;
+      expect(v.series[0].points.map((p) => p.value)).toEqual([
+        10,
+        0,
+        30,
+        null,
+        null,
+      ]);
+      expect(v.series[1].points.map((p) => p.value)).toEqual([
+        1,
+        1,
+        1,
+        1,
+        null,
+      ]);
+    });
+
+    it("drops a series with no values", () => {
+      const empty = points.map((p) => ({ ...p, value: null }));
+      const v = view(
+        payload({
+          series: [
+            { name: "All", points },
+            { name: "Empty", points: empty },
+          ],
+        }),
+      )!;
+      expect(v.series.map((s) => s.name)).toEqual(["All"]);
     });
 
     it("leaves an average's gaps alone", () => {
@@ -416,5 +461,99 @@ describe("chartViewsByMessage", () => {
         "Show the job-size mix for this period",
       );
     });
+  });
+});
+
+describe("data_through precision", () => {
+  const months = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      start: `2026-0${i + 1}-01`,
+      value: i < 2 ? 5 : null,
+    }));
+  const caption = (over: Json) =>
+    view(payload({ series: [{ name: "All", points: months(3) }], ...over }))!
+      .caption;
+
+  it("takes the payload's precision, and says when later periods are empty", () => {
+    const c = caption({
+      data_through: "2026-02-01",
+      data_through_precision: "period",
+    });
+    expect(c.dataThroughPrecision).toBe("period");
+    expect(c.noDataAfter).toBe(true);
+    expect(
+      caption({
+        data_through: "2026-02-15",
+        data_through_precision: "day",
+        series: [{ name: "All", points: months(2) }],
+      }).noDataAfter,
+    ).toBe(false);
+  });
+
+  it("falls back to period for older month payloads and day for Day or aggregates", () => {
+    expect(caption({ data_through: "2026-02-01" }).dataThroughPrecision).toBe(
+      "period",
+    );
+    expect(
+      caption({ data_through: "2026-02-01", unit: "Day" }).dataThroughPrecision,
+    ).toBe("day");
+    expect(
+      view(aggregate({ data_through: "2026-02-01" }))!.caption
+        .dataThroughPrecision,
+    ).toBe("day");
+  });
+
+  it("rejects a bad precision or others_count", () => {
+    expect(view(payload({ data_through_precision: "week" }))).toBeNull();
+    expect(view(payload({ others_count: -1 }))).toBeNull();
+    expect(view(payload({ others_count: "3" }))).toBeNull();
+  });
+});
+
+describe("shown of total", () => {
+  it("adds others_count to what arrived, and knows nothing without it", () => {
+    expect(
+      view(aggregate({ has_more: true, others_count: 7 }))!.caption.total,
+    ).toBe(10);
+    expect(view(aggregate({ has_more: true }))!.caption.total).toBeUndefined();
+    expect(
+      view(aggregate({ has_more: true, others_count: null }))!.caption.total,
+    ).toBeUndefined();
+    expect(view(aggregate())!.caption).toMatchObject({
+      hasMore: false,
+      total: 3,
+      groupNoun: "resources",
+    });
+    expect(view(payload())!.caption.groupNoun).toBe("groups");
+  });
+});
+
+describe("parsing once per tool message", () => {
+  it("reads each tool message's artifact once across new message arrays", () => {
+    let reads = 0;
+    const artifact = {
+      get structured_content() {
+        reads++;
+        return { chart: payload() };
+      },
+    };
+    const messages = [human("h"), ai("a0"), tool("t1", artifact), ai("a1")];
+
+    const first = chartViewsByMessage([...messages]).get("a1");
+    const second = chartViewsByMessage([...messages, ai("a1")]).get("a1");
+    latestChartView([...messages]);
+
+    expect(reads).toBe(1);
+    expect(second).toBe(first);
+  });
+
+  it("builds a new view when the answer's message changes", () => {
+    const messages = turn(payload());
+    const before = chartViewsByMessage(messages).get("a1")!;
+    const after = chartViewsByMessage([...messages.slice(0, 3), ai("a2")]).get(
+      "a2",
+    )!;
+    expect(after).not.toBe(before);
+    expect(after.messageId).toBe("a2");
   });
 });

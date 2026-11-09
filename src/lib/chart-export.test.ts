@@ -112,7 +112,7 @@ describe("captionLines", () => {
       "Aug 1, 2026 to Oct 31, 2026",
       "Filtered to Resource is Delta; Field of science is Physics",
       "Showing the top 10; XDMoD has more.",
-      "The last period is still in progress.",
+      "The range runs to today, so it's still in progress.",
       "Jobs still waiting aren't counted, and the last few days may be incomplete.",
       "CPU hours and SUs aren't comparable across resources. ACE measures are.",
       "This is an average per job, so a few long jobs can pull it up.",
@@ -124,12 +124,56 @@ describe("captionLines", () => {
 describe("captionLines with data_through", () => {
   it("says where XDMoD's data stops, right after the range", () => {
     expect(
-      captionLines({ ...CAPTION, dataThrough: "2026-10-01" }, 1).slice(0, 3),
+      captionLines(
+        {
+          ...CAPTION,
+          dataThrough: "2026-10-01",
+          dataThroughPrecision: "day",
+        },
+        1,
+      ).slice(0, 3),
     ).toEqual([
       "CPU Hours: Total: Total CPU hours used by jobs.",
       "Aug 1, 2026 to Oct 31, 2026, by month",
       "XDMoD has data through Oct 1, 2026.",
     ]);
+  });
+
+  it("doesn't print a period start as the day data stops", () => {
+    // Aug to Oct by month, October populated: Oct 1 is only its start.
+    const period = {
+      ...CAPTION,
+      dataThrough: "2026-10-01",
+      dataThroughPrecision: "period" as const,
+    };
+    expect(captionLines(period, 1).join("\n")).not.toMatch(
+      /has data through|no data after/,
+    );
+    // With empty months after it, say which period the data ends in.
+    expect(
+      captionLines(
+        {
+          ...period,
+          dataThrough: "2026-09-01",
+          noDataAfter: true,
+          counted: { start: "2026-08-01", end: "2026-11-30" },
+        },
+        1,
+      )[2],
+    ).toBe("XDMoD has no data after Sep 2026.");
+  });
+
+  it("says how many it shows of how many", () => {
+    const more = { ...CAPTION, hasMore: true, total: 41 };
+    expect(captionLines({ ...more, groupNoun: "resources" }, 10)).toContain(
+      "Showing the top 10 of 41 resources.",
+    );
+    expect(captionLines(more, 10)).toContain(
+      "Showing the top 10 of 41 groups.",
+    );
+    expect(captionLines({ ...more, ordered: true }, 10)).toContain(
+      "Showing 10 of 41 buckets.",
+    );
   });
 
   it("says nothing when the data reaches the end of the range", () => {
@@ -209,11 +253,63 @@ describe("chartCsv", () => {
 
   it("adds where the data stops to the header", () => {
     const view = lineView({
-      caption: { ...lineView().caption, dataThrough: "2026-09-01" },
+      caption: {
+        ...lineView().caption,
+        dataThrough: "2026-09-01",
+        dataThroughPrecision: "day",
+      },
     });
     expect(chartCsv(view).split("\n").slice(1, 3)).toEqual([
       "Counted,2026-08-01 to 2026-10-31",
       "Data through,2026-09-01",
+    ]);
+  });
+
+  it("names the period for a period-precision end, and only before the range ends", () => {
+    const caption = {
+      ...lineView().caption,
+      dataThrough: "2026-09-01",
+      dataThroughPrecision: "period" as const,
+    };
+    expect(
+      chartCsv(lineView({ caption: { ...caption, noDataAfter: true } }))
+        .split("\n")
+        .slice(2, 3),
+    ).toEqual(["No data after,Sep 2026"]);
+    expect(chartCsv(lineView({ caption }))).not.toMatch(
+      /No data after|Data through/,
+    );
+    expect(
+      chartCsv(
+        lineView({
+          caption: {
+            ...caption,
+            dataThrough: "2026-10-31",
+            dataThroughPrecision: "day",
+          },
+        }),
+      ),
+    ).not.toContain("Data through");
+  });
+
+  it("keeps a name that looks like a formula as text", () => {
+    const view = lineView({
+      kind: "bar-ranked",
+      series: [],
+      dimension: "Resource",
+      bars: [
+        { name: "=HYPERLINK(1)", value: -5 },
+        { name: "+1", value: 1 },
+        { name: "-x", value: 1 },
+        { name: "@me", value: 1 },
+      ],
+      caption: CAPTION,
+    });
+    expect(chartCsv(view).split("\n").slice(-4)).toEqual([
+      "'=HYPERLINK(1),-5",
+      "'+1,1",
+      "'-x,1",
+      "'@me,1",
     ]);
   });
 });
