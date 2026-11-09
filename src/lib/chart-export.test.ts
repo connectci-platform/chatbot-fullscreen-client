@@ -6,6 +6,7 @@ import {
   chartFileName,
   downloadChartPng,
   formatDay,
+  periodContaining,
   wrapText,
 } from "./chart-export";
 
@@ -63,6 +64,20 @@ describe("formatDay", () => {
 
   it("leaves anything it can't read alone", () => {
     expect(formatDay("last week")).toBe("last week");
+  });
+});
+
+describe("periodContaining", () => {
+  const months = ["2026-08-01", "2026-09-01", "2026-10-01T00:00:00"];
+
+  it("finds the period a day falls in, not just an exact start", () => {
+    expect(periodContaining(months, "2026-10-19")).toBe(2);
+    expect(periodContaining(months, "2026-09-01")).toBe(1);
+    expect(periodContaining(months, "2026-08-31")).toBe(0);
+  });
+
+  it("is -1 before the first period", () => {
+    expect(periodContaining(months, "2026-07-15")).toBe(-1);
   });
 });
 

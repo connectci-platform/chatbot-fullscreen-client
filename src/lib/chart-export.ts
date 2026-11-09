@@ -153,6 +153,21 @@ export function periods(view: ChartView): string[] {
   return longest;
 }
 
+/**
+ * The index of the period that contains `day`: the last one starting on or
+ * before it. XDMoD's data_through can fall mid-period (Oct 19 in a monthly
+ * chart), so an exact match on period starts would miss it. -1 if `day` is
+ * before the first period.
+ */
+export function periodContaining(starts: string[], day: string): number {
+  const target = day.slice(0, 10);
+  let found = -1;
+  starts.forEach((start, i) => {
+    if (start.slice(0, 10) <= target) found = i;
+  });
+  return found;
+}
+
 /** A file name (no extension) from the measure and the counted range. */
 export function chartFileName(view: ChartView): string {
   const slug = view.caption.measure

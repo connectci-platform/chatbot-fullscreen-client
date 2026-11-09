@@ -15,6 +15,7 @@ import {
   captionLines,
   formatDay,
   formatPeriod,
+  periodContaining,
   periods,
 } from "@/lib/chart-export";
 import type { ChartView } from "@/lib/xdmod-chart";
@@ -103,7 +104,7 @@ const dashedKey = (i: number) => `d${i}`;
 function dashFrom(view: ChartView, starts: string[]): number | null {
   const last = starts.length - 1;
   const partial = view.caption.partialPeriod
-    ? starts.indexOf(view.caption.partialPeriod)
+    ? periodContaining(starts, view.caption.partialPeriod)
     : -1;
   if (partial >= 1) return partial;
   if (view.caption.incomplete && last >= 1) return last;
