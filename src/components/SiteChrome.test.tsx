@@ -1,5 +1,23 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
+import { createPortal } from "react-dom";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// Like the real ACCESS menus: links rendered into a shadow root through a
+// React portal, which makes React deliver each click to the page twice.
+function ShadowLogin({ href }: { href: string }) {
+  const [root, setRoot] = useState<ShadowRoot | null>(null);
+  return (
+    <div
+      ref={(el) => {
+        if (el && !root)
+          setRoot(el.shadowRoot ?? el.attachShadow({ mode: "open" }));
+      }}
+    >
+      {root && createPortal(<a href={href}>Login</a>, root)}
+    </div>
+  );
+}
 
 // Mock the shared chrome so we can assert the props we pass it, without
 // pulling the real shadow-DOM web component into jsdom.
@@ -13,6 +31,7 @@ vi.mock("@access-ci/ui/react", () => ({
         data-logged-in={String(props.isLoggedIn)}
       >
         <a href={String(props.logoutUrl)}>Log out</a>
+        <ShadowLogin href={String(props.loginUrl)} />
       </div>
     );
   },
@@ -115,6 +134,31 @@ describe("SiteChrome auth state", () => {
 
     expect(notBlocked).toBe(true);
     expect(getClaimKey()).not.toBe(key);
+  });
+
+  it("opens one sign-in popup per click on the shadow-DOM login link", async () => {
+    vi.stubGlobal("fetch", mintResponse(401, LOGIN_REQUIRED));
+    const open = vi
+      .spyOn(window, "open")
+      .mockReturnValue({ closed: false, focus: vi.fn() } as unknown as Window);
+    await renderChrome();
+    await waitFor(() => expect(loggedIn()).toBe("false"));
+    const host = screen.getByTestId("universal-menus").querySelector("div")!;
+    await waitFor(() =>
+      expect(host.shadowRoot?.querySelector("a")).toBeTruthy(),
+    );
+
+    const link = host.shadowRoot!.querySelector("a")!;
+    const notBlocked = link.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+      }),
+    );
+
+    expect(notBlocked).toBe(false);
+    expect(open).toHaveBeenCalledTimes(1);
   });
 
   it("uses NEXT_PUBLIC_SUPPORT_URL for the mint and the login links", async () => {
