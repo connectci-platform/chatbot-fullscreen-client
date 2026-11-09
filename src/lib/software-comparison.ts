@@ -209,6 +209,7 @@ function toView(
       found: isFound,
       available_on,
       resource_status,
+      versions_by_resource,
     } = entry as Json;
     if (typeof software !== "string") continue;
     if (isFound !== true) notFound.push(software);
@@ -218,6 +219,14 @@ function toView(
         ? (resource_status as Json)
         : {};
     const known = facts.get(nameKey(software));
+    // Servers since D8-3033 send versions with the comparison. Older ones
+    // don't, so versions from other lookups in the conversation fill in.
+    const compared: Record<string, string[]> = {};
+    if (versions_by_resource && typeof versions_by_resource === "object") {
+      for (const [rp, list] of Object.entries(versions_by_resource as Json)) {
+        compared[nameKey(rp)] = cleanVersions(list);
+      }
+    }
     rows.push({
       software,
       documentation: known?.documentation,
@@ -237,7 +246,10 @@ function toView(
         if (status !== "listed") return { status: status as Gap };
         return {
           status: "listed",
-          versions: known?.versions[nameKey(resource.name)] ?? [],
+          versions:
+            compared[nameKey(resource.name)] ??
+            known?.versions[nameKey(resource.name)] ??
+            [],
         };
       }),
     });

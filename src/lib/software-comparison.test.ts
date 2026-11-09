@@ -297,6 +297,62 @@ describe("latestComparison", () => {
     });
   });
 
+  it("takes versions from the comparison itself", () => {
+    const view = latestComparison(
+      compare({
+        ...COMPARE_ALL,
+        comparison: [
+          COMPARE_ALL.comparison[0],
+          {
+            ...COMPARE_ALL.comparison[1],
+            versions_by_resource: {
+              delta: ["2026.1-cuda", " 2025.2 ", "2025.2"],
+            },
+          },
+        ],
+      }),
+    )!;
+
+    expect(cell(view, "gromacs", "delta")).toEqual({
+      status: "listed",
+      versions: ["2026.1-cuda", "2025.2"],
+    });
+    expect(cell(view, "gromacs", "aces")).toEqual({
+      status: "listed",
+      versions: [],
+    });
+  });
+
+  it("prefers the comparison's versions over an earlier lookup's", () => {
+    const view = latestComparison([
+      result(
+        "search_software",
+        {
+          total: 1,
+          items: [
+            { name: "GROMACS", versions_by_resource: { delta: ["2024.1"] } },
+          ],
+        },
+        "s1",
+      ),
+      ...compare({
+        ...COMPARE_ALL,
+        comparison: [
+          COMPARE_ALL.comparison[0],
+          {
+            ...COMPARE_ALL.comparison[1],
+            versions_by_resource: { delta: ["2026.1"] },
+          },
+        ],
+      }),
+    ])!;
+
+    expect(cell(view, "gromacs", "delta")).toEqual({
+      status: "listed",
+      versions: ["2026.1"],
+    });
+  });
+
   it("leaves versions empty where the tools gave none", () => {
     const view = latestComparison(compare(COMPARE_ALL))!;
 
