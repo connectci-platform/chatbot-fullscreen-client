@@ -368,7 +368,8 @@ export function Thread() {
             <StickyToBottomContent
               className={cn(
                 "absolute inset-0 overflow-y-scroll px-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent",
-                !chatStarted && "flex flex-col items-stretch pt-[16vh]",
+                !chatStarted &&
+                  "flex flex-col items-stretch pt-[4vh] sm:pt-[16vh]",
                 chatStarted && "grid grid-rows-[1fr_auto]",
               )}
               contentClassName="pt-8 pb-16 max-w-3xl mx-auto flex flex-col gap-4 w-full"
@@ -421,7 +422,9 @@ export function Thread() {
                     </h1>
                   )}
 
-                  <ScrollToBottom className="animate-in fade-in-0 zoom-in-95 absolute bottom-full left-1/2 mb-4 -translate-x-1/2" />
+                  {chatStarted && (
+                    <ScrollToBottom className="animate-in fade-in-0 zoom-in-95 absolute bottom-full left-1/2 mb-4 -translate-x-1/2" />
+                  )}
 
                   <div className="mx-auto mb-8 w-full max-w-3xl">
                     {challenge && (
@@ -518,6 +521,7 @@ export function Thread() {
                         </div>
                       </form>
                     </div>
+                    <ChatDisclaimer />
                     {!chatStarted && (
                       <StarterQuestions
                         onAsk={(question) => submitMessage(question, [])}
@@ -531,7 +535,6 @@ export function Thread() {
                         className="mt-6"
                       />
                     )}
-                    <ChatDisclaimer />
                   </div>
                 </div>
               }
