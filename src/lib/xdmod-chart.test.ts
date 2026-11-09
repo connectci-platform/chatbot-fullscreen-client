@@ -400,6 +400,101 @@ describe("chartViewsByMessage", () => {
     expect(latestChartViews([human("h"), ai("a")])).toEqual([]);
   });
 
+  describe("offset and early ends", () => {
+    it("carries the offset and counts the skipped ones in the total", () => {
+      const v = view(
+        aggregate({ offset: 3, has_more: true, others_count: 71 }),
+      )!;
+      expect(v.caption).toMatchObject({ offset: 3, total: 77, hasMore: true });
+    });
+
+    it("leaves offset out at 0 and in older payloads", () => {
+      expect(view(aggregate({ offset: 0 }))!.caption).not.toHaveProperty(
+        "offset",
+      );
+      expect(view(aggregate())!.caption).not.toHaveProperty("offset");
+      expect(view(aggregate())!.caption).not.toHaveProperty("earlyEnds");
+      expect(view(aggregate({ offset: -1 }))).toBeNull();
+      expect(view(aggregate({ offset: "3" }))).toBeNull();
+    });
+
+    it("lists drawn series that stop early, without leaking the field into the series", () => {
+      const v = view(
+        payload({
+          group_by: "resource",
+          dimension: { name: "resource", ordered: false },
+          series: [
+            {
+              name: "A",
+              points: [
+                { start: "2026-01-01", value: 1 },
+                { start: "2026-02-01", value: 2 },
+              ],
+            },
+            {
+              name: "B",
+              points: [
+                { start: "2026-01-01", value: 1 },
+                { start: "2026-02-01", value: null },
+              ],
+              data_through: "2026-01-01",
+              data_through_precision: "period",
+            },
+            {
+              name: "C",
+              points: [
+                { start: "2026-01-01", value: 1 },
+                { start: "2026-02-01", value: 1 },
+              ],
+              data_through: "2026-02-10",
+            },
+          ],
+        }),
+      )!;
+      expect(v.caption.earlyEnds).toEqual([
+        { name: "B", through: "2026-01-01", precision: "period" },
+        { name: "C", through: "2026-02-10", precision: "day" },
+      ]);
+      expect(v.series[1]).toEqual({
+        name: "B",
+        points: [
+          { start: "2026-01-01", value: 1 },
+          { start: "2026-02-01", value: null },
+        ],
+      });
+    });
+
+    it("lists bars whose data stops early", () => {
+      const v = view(
+        aggregate({
+          categories: [
+            { name: "A", value: 5 },
+            { name: "B", value: 4, data_through: "2026-10-19" },
+          ],
+        }),
+      )!;
+      expect(v.caption.earlyEnds).toEqual([
+        { name: "B", through: "2026-10-19", precision: "day" },
+      ]);
+    });
+
+    it("rejects a malformed early end", () => {
+      expect(
+        view(
+          aggregate({
+            categories: [
+              { name: "A", value: 1, data_through: 5 },
+              { name: "B", value: 2 },
+            ],
+          }),
+        ),
+      ).toBeNull();
+      const bad = payload();
+      (bad.series as Json[])[0].data_through_precision = "week";
+      expect(view(bad)).toBeNull();
+    });
+  });
+
   describe("warnings", () => {
     it("flags waiting jobs not counted for an incomplete Jobs period", () => {
       expect(
@@ -415,13 +510,18 @@ describe("chartViewsByMessage", () => {
       expect(view(payload())!.caption.warnings).toEqual([]);
     });
 
-    it("flags resources that can't be compared on CPU hours or SU", () => {
+    it("flags CPU hours across resources, but not SUs or ACEs, which XDMoD normalizes", () => {
       expect(view(aggregate())!.caption.warnings).toContain(
         "not-comparable-across-resources",
       );
       expect(
-        view(aggregate({ statistic: "total_su" }))!.caption.warnings,
+        view(aggregate({ statistic: "avg_cpu_hours" }))!.caption.warnings,
       ).toContain("not-comparable-across-resources");
+      for (const statistic of ["total_su", "total_ace", "avg_su"]) {
+        expect(view(aggregate({ statistic }))!.caption.warnings).not.toContain(
+          "not-comparable-across-resources",
+        );
+      }
       expect(
         view(aggregate({ statistic: "job_count" }))!.caption.warnings,
       ).not.toContain("not-comparable-across-resources");

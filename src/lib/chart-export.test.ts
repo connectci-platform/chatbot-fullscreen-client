@@ -109,15 +109,61 @@ describe("captionLines", () => {
       ),
     ).toEqual([
       "CPU Hours: Total: Total CPU hours used by jobs.",
-      "Aug 1, 2026 to Oct 31, 2026",
       "Filtered to Resource is Delta; Field of science is Physics",
+      "Aug 1, 2026 to Oct 31, 2026",
       "Showing the top 10; XDMoD has more.",
       "The range runs to today, so it's still in progress.",
       "Jobs still waiting aren't counted, and the last few days may be incomplete.",
-      "CPU hours and SUs aren't comparable across resources. ACE measures are.",
+      "CPU hours don't allow for each resource's compute power per core, so they aren't comparable across resources. ACE measures are.",
       "This is an average per job, so a few long jobs can pull it up.",
       "Source: XDMoD, retrieved Nov 9, 2026",
     ]);
+  });
+});
+
+describe("captionLines past the top", () => {
+  it("says which ranks a chart with an offset shows", () => {
+    const paged = { ...CAPTION, offset: 3, groupNoun: "fields of science" };
+    expect(captionLines({ ...paged, hasMore: true, total: 79 }, 5)).toContain(
+      "Showing ranks 4 to 8 of 79 fields of science, not the top 3.",
+    );
+    expect(captionLines({ ...paged, hasMore: true }, 5)).toContain(
+      "Showing ranks 4 to 8, not the top 3; XDMoD has more.",
+    );
+    // The last page: nothing more, but still not the top.
+    expect(captionLines(paged, 5)).toContain(
+      "Showing ranks 4 to 8, not the top 3.",
+    );
+    expect(
+      captionLines({ ...paged, ordered: true, hasMore: true, total: 11 }, 5),
+    ).toContain("Showing 5 of 11 buckets, leaving out the 3 largest.");
+    expect(captionLines({ ...paged, ordered: true }, 5)).toContain(
+      "Showing 5 buckets, leaving out the 3 largest.",
+    );
+    expect(captionLines(paged, 5).join("\n")).not.toContain("the top 5");
+  });
+});
+
+describe("captionLines with early ends", () => {
+  it("names each series that stops before the rest", () => {
+    expect(
+      captionLines(
+        {
+          ...CAPTION,
+          earlyEnds: [
+            {
+              name: "Purdue Anvil CPU",
+              through: "2026-10-19",
+              precision: "day",
+            },
+            { name: "IACS Ookami", through: "2026-09-01", precision: "period" },
+          ],
+        },
+        2,
+      ),
+    ).toContain(
+      "Some data stops earlier: Purdue Anvil CPU through Oct 19, 2026; IACS Ookami, nothing after Sep 2026.",
+    );
   });
 });
 
@@ -317,6 +363,34 @@ describe("chartCsv", () => {
       "'-x,1",
       "'@me,1",
     ]);
+  });
+});
+
+describe("chartCsv with the newer facts", () => {
+  it("adds early ends and the ranks shown to the header", () => {
+    const view = lineView({
+      caption: {
+        ...lineView().caption,
+        offset: 3,
+        earlyEnds: [
+          { name: "Anvil, Purdue", through: "2026-10-19", precision: "day" },
+          { name: "Delta", through: "2026-09-01", precision: "period" },
+        ],
+      },
+    });
+    expect(chartCsv(view).split("\n").slice(2, 6)).toEqual([
+      '"Data through (Anvil, Purdue)",2026-10-19',
+      "No data after (Delta),Sep 2026",
+      "Filters,Resource is Delta or Anvil",
+      "Ranks,4 to 5",
+    ]);
+    expect(
+      chartCsv(
+        lineView({
+          caption: { ...view.caption, ordered: true, earlyEnds: [] },
+        }),
+      ),
+    ).toContain("Ranks,4 to 5 by value");
   });
 });
 

@@ -35,9 +35,15 @@ interface ChartPayload {
   series?: {
     name: string;
     points: { start: string; value: number | null }[];
+    /** Set only when this series' data stops before the chart's. */
+    data_through?: string;
+    data_through_precision?: "day" | "period";
   }[];
-  categories?: { name: string; value: number | null }[];
+  /** A bar's data_through is its last day, set only when before the chart's end. */
+  categories?: { name: string; value: number | null; data_through?: string }[];
   has_more: boolean;
+  /** How many top-ranked ones XDMoD skipped before these; absent from older payloads. */
+  offset?: number;
   /** How many XDMoD left out past the limit; null when it didn't say. */
   others_count?: number | null;
   /** Where XDMoD's data stops; absent from older payloads. */
@@ -55,6 +61,14 @@ interface ChartPayload {
 
 export type CaptionWarning =
   "waiting-not-counted" | "not-comparable-across-resources" | "mean-of-jobs";
+
+/** A series or bar whose data stops before the rest of the chart's. */
+export type EarlyEnd = {
+  name: string;
+  through: string;
+  /** "day": the last day with data. "period": the start of the last period with data. */
+  precision: "day" | "period";
+};
 
 export type CaptionFacts = {
   measure: string;
@@ -77,6 +91,10 @@ export type CaptionFacts = {
   hasMore: boolean;
   /** How many there are in all, when known. */
   total?: number;
+  /** How many top-ranked ones come before the first shown. */
+  offset?: number;
+  /** Shown series or bars whose data stops before the chart's. */
+  earlyEnds?: EarlyEnd[];
   /** What they are, plural: "resources", "fields of science", "groups". */
   groupNoun?: string;
   /** The dimension is ordered buckets (job size), not a ranking. */
@@ -124,10 +142,22 @@ function isList<T>(v: unknown, check: (item: unknown) => item is T): v is T[] {
 
 const isPoint = (p: unknown): p is { start: string; value: Value } =>
   isRecord(p) && isString(p.start) && isValue(p.value);
+const isOptionalString = (v: unknown) => v === undefined || isString(v);
 const isSeries = (s: unknown): s is NonNullable<ChartPayload["series"]>[0] =>
-  isRecord(s) && isString(s.name) && isList(s.points, isPoint);
-const isCategory = (c: unknown): c is { name: string; value: Value } =>
-  isRecord(c) && isString(c.name) && isValue(c.value);
+  isRecord(s) &&
+  isString(s.name) &&
+  isList(s.points, isPoint) &&
+  isOptionalString(s.data_through) &&
+  (s.data_through_precision === undefined ||
+    s.data_through_precision === "day" ||
+    s.data_through_precision === "period");
+const isCategory = (
+  c: unknown,
+): c is NonNullable<ChartPayload["categories"]>[0] =>
+  isRecord(c) &&
+  isString(c.name) &&
+  isValue(c.value) &&
+  isOptionalString(c.data_through);
 const isCount = (v: unknown) =>
   v === undefined ||
   v === null ||
@@ -186,7 +216,7 @@ function parsePayload(raw: unknown): ChartPayload | null {
   ) {
     return null;
   }
-  if (!isCount(raw.others_count)) return null;
+  if (!isCount(raw.others_count) || !isCount(raw.offset)) return null;
   if (
     raw.last_data_period_partial !== undefined &&
     typeof raw.last_data_period_partial !== "boolean"
@@ -280,15 +310,23 @@ function dimensionLabel(name: string): string {
     .join(" ");
 }
 
+const CPU_HOUR_STATISTICS: ReadonlySet<string> = new Set([
+  "total_cpu_hours",
+  "avg_cpu_hours",
+]);
+
 function warningsFor(chart: ChartPayload): CaptionWarning[] {
   const warnings: CaptionWarning[] = [];
   const { statistic, realm } = chart;
   if (realm.toLowerCase() === "jobs" && chart.last_period_incomplete) {
     warnings.push("waiting-not-counted");
   }
+  // XDMoD's definitions: XD SUs "have been normalized ... Therefore they are
+  // comparable across resources", and ACEs allow comparison between resources
+  // with different compute power per core, which CPU hours don't.
   if (
     (chart.group_by === "resource" || chart.dimension.name === "resource") &&
-    (statistic === "total_cpu_hours" || statistic === "total_su")
+    CPU_HOUR_STATISTICS.has(statistic)
   ) {
     warnings.push("not-comparable-across-resources");
   }
@@ -323,6 +361,14 @@ function followUpsFor(
   return out.slice(0, MAX_FOLLOW_UPS);
 }
 
+function earlyEnd(
+  name: string,
+  through: string | undefined,
+  precision: "day" | "period" | undefined,
+): EarlyEnd | undefined {
+  return through ? { name, through, precision: precision ?? "day" } : undefined;
+}
+
 function toView(
   key: string,
   messageId: string,
@@ -340,6 +386,7 @@ function toView(
   let series: ChartView["series"] = [];
   let bars: ChartView["bars"] = [];
   let arrived: number;
+  let earlyEnds: EarlyEnd[];
   if (chart.dataset_type === "timeseries") {
     kind = "line";
     // A series that stops before the others stops there too: its own last
@@ -354,11 +401,14 @@ function toView(
             start: p.start,
             value: i > last ? p.value : fillPoint(p),
           })),
+          end: earlyEnd(s.name, s.data_through, s.data_through_precision),
         },
       ];
     });
     arrived = filled.length;
-    series = filled.slice(0, MAX_SERIES);
+    const drawn = filled.slice(0, MAX_SERIES);
+    series = drawn.map(({ name, points }) => ({ name, points }));
+    earlyEnds = drawn.flatMap((s) => (s.end ? [s.end] : []));
   } else {
     bars = (chart.categories ?? []).map((c) => ({
       name: c.name,
@@ -383,12 +433,18 @@ function toView(
         .map(({ b }) => b);
     }
     arrived = bars.length;
+    earlyEnds = (chart.categories ?? []).flatMap(
+      (c) => earlyEnd(c.name, c.data_through, "day") ?? [],
+    );
   }
 
   const shown = kind === "line" ? series.length : bars.length;
+  const offset = chart.offset ?? 0;
   const others = chart.has_more ? chart.others_count : 0;
   const total =
-    others === null || others === undefined ? undefined : arrived + others;
+    others === null || others === undefined
+      ? undefined
+      : offset + arrived + others;
   const precision =
     chart.data_through_precision ??
     (chart.dataset_type === "aggregate" || chart.unit === "Day"
@@ -427,6 +483,8 @@ function toView(
       filters: [...chart.filters.notes],
       hasMore: chart.has_more || shown < arrived,
       ...(total !== undefined ? { total } : {}),
+      ...(offset > 0 ? { offset } : {}),
+      ...(earlyEnds.length > 0 ? { earlyEnds } : {}),
       groupNoun:
         DIMENSION_NOUNS[chart.dimension.name.toLowerCase()] ?? "groups",
       ordered: chart.dimension.ordered,

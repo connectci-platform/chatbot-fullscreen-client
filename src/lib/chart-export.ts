@@ -1,10 +1,15 @@
-import type { CaptionFacts, CaptionWarning, ChartView } from "./xdmod-chart";
+import type {
+  CaptionFacts,
+  CaptionWarning,
+  ChartView,
+  EarlyEnd,
+} from "./xdmod-chart";
 
 const WARNING_TEXT: Record<CaptionWarning, string> = {
   "waiting-not-counted":
     "Jobs still waiting aren't counted, and the last few days may be incomplete.",
   "not-comparable-across-resources":
-    "CPU hours and SUs aren't comparable across resources. ACE measures are.",
+    "CPU hours don't allow for each resource's compute power per core, so they aren't comparable across resources. ACE measures are.",
   "mean-of-jobs":
     "This is an average per job, so a few long jobs can pull it up.",
 };
@@ -70,8 +75,27 @@ function dataEnd(
     : null;
 }
 
+/** Which ranks a chart past the top shows: "4 to 8". */
+function rankRange(caption: CaptionFacts, shown: number): string | null {
+  const offset = caption.offset ?? 0;
+  return offset > 0 && shown > 0 ? `${offset + 1} to ${offset + shown}` : null;
+}
+
 /** How many of how many the chart shows, or null when it shows them all. */
 function shownLine(caption: CaptionFacts, shown: number): string | null {
+  const ranks = rankRange(caption, shown);
+  if (ranks) {
+    const offset = caption.offset ?? 0;
+    // XDMoD pages by value, so for buckets it's the largest that are skipped.
+    if (caption.ordered) {
+      const of = caption.total === undefined ? "" : ` of ${caption.total}`;
+      return `Showing ${shown}${of} buckets, leaving out the ${offset} largest.`;
+    }
+    if (caption.total !== undefined) {
+      return `Showing ranks ${ranks} of ${caption.total} ${caption.groupNoun ?? "groups"}, not the top ${offset}.`;
+    }
+    return `Showing ranks ${ranks}, not the top ${offset}${caption.hasMore ? "; XDMoD has more" : ""}.`;
+  }
   if (!caption.hasMore) return null;
   if (caption.total === undefined) {
     return `Showing the top ${shown}; XDMoD has more.`;
@@ -81,6 +105,13 @@ function shownLine(caption: CaptionFacts, shown: number): string | null {
     : `Showing the top ${shown} of ${caption.total} ${caption.groupNoun ?? "groups"}.`;
 }
 
+/** One series' or bar's early end, as the caption says it. */
+function earlyEndText(end: EarlyEnd, unit?: string): string {
+  return end.precision === "day"
+    ? `${end.name} through ${formatDay(end.through)}`
+    : `${end.name}, nothing after ${formatPeriod(end.through, unit)}`;
+}
+
 /**
  * The caption under a chart, one line per fact, in reading order. The panel
  * and the PNG both draw these, so they always say the same thing. `shown` is
@@ -88,10 +119,14 @@ function shownLine(caption: CaptionFacts, shown: number): string | null {
  */
 export function captionLines(caption: CaptionFacts, shown: number): string[] {
   const range = `${formatDay(caption.counted.start)} to ${formatDay(caption.counted.end)}`;
-  const lines = [
-    `${caption.measure}: ${caption.definition}`,
+  const lines = [`${caption.measure}: ${caption.definition}`];
+  // Right under the definition, which reads as ACCESS-wide.
+  if (caption.filters.length > 0) {
+    lines.push(`Filtered to ${caption.filters.join("; ")}`);
+  }
+  lines.push(
     caption.unit ? `${range}, by ${caption.unit.toLowerCase()}` : range,
-  ];
+  );
   // XDMoD's public data often stops weeks before the range does.
   const end = dataEnd(caption);
   if (end) {
@@ -105,8 +140,10 @@ export function captionLines(caption: CaptionFacts, shown: number): string[] {
         : `${lead}.`,
     );
   }
-  if (caption.filters.length > 0) {
-    lines.push(`Filtered to ${caption.filters.join("; ")}`);
+  if (caption.earlyEnds?.length) {
+    lines.push(
+      `Some data stops earlier: ${caption.earlyEnds.map((e) => earlyEndText(e, caption.unit)).join("; ")}.`,
+    );
   }
   const showing = shownLine(caption, shown);
   if (showing) lines.push(showing);
@@ -169,7 +206,24 @@ export function chartCsv(view: ChartView): string {
           ] as [string, string],
         ]
       : []),
+    ...(caption.earlyEnds ?? []).map(
+      (e) =>
+        (e.precision === "day"
+          ? [`Data through (${e.name})`, e.through]
+          : [
+              `No data after (${e.name})`,
+              formatPeriod(e.through, caption.unit),
+            ]) as [string, string],
+    ),
     ["Filters", caption.filters.length ? caption.filters.join("; ") : "None"],
+    ...(rankRange(caption, shownCount(view))
+      ? [
+          [
+            "Ranks",
+            `${rankRange(caption, shownCount(view))}${caption.ordered ? " by value" : ""}`,
+          ] as [string, string],
+        ]
+      : []),
     ["Retrieved", caption.retrieved],
     ["Source", caption.source],
     ...(view.link ? [["XDMoD link", view.link] as [string, string]] : []),

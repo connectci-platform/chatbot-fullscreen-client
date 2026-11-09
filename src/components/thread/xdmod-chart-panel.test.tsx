@@ -874,7 +874,7 @@ describe("XdmodChartPanel", () => {
     render(tree());
     expect(
       screen.getByText(
-        "CPU hours and SUs aren't comparable across resources. ACE measures are.",
+        "CPU hours don't allow for each resource's compute power per core, so they aren't comparable across resources. ACE measures are.",
       ),
     ).toBeTruthy();
   });
