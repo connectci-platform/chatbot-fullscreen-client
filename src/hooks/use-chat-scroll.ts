@@ -34,7 +34,13 @@ type Mode = "follow" | "anchor" | "free";
  * position rather than id: the agent's copy of a question replaces the one
  * shown on sending, under a new id, when the answer comes back.
  */
-type Anchor = { questionsBefore: number; placed: boolean };
+type Anchor = {
+  questionsBefore: number;
+  /** Scrolled for: the question is in the list and the view moving to it. */
+  placed: boolean;
+  /** The view has reached it at least once. */
+  arrived: boolean;
+};
 
 /** Smooth scrolling, unless the person asked for reduced motion. */
 export function scrollBehavior(): ScrollBehavior {
@@ -153,7 +159,16 @@ export function useChatScroll({
         // Once the question is at the top, the answer arriving below it
         // leaves the target unchanged, so it doesn't scroll.
         if (Math.abs(top - scroller.scrollTop) > 1) {
-          scroller.scrollTo({ top, behavior: anchorBehavior.current });
+          // Only the move up to the top is animated. Once the question has
+          // got there, a correction (the agent's copy of the question
+          // replacing ours, the chart panel narrowing the view) is instant,
+          // so the question doesn't sit visibly off its place meanwhile.
+          scroller.scrollTo({
+            top,
+            behavior: current!.arrived ? "auto" : anchorBehavior.current,
+          });
+        } else {
+          current!.arrived = true;
         }
         current!.placed = true;
       }
@@ -248,7 +263,11 @@ export function useChatScroll({
   /** Call as a question is sent, before it renders. */
   const scrollToQuestion = useCallback(() => {
     mode.current = "anchor";
-    anchor.current = { questionsBefore: questions().length, placed: false };
+    anchor.current = {
+      questionsBefore: questions().length,
+      placed: false,
+      arrived: false,
+    };
     anchorBehavior.current = scrollBehavior();
     userScrollUntil.current = 0;
   }, [questions]);

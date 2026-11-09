@@ -487,7 +487,9 @@ export function Thread() {
                   />
                 )}
 
-                <div className="mx-auto mb-8 w-full max-w-3xl">
+                {/* Tighter on a phone, where the footer would otherwise take more
+                    than half of a small screen. */}
+                <div className="mx-auto mb-3 w-full max-w-3xl sm:mb-8">
                   {challenge && (
                     <TurnstileChallengePanel
                       siteKey={challenge.siteKey}
@@ -536,7 +538,7 @@ export function Thread() {
                         className="field-sizing-content resize-none border-none bg-transparent p-3.5 pb-0 text-base text-black shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
                       />
 
-                      <div className="flex items-center gap-6 p-2 pt-4">
+                      <div className="flex items-center gap-6 p-2 sm:pt-4">
                         {program.features.fileUploads && (
                           <>
                             <Label

@@ -64,3 +64,50 @@ describe("MarkdownText links", () => {
     }
   });
 });
+
+describe("MarkdownText headings", () => {
+  const md =
+    "# One\n\n## Two\n\n### Three\n\n#### Four\n\n##### Five\n\n###### Six";
+  const classes = (name: string) =>
+    screen.getByRole("heading", { name }).className;
+
+  it("keeps semantic tags", () => {
+    render(<MarkdownText>{md}</MarkdownText>);
+    for (const [i, n] of [
+      "One",
+      "Two",
+      "Three",
+      "Four",
+      "Five",
+      "Six",
+    ].entries())
+      expect(screen.getByRole("heading", { name: n }).tagName).toBe(
+        `H${i + 1}`,
+      );
+  });
+
+  it("renders # at 36px medium and ## at 24px bold, both in the heading ink", () => {
+    render(<MarkdownText>{md}</MarkdownText>);
+    expect(classes("One")).toContain("text-4xl");
+    expect(classes("One")).toContain("font-medium");
+    expect(classes("One")).not.toContain("font-bold");
+    expect(classes("Two")).toContain("text-2xl");
+    expect(classes("Two")).toContain("font-bold");
+    for (const n of ["One", "Two"])
+      expect(classes(n)).toContain("text-heading");
+  });
+
+  it("renders ### in the dark teal subsection style", () => {
+    render(<MarkdownText>{md}</MarkdownText>);
+    expect(classes("Three")).toContain("text-xl");
+    expect(classes("Three")).toContain("text-brand-dark");
+  });
+
+  it("renders #### at 18px and ##### / ###### at 16px, all bold", () => {
+    render(<MarkdownText>{md}</MarkdownText>);
+    expect(classes("Four")).toContain("text-lg");
+    for (const n of ["Five", "Six"]) expect(classes(n)).toContain("text-base");
+    for (const n of ["Four", "Five", "Six"])
+      expect(classes(n)).toContain("font-bold");
+  });
+});
