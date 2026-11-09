@@ -1,4 +1,6 @@
-import { colorVariables, getProgram } from "./program";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { colorVariables, getProgram, iconMetadata } from "./program";
 
 describe("getProgram", () => {
   it("defaults to ACCESS", () => {
@@ -21,6 +23,17 @@ describe("getProgram", () => {
       height: 41,
     });
   });
+  it("points ACCESS at its own icon files, and they exist", () => {
+    const { icons } = getProgram("access");
+    expect(icons).toEqual({
+      svg: "/programs/access/icon.svg",
+      png: "/programs/access/icon-32.png",
+      apple: "/programs/access/apple-icon.png",
+    });
+    for (const url of Object.values(icons)) {
+      expect(existsSync(path.join(process.cwd(), "public", url))).toBe(true);
+    }
+  });
   it("uses the slim top bar for ACCESS", () => {
     expect(getProgram("access").features.siteHeader).toBe(false);
   });
@@ -42,6 +55,26 @@ describe("colorVariables", () => {
       "--primary-foreground": "#222222",
       "--brand-teal": "#333333",
       "--brand-foreground": "#444444",
+    });
+  });
+});
+
+describe("iconMetadata", () => {
+  it("lists the SVG favicon first, the PNG fallback, and the Apple icon", () => {
+    expect(
+      iconMetadata({
+        icons: {
+          svg: "/p/icon.svg",
+          png: "/p/icon-32.png",
+          apple: "/p/apple.png",
+        },
+      }),
+    ).toEqual({
+      icon: [
+        { url: "/p/icon.svg", type: "image/svg+xml" },
+        { url: "/p/icon-32.png", type: "image/png", sizes: "32x32" },
+      ],
+      apple: { url: "/p/apple.png", sizes: "180x180" },
     });
   });
 });
