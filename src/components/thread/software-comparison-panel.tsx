@@ -80,6 +80,29 @@ function Cell({ cell }: { cell: ComparisonCell }) {
   );
 }
 
+const CORNER = "bg-background sticky left-0 z-10 border-r border-b px-3 py-2";
+const ROW_HEADER =
+  "bg-background sticky left-0 z-10 max-w-[10rem] border-r border-b px-3 py-2 align-top break-words";
+
+function SoftwareName({
+  row,
+}: {
+  row: SoftwareComparisonView["rows"][number];
+}) {
+  return row.documentation ? (
+    <a
+      href={row.documentation}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="underline"
+    >
+      {row.software}
+    </a>
+  ) : (
+    row.software
+  );
+}
+
 export function SoftwareComparisonGrid({
   view,
 }: {
@@ -89,6 +112,9 @@ export function SoftwareComparisonGrid({
     view.rows.flatMap((row) => row.cells.map((cell) => cell.status)),
   );
   const names = view.rows.map((row) => row.software).join(", ");
+  // The panel is narrow, so the longer list runs down the side. Usually that's
+  // the resources: a few packages compared across many systems.
+  const resourcesDown = view.resources.length > view.rows.length;
   const gapsShown = (
     ["not_listed", "not_indexed", "lookup_failed"] as const
   ).filter((gap) => gaps.has(gap));
@@ -113,54 +139,87 @@ export function SoftwareComparisonGrid({
         >
           <table className="min-w-max border-collapse text-left text-sm">
             <caption className="sr-only">Where the index lists {names}</caption>
-            <thead>
-              <tr>
-                <th
-                  scope="col"
-                  className="bg-background sticky left-0 z-10 border-r border-b px-3 py-2"
-                >
-                  Software
-                </th>
-                {view.resources.map((resource) => (
-                  <th
-                    key={resource.name}
-                    scope="col"
-                    className="border-b px-3 py-2 align-bottom whitespace-nowrap"
-                  >
-                    {resource.name}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {view.rows.map((row) => (
-                <tr key={row.software}>
-                  <th
-                    scope="row"
-                    className="bg-background sticky left-0 z-10 max-w-[10rem] border-r border-b px-3 py-2 align-top break-words"
-                  >
-                    {row.documentation ? (
-                      <a
-                        href={row.documentation}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline"
+            {resourcesDown ? (
+              <>
+                <thead>
+                  <tr>
+                    <th
+                      scope="col"
+                      className={CORNER}
+                    >
+                      Resource
+                    </th>
+                    {view.rows.map((row) => (
+                      <th
+                        key={row.software}
+                        scope="col"
+                        className="border-b px-3 py-2 align-bottom whitespace-nowrap"
                       >
-                        {row.software}
-                      </a>
-                    ) : (
-                      row.software
-                    )}
-                  </th>
-                  {row.cells.map((cell, i) => (
-                    <Cell
-                      key={view.resources[i].name}
-                      cell={cell}
-                    />
+                        <SoftwareName row={row} />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {view.resources.map((resource, i) => (
+                    <tr key={resource.name}>
+                      <th
+                        scope="row"
+                        className={ROW_HEADER}
+                      >
+                        {resource.name}
+                      </th>
+                      {view.rows.map((row) => (
+                        <Cell
+                          key={row.software}
+                          cell={row.cells[i]}
+                        />
+                      ))}
+                    </tr>
                   ))}
-                </tr>
-              ))}
-            </tbody>
+                </tbody>
+              </>
+            ) : (
+              <>
+                <thead>
+                  <tr>
+                    <th
+                      scope="col"
+                      className={CORNER}
+                    >
+                      Software
+                    </th>
+                    {view.resources.map((resource) => (
+                      <th
+                        key={resource.name}
+                        scope="col"
+                        className="border-b px-3 py-2 align-bottom whitespace-nowrap"
+                      >
+                        {resource.name}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {view.rows.map((row) => (
+                    <tr key={row.software}>
+                      <th
+                        scope="row"
+                        className={ROW_HEADER}
+                      >
+                        <SoftwareName row={row} />
+                      </th>
+                      {row.cells.map((cell, i) => (
+                        <Cell
+                          key={view.resources[i].name}
+                          cell={cell}
+                        />
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </>
+            )}
           </table>
         </div>
       )}
