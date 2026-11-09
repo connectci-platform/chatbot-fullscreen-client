@@ -53,7 +53,7 @@ const PASSAGE_COMPONENTS: Components = {
       {...props}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-primary font-medium underline underline-offset-4"
+      className="font-medium"
     />
   ),
   img: ({ src, alt }: ComponentProps<"img">) => {
@@ -63,7 +63,6 @@ const PASSAGE_COMPONENTS: Components = {
         href={src}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-primary underline underline-offset-4"
       >
         {label}
       </a>
@@ -138,7 +137,7 @@ export function SourceDetails({
         href={source.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex w-fit items-center gap-1 text-sm font-semibold underline"
+        className="inline-flex w-fit items-center gap-1 text-sm font-semibold"
       >
         Open page
         <ExternalLink

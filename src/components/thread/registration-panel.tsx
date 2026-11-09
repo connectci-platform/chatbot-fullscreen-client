@@ -172,7 +172,7 @@ export function RegistrationDetails({
                 href={event.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-2 inline-block text-sm underline"
+                className="mt-2 inline-block text-sm"
               >
                 View the event page
               </a>

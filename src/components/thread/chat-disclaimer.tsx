@@ -9,7 +9,6 @@ export function ChatDisclaimer(): ReactNode {
         href={program.privacyUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="underline"
       >
         Privacy Notice
       </a>
