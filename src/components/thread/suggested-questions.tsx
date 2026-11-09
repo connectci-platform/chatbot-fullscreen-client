@@ -52,7 +52,7 @@ export function SuggestedQuestions({
                 if (!disabled) onAsk(question);
               }}
               className={cn(
-                "text-brand hover:border-primary hover:bg-primary/10 focus-visible:border-primary focus-visible:bg-primary/10 focus-visible:ring-brand w-full cursor-pointer border-l-4 border-transparent pr-3 pl-3 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset aria-disabled:cursor-not-allowed aria-disabled:opacity-60 motion-reduce:transition-none",
+                "hover:text-brand hover:border-primary hover:bg-primary/10 focus-visible:border-primary focus-visible:bg-primary/10 focus-visible:ring-brand w-full cursor-pointer border-l-4 border-transparent pr-3 pl-3 text-left text-black underline transition-colors hover:no-underline focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset aria-disabled:cursor-not-allowed aria-disabled:opacity-60 motion-reduce:transition-none",
                 compact ? "py-1 text-base" : "py-2 text-[15px]",
               )}
             >
