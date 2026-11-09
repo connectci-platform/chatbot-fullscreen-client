@@ -145,9 +145,12 @@ export function RegistrationDetails({
         )}
         {isPreview && !actionable && (
           <div className="bg-muted rounded-md border p-4">
+            {/* Right after a confirm the reply is on its way, so the preview
+                is only out of date until the result arrives. */}
             <p className="text-sm">
-              Nothing has been submitted. Ask the assistant to check this event
-              again to register.
+              {busy
+                ? "Checking with the assistant…"
+                : "Nothing has been submitted. Ask the assistant to check this event again to register."}
             </p>
           </div>
         )}
