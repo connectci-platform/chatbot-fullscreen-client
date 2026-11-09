@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useStreamContext } from "@/providers/Stream";
@@ -21,7 +21,6 @@ import { useOfficeHours } from "@/hooks/useOfficeHours";
 import { getSupportUrl } from "@/lib/agent-token";
 import { TooltipIconButton } from "./tooltip-icon-button";
 import {
-  ArrowDown,
   LoaderCircle,
   PanelRightOpen,
   PanelRightClose,
@@ -30,7 +29,6 @@ import {
   Plus,
 } from "lucide-react";
 import { useQueryState, parseAsBoolean } from "nuqs";
-import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import ThreadHistory from "./history";
 import { toast } from "sonner";
 import {
@@ -63,47 +61,8 @@ import { SoftwareComparisonPanel } from "./software-comparison-panel";
 import { XdmodChartPanel } from "./xdmod-chart-panel";
 import { COMPOSER_ID, focusComposer } from "./composer";
 import { chartViewsByMessage } from "@/lib/xdmod-chart";
-
-function StickyToBottomContent(props: {
-  content: ReactNode;
-  footer?: ReactNode;
-  className?: string;
-  contentClassName?: string;
-}) {
-  const context = useStickToBottomContext();
-  return (
-    <div
-      ref={context.scrollRef}
-      style={{ width: "100%", height: "100%" }}
-      className={props.className}
-    >
-      <div
-        ref={context.contentRef}
-        className={props.contentClassName}
-      >
-        {props.content}
-      </div>
-
-      {props.footer}
-    </div>
-  );
-}
-
-function ScrollToBottom(props: { className?: string }) {
-  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
-
-  if (isAtBottom) return null;
-  return (
-    <Button
-      variant="outline"
-      className={props.className}
-      onClick={() => scrollToBottom()}
-    >
-      <ArrowDown className="h-4 w-4" />
-      <span>Scroll to bottom</span>
-    </Button>
-  );
-}
+import { useChatScroll } from "@/hooks/use-chat-scroll";
+import { ScrollToBottomSlot } from "./scroll-to-bottom";
 
 export function Thread() {
   const [artifactContext, setArtifactContext] = useArtifactContext();
@@ -145,6 +104,7 @@ export function Thread() {
     stream.runStatus,
   );
   const isLoading = stream.isLoading;
+  const chatScroll = useChatScroll({ threadId, contentVersion: messages });
   const challenge = isTurnstileChallenge(stream.error) ? stream.error : null;
   const awaitingCheck = !!challenge && !stream.turnstileFailed;
 
@@ -204,6 +164,7 @@ export function Thread() {
     };
 
     const toolMessages = ensureToolCallsHaveResponses(stream.messages);
+    chatScroll.scrollToQuestion(newHumanMessage.id!);
 
     const context =
       Object.keys(artifactContext).length > 0 ? artifactContext : undefined;
@@ -423,8 +384,10 @@ export function Thread() {
               className="absolute bottom-6 left-6 z-10 w-52 bg-white"
             />
           )}
-          <StickToBottom className="relative flex-1 overflow-hidden">
-            <StickyToBottomContent
+          <div className="relative flex-1 overflow-hidden">
+            <div
+              ref={chatScroll.scrollRef}
+              style={{ width: "100%", height: "100%" }}
               className={cn(
                 "absolute inset-0 overflow-y-scroll px-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent",
                 !chatStarted &&
@@ -435,186 +398,196 @@ export function Thread() {
                 chatStarted &&
                   "grid grid-cols-[minmax(0,1fr)] grid-rows-[1fr_auto]",
               )}
-              contentClassName="pt-8 pb-16 max-w-3xl mx-auto flex flex-col gap-4 w-full"
-              content={
-                <>
-                  {chatStarted && (
-                    <h1 className="flex pb-2">
-                      <ProgramLogo size="small" />
-                    </h1>
+            >
+              <div
+                ref={chatScroll.contentRef}
+                className={cn(
+                  "mx-auto flex w-full max-w-3xl flex-col gap-4 pt-8",
+                  // At least the fade above the scroll-to-bottom band, so
+                  // the last line of an answer is clear of it at the end.
+                  chatStarted ? "pb-6" : "pb-16",
+                )}
+              >
+                {chatStarted && (
+                  <h1 className="flex pb-2">
+                    <ProgramLogo size="small" />
+                  </h1>
+                )}
+                {messages
+                  .filter((m) => !m.id?.startsWith(DO_NOT_RENDER_ID_PREFIX))
+                  .map((message, index) =>
+                    message.type === "human" ? (
+                      <HumanMessage
+                        key={message.id || `${message.type}-${index}`}
+                        message={message}
+                        isLoading={isLoading}
+                      />
+                    ) : (
+                      <AssistantMessage
+                        key={message.id || `${message.type}-${index}`}
+                        message={message}
+                        isLoading={isLoading}
+                        onAsk={askSuggested}
+                        awaitingCheck={awaitingCheck}
+                        chartKey={
+                          message.id
+                            ? chartViews.get(message.id)?.[0]?.key
+                            : undefined
+                        }
+                      />
+                    ),
                   )}
-                  {messages
-                    .filter((m) => !m.id?.startsWith(DO_NOT_RENDER_ID_PREFIX))
-                    .map((message, index) =>
-                      message.type === "human" ? (
-                        <HumanMessage
-                          key={message.id || `${message.type}-${index}`}
-                          message={message}
-                          isLoading={isLoading}
-                        />
-                      ) : (
-                        <AssistantMessage
-                          key={message.id || `${message.type}-${index}`}
-                          message={message}
-                          isLoading={isLoading}
-                          onAsk={askSuggested}
-                          awaitingCheck={awaitingCheck}
-                          chartKey={
-                            message.id
-                              ? chartViews.get(message.id)?.[0]?.key
-                              : undefined
-                          }
-                        />
-                      ),
-                    )}
-                  {/* Special rendering case where there are no AI/tool messages, but there is an interrupt.
+                {/* Special rendering case where there are no AI/tool messages, but there is an interrupt.
                     We need to render it outside of the messages list, since there are no messages to render */}
-                  {hasNoAIOrToolMessages && !!stream.interrupt && (
-                    <AssistantMessage
-                      key="interrupt-msg"
-                      message={undefined}
-                      isLoading={isLoading}
-                    />
-                  )}
-                  <StoppedNote
-                    turn={unanswered}
-                    onRetry={retryQuestion}
-                    onEdit={editQuestion}
+                {hasNoAIOrToolMessages && !!stream.interrupt && (
+                  <AssistantMessage
+                    key="interrupt-msg"
+                    message={undefined}
+                    isLoading={isLoading}
                   />
-                  {isLoading && !firstTokenReceived && (
-                    <AssistantMessageLoading
-                      status={stream.runStatus?.message}
+                )}
+                <StoppedNote
+                  turn={unanswered}
+                  onRetry={retryQuestion}
+                  onEdit={editQuestion}
+                />
+                {isLoading && !firstTokenReceived && (
+                  <AssistantMessageLoading status={stream.runStatus?.message} />
+                )}
+              </div>
+              <div
+                className={cn(
+                  "sticky bottom-0 flex flex-col items-center bg-white",
+                  !chatStarted && "gap-8",
+                )}
+              >
+                {!chatStarted && (
+                  <h1 className="mb-4">
+                    <ProgramLogo />
+                  </h1>
+                )}
+
+                {chatStarted && (
+                  <ScrollToBottomSlot
+                    visible={!chatScroll.isAtBottom}
+                    onClick={chatScroll.scrollToBottom}
+                  />
+                )}
+
+                <div className="mx-auto mb-8 w-full max-w-3xl">
+                  {challenge && (
+                    <TurnstileChallengePanel
+                      siteKey={challenge.siteKey}
+                      failed={stream.turnstileFailed}
+                      onVerified={stream.resendWithToken}
+                      onFailed={stream.failChallenge}
                     />
                   )}
-                </>
-              }
-              footer={
-                <div className="sticky bottom-0 flex flex-col items-center gap-8 bg-white">
-                  {!chatStarted && (
-                    <h1 className="mb-4">
-                      <ProgramLogo />
-                    </h1>
-                  )}
-
-                  {chatStarted && (
-                    <ScrollToBottom className="animate-in fade-in-0 zoom-in-95 absolute bottom-full left-1/2 mb-4 -translate-x-1/2" />
-                  )}
-
-                  <div className="mx-auto mb-8 w-full max-w-3xl">
-                    {challenge && (
-                      <TurnstileChallengePanel
-                        siteKey={challenge.siteKey}
-                        failed={stream.turnstileFailed}
-                        onVerified={stream.resendWithToken}
-                        onFailed={stream.failChallenge}
-                      />
+                  <div
+                    ref={dropRef}
+                    className={cn(
+                      "relative z-10 w-full bg-white shadow-xs transition-all",
+                      dragOver
+                        ? "border-primary border-2 border-dotted"
+                        : "border-input border border-solid",
                     )}
-                    <div
-                      ref={dropRef}
-                      className={cn(
-                        "relative z-10 w-full bg-white shadow-xs transition-all",
-                        dragOver
-                          ? "border-primary border-2 border-dotted"
-                          : "border-input border border-solid",
-                      )}
+                  >
+                    <form
+                      onSubmit={handleSubmit}
+                      className="mx-auto grid max-w-3xl grid-rows-[1fr_auto] gap-2"
                     >
-                      <form
-                        onSubmit={handleSubmit}
-                        className="mx-auto grid max-w-3xl grid-rows-[1fr_auto] gap-2"
-                      >
-                        <ContentBlocksPreview
-                          blocks={contentBlocks}
-                          onRemove={removeBlock}
-                        />
-                        <textarea
-                          id={COMPOSER_ID}
-                          value={input}
-                          onChange={(e) => setInput(e.target.value)}
-                          onPaste={handlePaste}
-                          onKeyDown={(e) => {
-                            if (
-                              e.key === "Enter" &&
-                              !e.shiftKey &&
-                              !e.metaKey &&
-                              !e.nativeEvent.isComposing
-                            ) {
-                              e.preventDefault();
-                              const el = e.target as HTMLElement | undefined;
-                              const form = el?.closest("form");
-                              form?.requestSubmit();
-                            }
-                          }}
-                          aria-label="Message"
-                          placeholder="Type your message..."
-                          className="field-sizing-content resize-none border-none bg-transparent p-3.5 pb-0 text-base text-black shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
-                        />
+                      <ContentBlocksPreview
+                        blocks={contentBlocks}
+                        onRemove={removeBlock}
+                      />
+                      <textarea
+                        id={COMPOSER_ID}
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onPaste={handlePaste}
+                        onKeyDown={(e) => {
+                          if (
+                            e.key === "Enter" &&
+                            !e.shiftKey &&
+                            !e.metaKey &&
+                            !e.nativeEvent.isComposing
+                          ) {
+                            e.preventDefault();
+                            const el = e.target as HTMLElement | undefined;
+                            const form = el?.closest("form");
+                            form?.requestSubmit();
+                          }
+                        }}
+                        aria-label="Message"
+                        placeholder="Type your message..."
+                        className="field-sizing-content resize-none border-none bg-transparent p-3.5 pb-0 text-base text-black shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
+                      />
 
-                        <div className="flex items-center gap-6 p-2 pt-4">
-                          {program.features.fileUploads && (
-                            <>
-                              <Label
-                                htmlFor="file-input"
-                                className="flex cursor-pointer items-center gap-2"
-                              >
-                                <Plus className="size-5 text-gray-600" />
-                                <span className="text-sm text-gray-600">
-                                  Upload PDF or Image
-                                </span>
-                              </Label>
-                              <input
-                                id="file-input"
-                                type="file"
-                                onChange={handleFileUpload}
-                                multiple
-                                accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
-                                className="hidden"
-                              />
-                            </>
-                          )}
-                          {stream.isLoading ? (
-                            <Button
-                              key="stop"
-                              onClick={() => stream.stop()}
-                              className="ml-auto"
+                      <div className="flex items-center gap-6 p-2 pt-4">
+                        {program.features.fileUploads && (
+                          <>
+                            <Label
+                              htmlFor="file-input"
+                              className="flex cursor-pointer items-center gap-2"
                             >
-                              <LoaderCircle className="h-4 w-4 animate-spin" />
-                              Cancel
-                            </Button>
-                          ) : (
-                            <Button
-                              type="submit"
-                              className="ml-auto shadow-md transition-all"
-                              disabled={
-                                isLoading ||
-                                awaitingCheck ||
-                                (!input.trim() && contentBlocks.length === 0)
-                              }
-                            >
-                              Send
-                            </Button>
-                          )}
-                        </div>
-                      </form>
-                    </div>
-                    <ChatDisclaimer />
-                    {!chatStarted && (
-                      <StarterQuestions
-                        onAsk={(question) => submitMessage(question, [])}
-                      />
-                    )}
-                    {showOfficeHours && !isXlScreen && (
-                      <OfficeHours
-                        hours={officeHours}
-                        description={program.officeHours?.description ?? ""}
-                        supportUrl={supportUrl}
-                        className="mt-6"
-                      />
-                    )}
+                              <Plus className="size-5 text-gray-600" />
+                              <span className="text-sm text-gray-600">
+                                Upload PDF or Image
+                              </span>
+                            </Label>
+                            <input
+                              id="file-input"
+                              type="file"
+                              onChange={handleFileUpload}
+                              multiple
+                              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+                              className="hidden"
+                            />
+                          </>
+                        )}
+                        {stream.isLoading ? (
+                          <Button
+                            key="stop"
+                            onClick={() => stream.stop()}
+                            className="ml-auto"
+                          >
+                            <LoaderCircle className="h-4 w-4 animate-spin" />
+                            Cancel
+                          </Button>
+                        ) : (
+                          <Button
+                            type="submit"
+                            className="ml-auto shadow-md transition-all"
+                            disabled={
+                              isLoading ||
+                              awaitingCheck ||
+                              (!input.trim() && contentBlocks.length === 0)
+                            }
+                          >
+                            Send
+                          </Button>
+                        )}
+                      </div>
+                    </form>
                   </div>
+                  <ChatDisclaimer />
+                  {!chatStarted && (
+                    <StarterQuestions
+                      onAsk={(question) => submitMessage(question, [])}
+                    />
+                  )}
+                  {showOfficeHours && !isXlScreen && (
+                    <OfficeHours
+                      hours={officeHours}
+                      description={program.officeHours?.description ?? ""}
+                      supportUrl={supportUrl}
+                      className="mt-6"
+                    />
+                  )}
                 </div>
-              }
-            />
-          </StickToBottom>
+              </div>
+            </div>
+          </div>
         </motion.div>
         <div
           className={cn(
