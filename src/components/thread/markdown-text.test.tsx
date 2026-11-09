@@ -86,14 +86,15 @@ describe("MarkdownText headings", () => {
       );
   });
 
-  it("renders # and ## at the section style, never the page-title size", () => {
+  it("renders # at 36px medium and ## at 24px bold, both in the heading ink", () => {
     render(<MarkdownText>{md}</MarkdownText>);
-    for (const n of ["One", "Two"]) {
-      expect(classes(n)).toContain("text-2xl");
-      expect(classes(n)).toContain("font-bold");
+    expect(classes("One")).toContain("text-4xl");
+    expect(classes("One")).toContain("font-medium");
+    expect(classes("One")).not.toContain("font-bold");
+    expect(classes("Two")).toContain("text-2xl");
+    expect(classes("Two")).toContain("font-bold");
+    for (const n of ["One", "Two"])
       expect(classes(n)).toContain("text-heading");
-      expect(classes(n)).not.toContain("text-4xl");
-    }
   });
 
   it("renders ### in the dark teal subsection style", () => {

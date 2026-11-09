@@ -74,7 +74,7 @@ const defaultComponents: any = {
   h1: ({ className, ...props }: { className?: string }) => (
     <h1
       className={cn(
-        "text-heading mt-6 mb-3 scroll-m-20 text-2xl leading-[1.2] font-bold first:mt-0 last:mb-0",
+        "text-heading mt-6 mb-3 scroll-m-20 text-4xl leading-[1.2] font-medium first:mt-0 last:mb-0",
         className,
       )}
       {...props}
