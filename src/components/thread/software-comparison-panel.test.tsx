@@ -117,9 +117,10 @@ describe("SoftwareComparisonGrid", () => {
       "deltaai",
       "expanse",
     ]);
-    expect(cellText("pytorch", "anvil")).toContain("✓ Listed");
+    expect(cellText("pytorch", "anvil")).not.toContain("Listed");
     expect(cellText("pytorch", "anvil")).toContain("21.09-py3");
     expect(cellText("pytorch", "anvil")).toContain("1 more");
+    expect(cellText("gromacs", "delta")).toContain("✓ Listed");
     expect(cellText("gromacs", "delta")).toContain("Version not given");
     expect(
       screen.getByRole("link", { name: "pytorch" }).getAttribute("href"),

@@ -59,16 +59,26 @@ function Versions({ versions }: { versions: string[] }) {
 
 function Cell({ cell }: { cell: ComparisonCell }) {
   if (cell.status === "listed") {
+    // Versions already show the software is listed, so the tick is only
+    // needed when the index gives none.
     return (
       <td className="border-b px-3 py-2 align-top">
-        <span className="font-semibold text-teal-800 dark:text-teal-300">
-          ✓ Listed
-        </span>
-        {/* Build names such as 29aug2024_update2-kokkos-cuda have no spaces,
-            so let them break anywhere rather than widen the column. */}
-        <div className="mt-1 text-xs [overflow-wrap:anywhere]">
-          <Versions versions={cell.versions} />
-        </div>
+        {cell.versions.length === 0 ? (
+          <>
+            <span className="font-semibold text-teal-800 dark:text-teal-300">
+              ✓ Listed
+            </span>
+            <div className="mt-1 text-xs">
+              <Versions versions={cell.versions} />
+            </div>
+          </>
+        ) : (
+          /* Build names such as 29aug2024_update2-kokkos-cuda have no spaces,
+             so let them break anywhere rather than widen the column. */
+          <div className="[overflow-wrap:anywhere]">
+            <Versions versions={cell.versions} />
+          </div>
+        )}
       </td>
     );
   }
