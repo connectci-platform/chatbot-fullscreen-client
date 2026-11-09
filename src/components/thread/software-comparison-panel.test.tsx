@@ -244,6 +244,13 @@ describe("SoftwareComparisonGrid", () => {
     expect(cellText("gromacs", "resource-9")).toBe("Not listed");
   });
 
+  it("fits the panel when resources run down the side", () => {
+    render(<SoftwareComparisonGrid view={view(comparison())} />);
+
+    expect(screen.getByRole("table").className).toContain("w-full");
+    expect(screen.getByRole("table").className).not.toContain("min-w-max");
+  });
+
   it("keeps software down the side when there are more packages than resources", () => {
     render(
       <SoftwareComparisonGrid
