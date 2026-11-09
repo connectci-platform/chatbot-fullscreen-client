@@ -32,7 +32,7 @@ export const access: ProgramConfig = {
   // the broader "ACCESS Collaboration" affiliation, so that can't be used.
   officeHours: {
     affiliation: "access_nairr_office_hours",
-    description: "Drop in to talk with ACCESS staff.",
+    description: "Talk with ACCESS staff.",
   },
   colors: {
     primary: "#fec340",

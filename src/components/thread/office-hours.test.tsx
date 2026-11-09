@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { OfficeHours } from "./office-hours";
 
 const SUPPORT = "https://support.access-ci.org";
-const DESCRIPTION = "Drop in to talk with ACCESS staff.";
+const DESCRIPTION = "Talk with ACCESS staff.";
 const hours = [
   {
     id: "9059",
