@@ -45,7 +45,7 @@ vi.mock("./answer-rating", () => ({
 /** Renders the message with its chart key, as the thread passes it. */
 function renderMessage(message: Message, searchParams = "") {
   const chartKey = message.id
-    ? chartViewsByMessage(stream.messages).get(message.id)?.key
+    ? chartViewsByMessage(stream.messages).get(message.id)?.[0]?.key
     : undefined;
   return render(
     <NuqsTestingAdapter searchParams={searchParams}>
@@ -178,6 +178,29 @@ describe("AssistantMessage", () => {
       ] as Message[];
       renderMessage(history[2]);
       expect(screen.getByRole("button", { name: "Show chart" })).toBeTruthy();
+    });
+
+    it("opens a two-chart answer on its first chart", () => {
+      const both = [
+        history[0],
+        {
+          id: "ai-calls",
+          type: "ai",
+          content: "",
+          tool_calls: [
+            { id: "first-call", name: "get_chart_data", args: {} },
+            { id: "chart-call", name: "get_chart_data", args: {} },
+          ],
+        },
+        // The second call finished first.
+        history[1],
+        { ...history[1], id: "tool-4", tool_call_id: "first-call" },
+        history[2],
+      ] as unknown as Message[];
+      stream.messages = both;
+      renderMessage(history[2]);
+      fireEvent.click(screen.getByRole("button", { name: "Show chart" }));
+      expect(showChart).toHaveBeenLastCalledWith("first-call");
     });
 
     it("has no chip on an answer without a chart", () => {

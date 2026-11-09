@@ -36,3 +36,31 @@ describe("MarkdownText code", () => {
     expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
   });
 });
+
+describe("MarkdownText links", () => {
+  const link = (name: string) => screen.getByRole("link", { name });
+
+  it("opens web links in a new tab so the chat stays open", () => {
+    render(
+      <MarkdownText>
+        {"See [the guide](https://example.org/guide) or [this](http://a.b/)."}
+      </MarkdownText>,
+    );
+    for (const name of ["the guide", "this"]) {
+      expect(link(name).getAttribute("target")).toBe("_blank");
+      expect(link(name).getAttribute("rel")).toBe("noopener noreferrer");
+    }
+  });
+
+  it("leaves in-page anchors and mail links in place", () => {
+    render(
+      <MarkdownText>
+        {"Jump [down](#notes) or [email us](mailto:help@access-ci.org)."}
+      </MarkdownText>,
+    );
+    for (const name of ["down", "email us"]) {
+      expect(link(name).getAttribute("target")).toBeNull();
+      expect(link(name).getAttribute("rel")).toBeNull();
+    }
+  });
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   chartFileName,
@@ -60,7 +60,7 @@ function ChartBody({
   };
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto p-4 sm:p-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-6">
       <div
         role="group"
         aria-label="Show as"
@@ -127,28 +127,69 @@ function ChartBody({
   );
 }
 
+/** Picks between the charts one answer drew, by measure. */
+function ChartSwitcher({
+  views,
+  selected,
+  onSelect,
+}: {
+  views: ChartView[];
+  selected: string;
+  onSelect: (key: string) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Charts in this answer"
+      className="flex flex-wrap gap-2"
+    >
+      {views.map((v) => (
+        <button
+          key={v.key}
+          type="button"
+          aria-pressed={v.key === selected}
+          onClick={() => onSelect(v.key)}
+          className={cn(
+            BUTTON,
+            v.key === selected &&
+              "bg-foreground hover:text-background text-white",
+          )}
+        >
+          {v.title}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /**
- * Opens the side panel on the newest XDMoD chart in the conversation, or on
- * an earlier one picked with `showChart`.
+ * Opens the side panel on the newest answer's charts, or on an earlier
+ * answer's picked with `showChart`. An answer that drew several charts shows
+ * its first (the model's first call, the answer to the question) with a
+ * switcher for the rest.
  */
 export function XdmodChartPanel({ onAsk }: { onAsk: (text: string) => void }) {
   const stream = useStreamContext();
-  const views = useMemo(
+  const turns = useMemo(
     () => [...chartViewsByMessage(stream.messages).values()],
     [stream.messages],
   );
-  const latest = views.at(-1) ?? null;
-  const latestKey = latest?.key ?? null;
+  const latestTurn = turns.at(-1) ?? null;
+  // A turn is known by its first chart's tool call, which stays put while
+  // the answer streams even though the AI message it sits under moves.
+  const latestKey = latestTurn?.[0].key ?? null;
 
-  // A picked chart holds only until a newer chart arrives.
+  // A picked answer holds only until a newer chart arrives.
   const [picked, setPicked] = useState<{
     key: string;
     latestKey: string | null;
   } | null>(null);
-  const view =
+  const turn =
     (picked?.latestKey === latestKey &&
-      views.find((v) => v.key === picked.key)) ||
-    latest;
+      turns.find((t) => t.some((v) => v.key === picked.key))) ||
+    latestTurn;
+  const [selected, setSelected] = useState<string | null>(null);
+  const view = turn?.find((v) => v.key === selected) ?? turn?.[0] ?? null;
 
   const [Artifact, { open, setOpen }] = useArtifact();
   const owns = useMemo(
@@ -168,24 +209,38 @@ export function XdmodChartPanel({ onAsk }: { onAsk: (text: string) => void }) {
 
   useEffect(() => {
     const onShow = (event: Event) => {
-      setPicked({ key: (event as CustomEvent<string>).detail, latestKey });
+      const key = (event as CustomEvent<string>).detail;
+      setPicked({ key, latestKey });
+      setSelected(key);
       setOpen(true);
     };
     window.addEventListener(SHOW_CHART, onShow);
     return () => window.removeEventListener(SHOW_CHART, onShow);
   }, [latestKey, setOpen]);
 
-  if (!view) return null;
+  if (!turn || !view) return null;
   return (
     <Artifact title={view.title}>
-      {/* Keyed by the tool call, which stays put while the answer streams,
-          so the chart and the Chart/Table choice survive it. */}
-      <ChartBody
-        key={view.key}
-        view={view}
-        busy={stream.isLoading}
-        onAsk={onAsk}
-      />
+      <div className="flex h-full flex-col">
+        {/* Outside the keyed body, so switching keeps focus on the button. */}
+        {turn.length > 1 && (
+          <div className="px-4 pt-4 sm:px-6 sm:pt-6">
+            <ChartSwitcher
+              views={turn}
+              selected={view.key}
+              onSelect={setSelected}
+            />
+          </div>
+        )}
+        {/* Keyed by the tool call, which stays put while the answer streams,
+            so the chart and the Chart/Table choice survive it. */}
+        <ChartBody
+          key={view.key}
+          view={view}
+          busy={stream.isLoading}
+          onAsk={onAsk}
+        />
+      </div>
     </Artifact>
   );
 }

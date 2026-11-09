@@ -1,6 +1,6 @@
 import type { Message } from "@langchain/langgraph-sdk";
 import { latestRegistration } from "./registration";
-import { latestChartView } from "./xdmod-chart";
+import { latestChartViews } from "./xdmod-chart";
 
 const COMPARE_TOOL = "compare_software_availability";
 const VERSION_TOOLS = new Set(["get_software_details", "search_software"]);
@@ -291,16 +291,20 @@ export type PanelStep = "registration" | "comparison" | "chart";
  * sits in the messages.
  */
 export function newestPanelStep(messages: Message[]): PanelStep | null {
-  const steps: [PanelStep, string | undefined][] = [
-    ["registration", latestRegistration(messages)?.key],
-    ["comparison", latestComparison(messages)?.key],
-    ["chart", latestChartView(messages)?.key],
+  const at = (key: string | undefined) =>
+    key === undefined ? -Infinity : toolIndex(messages, key);
+  const steps: [PanelStep, number][] = [
+    ["registration", at(latestRegistration(messages)?.key)],
+    ["comparison", at(latestComparison(messages)?.key)],
+    // A turn can hold several charts; its newest result counts.
+    [
+      "chart",
+      Math.max(-Infinity, ...latestChartViews(messages).map((v) => at(v.key))),
+    ],
   ];
   let newest: PanelStep | null = null;
   let newestIndex = -Infinity;
-  for (const [step, key] of steps) {
-    if (key === undefined) continue;
-    const index = toolIndex(messages, key);
+  for (const [step, index] of steps) {
     if (index > newestIndex) {
       newest = step;
       newestIndex = index;

@@ -1,6 +1,6 @@
 import type { Message } from "@langchain/langgraph-sdk";
 import { describe, expect, it } from "vitest";
-import { chartViewsByMessage, latestChartView } from "./xdmod-chart";
+import { chartViewsByMessage, latestChartViews } from "./xdmod-chart";
 
 type Json = Record<string, unknown>;
 
@@ -78,14 +78,14 @@ function turn(p: Json, id = "t1"): Message[] {
   return [human("h"), ai("a0"), tool(id, chart(p)), ai("a1")];
 }
 function view(p: Json) {
-  return latestChartView(turn(p));
+  return latestChartViews(turn(p))[0] ?? null;
 }
 
 describe("chartViewsByMessage", () => {
   it("builds a line view keyed by tool call and the turn's final AI message", () => {
     const views = chartViewsByMessage(turn(payload()));
     expect([...views.keys()]).toEqual(["a1"]);
-    const v = views.get("a1")!;
+    const v = views.get("a1")![0];
     expect(v.key).toBe("t1");
     expect(v.messageId).toBe("a1");
     expect(v.kind).toBe("line");
@@ -194,11 +194,20 @@ describe("chartViewsByMessage", () => {
     }
   });
 
-  it("yields one view per turn, the later call, and one per turn overall", () => {
+  it("keeps every chart in a turn, in tool-call order", () => {
+    const call = (...ids: string[]) =>
+      ({
+        id: "a0",
+        type: "ai",
+        content: "",
+        tool_calls: ids.map((id) => ({ id, name: "get_chart_data", args: {} })),
+      }) as unknown as Message;
     const messages = [
       human("h1"),
-      tool("t1", chart(payload())),
-      tool("t2", chart(payload({ link: "second" }))),
+      call("wait", "jobs"),
+      // Parallel calls can finish in either order.
+      tool("jobs", chart(payload({ statistic: "job_count" }))),
+      tool("wait", chart(payload({ statistic: "avg_waitduration_hours" }))),
       ai("a1"),
       human("h2"),
       tool("t3", chart(aggregate())),
@@ -206,9 +215,13 @@ describe("chartViewsByMessage", () => {
     ];
     const views = chartViewsByMessage(messages);
     expect(views.size).toBe(2);
-    expect(views.get("a1")!.key).toBe("t2");
-    expect(views.get("a2")!.key).toBe("t3");
-    expect(latestChartView(messages)!.key).toBe("t3");
+    expect(views.get("a1")!.map((v) => v.key)).toEqual(["wait", "jobs"]);
+    expect(views.get("a2")!.map((v) => v.key)).toEqual(["t3"]);
+    expect(latestChartViews(messages).map((v) => v.key)).toEqual(["t3"]);
+    expect(latestChartViews(messages.slice(0, 5)).map((v) => v.key)).toEqual([
+      "wait",
+      "jobs",
+    ]);
   });
 
   it("falls back to an earlier chart when a later call in the turn isn't chart-worthy", () => {
@@ -218,7 +231,7 @@ describe("chartViewsByMessage", () => {
       tool("t2", { timed_out: true }),
       ai("a"),
     ]);
-    expect(v.get("a")!.key).toBe("t1");
+    expect(v.get("a")!.map((x) => x.key)).toEqual(["t1"]);
   });
 
   it("keys a still-streaming turn by the last AI message so far", () => {
@@ -375,7 +388,7 @@ describe("chartViewsByMessage", () => {
   });
 
   it("returns null with no charts", () => {
-    expect(latestChartView([human("h"), ai("a")])).toBeNull();
+    expect(latestChartViews([human("h"), ai("a")])).toEqual([]);
   });
 
   describe("warnings", () => {
@@ -539,9 +552,9 @@ describe("parsing once per tool message", () => {
     };
     const messages = [human("h"), ai("a0"), tool("t1", artifact), ai("a1")];
 
-    const first = chartViewsByMessage([...messages]).get("a1");
-    const second = chartViewsByMessage([...messages, ai("a1")]).get("a1");
-    latestChartView([...messages]);
+    const first = chartViewsByMessage([...messages]).get("a1")![0];
+    const second = chartViewsByMessage([...messages, ai("a1")]).get("a1")![0];
+    latestChartViews([...messages]);
 
     expect(reads).toBe(1);
     expect(second).toBe(first);
@@ -549,10 +562,10 @@ describe("parsing once per tool message", () => {
 
   it("builds a new view when the answer's message changes", () => {
     const messages = turn(payload());
-    const before = chartViewsByMessage(messages).get("a1")!;
+    const before = chartViewsByMessage(messages).get("a1")![0];
     const after = chartViewsByMessage([...messages.slice(0, 3), ai("a2")]).get(
       "a2",
-    )!;
+    )![0];
     expect(after).not.toBe(before);
     expect(after.messageId).toBe("a2");
   });

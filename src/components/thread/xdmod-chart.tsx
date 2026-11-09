@@ -541,8 +541,10 @@ export function ChartCaption({
               target="_blank"
               rel="noopener noreferrer"
             >
-              Open in XDMoD
-            </a>
+              Explore this measure in XDMoD
+            </a>{" "}
+            {/* XDMoD's link can't carry the dates or filters. */}
+            (opens with XDMoD&apos;s default dates)
           </>
         )}
       </p>

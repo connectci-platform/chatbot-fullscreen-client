@@ -172,6 +172,10 @@ export function chartCsv(view: ChartView): string {
     ["Filters", caption.filters.length ? caption.filters.join("; ") : "None"],
     ["Retrieved", caption.retrieved],
     ["Source", caption.source],
+    // Only a web link; the payload crossed a network boundary.
+    ...(view.link.startsWith("https:")
+      ? [["XDMoD link", view.link] as [string, string]]
+      : []),
   ];
   const lines = rows.map(csvRow);
   lines.push("");

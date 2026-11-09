@@ -405,7 +405,7 @@ export function Thread() {
                           onAsk={(question) => submitMessage(question, [])}
                           chartKey={
                             message.id
-                              ? chartViews.get(message.id)?.key
+                              ? chartViews.get(message.id)?.[0]?.key
                               : undefined
                           }
                         />

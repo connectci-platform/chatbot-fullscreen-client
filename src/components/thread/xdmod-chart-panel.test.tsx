@@ -97,6 +97,64 @@ function turn(p: Json, key = "call-1", answerId = `ai-${key}`): Message[] {
   ] as unknown as Message[];
 }
 
+/** One answer that charted two measures in parallel. */
+function twoChartTurn(order: "in-order" | "reversed" = "in-order"): Message[] {
+  const wait = payload({
+    statistic: "avg_waitduration_hours",
+    measure: {
+      label: "Wait Hours: Per Job",
+      description: "Average wait.",
+      kind: "average",
+      missing: "gap",
+    },
+  });
+  const results = [
+    {
+      id: "tool-wait",
+      type: "tool",
+      name: "get_chart_data",
+      tool_call_id: "wait",
+      content: "text",
+      artifact: { structured_content: { chart: wait } },
+    },
+    {
+      id: "tool-jobs",
+      type: "tool",
+      name: "get_chart_data",
+      tool_call_id: "jobs",
+      content: "text",
+      artifact: {
+        structured_content: {
+          chart: bars({
+            statistic: "job_count",
+            measure: {
+              label: "Number of Jobs Ended",
+              description: "Jobs that ended.",
+              kind: "total",
+              missing: "zero",
+            },
+          }),
+        },
+      },
+    },
+  ];
+  if (order === "reversed") results.reverse();
+  return [
+    { id: "h-two", type: "human", content: "Wait time on Delta?" },
+    {
+      id: "ai-pre-two",
+      type: "ai",
+      content: "",
+      tool_calls: [
+        { id: "wait", name: "get_chart_data", args: {} },
+        { id: "jobs", name: "get_chart_data", args: {} },
+      ],
+    },
+    ...results,
+    { id: "ai-two", type: "ai", content: "Wait time went up." },
+  ] as unknown as Message[];
+}
+
 function Slots() {
   const [open, close] = useArtifactOpen();
   return (
@@ -180,6 +238,76 @@ describe("XdmodChartPanel", () => {
     rerender(tree());
     expect(screen.getByText("Wait Hours: Per Job: Average wait.")).toBeTruthy();
     expect(screen.queryByText(/Total CPU hours used by jobs/)).toBeNull();
+  });
+
+  it("shows the answer's first chart and switches to the others", () => {
+    // The context call finished first; tool-call order still wins.
+    useMessages(twoChartTurn("reversed"));
+    const { container } = render(tree());
+    expect(screen.getByText("Wait Hours: Per Job: Average wait.")).toBeTruthy();
+
+    const switcher = screen.getByRole("group", {
+      name: "Charts in this answer",
+    });
+    const buttons = within(switcher).getAllByRole("button");
+    expect(buttons.map((b) => b.textContent)).toEqual([
+      "Wait Hours: Per Job",
+      "Number of Jobs Ended",
+    ]);
+    expect(buttons.map((b) => b.getAttribute("aria-pressed"))).toEqual([
+      "true",
+      "false",
+    ]);
+
+    fireEvent.click(buttons[1]);
+    expect(
+      screen.getByText("Number of Jobs Ended: Jobs that ended."),
+    ).toBeTruthy();
+    expect(ticks(container, "y")).toEqual(["Delta", "Anvil", "Bridges-2"]);
+    expect(
+      within(switcher)
+        .getAllByRole("button")
+        .map((b) => b.getAttribute("aria-pressed")),
+    ).toEqual(["false", "true"]);
+  });
+
+  it("has no switcher for a single chart", () => {
+    useMessages(turn(payload()));
+    render(tree());
+    expect(
+      screen.queryByRole("group", { name: "Charts in this answer" }),
+    ).toBeNull();
+  });
+
+  it("reopens an earlier two-chart answer on its first chart", () => {
+    useMessages([...twoChartTurn(), ...turn(payload(), "later")]);
+    render(tree());
+    expect(
+      screen.queryByRole("group", { name: "Charts in this answer" }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
+
+    act(() => showChart("wait"));
+    expect(screen.getByText("panel open")).toBeTruthy();
+    expect(screen.getByText("Wait Hours: Per Job: Average wait.")).toBeTruthy();
+    expect(
+      screen.getByRole("group", { name: "Charts in this answer" }),
+    ).toBeTruthy();
+  });
+
+  it("keeps the picked chart while the answer finishes streaming", () => {
+    const messages = twoChartTurn();
+    useMessages(messages.slice(0, -1), true);
+    const { rerender } = render(tree());
+    fireEvent.click(
+      screen.getByRole("button", { name: "Number of Jobs Ended" }),
+    );
+
+    useMessages(messages, false);
+    rerender(tree());
+    expect(
+      screen.getByText("Number of Jobs Ended: Jobs that ended."),
+    ).toBeTruthy();
   });
 
   it("draws one line per series with a legend", () => {
@@ -717,7 +845,9 @@ describe("XdmodChartPanel", () => {
   it("links to XDMoD only over https", () => {
     useMessages(turn(payload({ link: "javascript:alert(1)" })));
     render(tree());
-    expect(screen.queryByRole("link", { name: "Open in XDMoD" })).toBeNull();
+    expect(
+      screen.queryByRole("link", { name: "Explore this measure in XDMoD" }),
+    ).toBeNull();
     expect(
       screen.getByText("Source: XDMoD, retrieved Nov 9, 2026"),
     ).toBeTruthy();
@@ -790,10 +920,16 @@ describe("XdmodChartPanel", () => {
     expect(onAsk).toHaveBeenCalledWith("Show this by month instead");
   });
 
-  it("links to the chart in XDMoD in a new tab", () => {
+  it("links to the measure in XDMoD in a new tab, saying its dates differ", () => {
     useMessages(turn(payload()));
     render(tree());
-    const link = screen.getByRole("link", { name: /Open in XDMoD/ });
+    expect(screen.queryByText(/Open in XDMoD/)).toBeNull();
+    const link = screen.getByRole("link", {
+      name: "Explore this measure in XDMoD",
+    });
+    expect(link.parentElement?.textContent).toContain(
+      "Explore this measure in XDMoD (opens with XDMoD's default dates)",
+    );
     expect(link.getAttribute("href")).toBe(
       "https://xdmod.access-ci.org/#main_tab_panel:usage_explorer",
     );

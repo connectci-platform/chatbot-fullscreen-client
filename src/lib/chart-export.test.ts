@@ -221,6 +221,7 @@ describe("chartCsv", () => {
       "Filters,Resource is Delta or Anvil",
       "Retrieved,2026-11-09",
       "Source,XDMoD",
+      "XDMoD link,https://xdmod.access-ci.org/#chart",
       "",
       'Period,Delta,"Anvil, Purdue"',
       "2026-08-01,1200.5,10",
@@ -244,11 +245,18 @@ describe("chartCsv", () => {
       "Filters,None",
       "Retrieved,2026-11-09",
       "Source,XDMoD",
+      "XDMoD link,https://xdmod.access-ci.org/#chart",
       "",
       "Resource,CPU Hours: Total",
       '"The ""big"" one",50',
       "Small,",
     ]);
+  });
+
+  it("leaves out a link that isn't https", () => {
+    expect(chartCsv(lineView({ link: "javascript:alert(1)" }))).not.toContain(
+      "XDMoD link",
+    );
   });
 
   it("adds where the data stops to the header", () => {
