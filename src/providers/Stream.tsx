@@ -34,6 +34,7 @@ import {
 } from "@/lib/run-errors";
 import { isRunStatusEvent, type RunStatusEvent } from "@/lib/run-status";
 import { claimThread, noteAuthStatus } from "@/lib/thread-claim";
+import { viewerTimeZone } from "@/lib/time-zone";
 import { createClient } from "./client";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
@@ -228,7 +229,13 @@ const StreamSession = ({
     setWidgetFailed(false);
   }, [streamValue.isLoading]);
 
-  const submit: TypedStream["submit"] = (values, options) => {
+  const submit: TypedStream["submit"] = (values, given) => {
+    // Every run carries the reader's time zone so event times come back in
+    // it. Kept in lastSubmit, so a resend after a check carries it too.
+    const timeZone = viewerTimeZone();
+    const options = timeZone
+      ? { ...given, context: { ...given?.context, time_zone: timeZone } }
+      : given;
     // A failed check put the question back in the message box, so sending it
     // replaces the bubble left from the first try.
     const stale = turnstileFailed

@@ -30,6 +30,9 @@ vi.mock("./Thread", () => ({
   useThreads: () => ({ getThreads: vi.fn(), setThreads: vi.fn() }),
 }));
 vi.mock("./client", () => ({ createClient: vi.fn() }));
+vi.mock("@/lib/time-zone", () => ({
+  viewerTimeZone: () => "America/Chicago",
+}));
 vi.mock("@/hooks/use-agent-auth", () => ({
   useAuthStatus: () => sdk.authStatus,
 }));
@@ -140,6 +143,15 @@ describe("resending a challenged question", () => {
     );
   });
 
+  it("sends the reader's time zone with the question", () => {
+    const hook = setup();
+    ask(hook);
+
+    expect(sdk.submit.mock.calls[0][1].context).toEqual({
+      time_zone: "America/Chicago",
+    });
+  });
+
   it("sends the same question again with the token in context", () => {
     const hook = setup();
     askAndChallenge(hook);
@@ -150,7 +162,10 @@ describe("resending a challenged question", () => {
     const [sent, options] = sdk.submit.mock.calls[0];
     expect(sent).toBe(values);
     expect(options.streamMode).toEqual(["values"]);
-    expect(options.context).toEqual({ turnstile_token: "tok" });
+    expect(options.context).toEqual({
+      time_zone: "America/Chicago",
+      turnstile_token: "tok",
+    });
   });
 
   it("keeps the question on screen once, not twice", () => {
