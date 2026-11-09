@@ -1,3 +1,4 @@
+import type { ComponentProps } from "react";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { MarkdownText } from "./markdown-text";
@@ -109,5 +110,29 @@ describe("MarkdownText headings", () => {
     for (const n of ["Five", "Six"]) expect(classes(n)).toContain("text-base");
     for (const n of ["Four", "Five", "Six"])
       expect(classes(n)).toContain("font-bold");
+  });
+});
+
+describe("MarkdownText blocks", () => {
+  it("doesn't render a finished block again as the text grows", () => {
+    const h2 = vi.fn((props: ComponentProps<"h2">) => <h2 {...props} />);
+    const components = { h2 };
+    const { rerender } = render(
+      <MarkdownText components={components}>
+        {"## Delta\n\nIt has"}
+      </MarkdownText>,
+    );
+    rerender(
+      <MarkdownText components={components}>
+        {"## Delta\n\nIt has GPUs"}
+      </MarkdownText>,
+    );
+    rerender(
+      <MarkdownText components={components}>
+        {"## Delta\n\nIt has GPUs.\n\n## Anvil"}
+      </MarkdownText>,
+    );
+    expect(h2).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(2);
   });
 });
