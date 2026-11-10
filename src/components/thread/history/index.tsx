@@ -101,14 +101,18 @@ function ThreadHistoryLoading() {
 
 const SIDEBAR_HEADING_ID = "conversations-sidebar-heading";
 
-/** The top bar's toggle that's showing (wide or narrow screens' bar). */
+/**
+ * The top bar's toggle that's showing (wide or narrow screens' bar). Below
+ * 1280px the bar is the first row of the conversation's scroller, so focus
+ * must not scroll it into view: that would jump the chat back to the top.
+ */
 function focusConversationsToggle() {
   const toggles = document.querySelectorAll<HTMLElement>(
     `[${CONVERSATIONS_TOGGLE_ATTR}]`,
   );
   Array.from(toggles)
     .find((el) => el.getClientRects().length > 0 || toggles.length === 1)
-    ?.focus();
+    ?.focus({ preventScroll: true });
 }
 
 /** The sidebar's or the phone list's top: Hide, New chat, then the heading. */
@@ -167,7 +171,9 @@ export default function ThreadHistory({
     wasOpen.current = chatHistoryOpen;
     if (!isLargeScreen) return;
     if (chatHistoryOpen) {
-      document.getElementById(CONVERSATIONS_HIDE_ID)?.focus();
+      document
+        .getElementById(CONVERSATIONS_HIDE_ID)
+        ?.focus({ preventScroll: true });
       return;
     }
     const active = document.activeElement;
@@ -180,9 +186,10 @@ export default function ThreadHistory({
     }
   }, [chatHistoryOpen, isLargeScreen]);
 
-  // New chat in the phone list closes it, and focus goes to the message box
-  // the new chat starts in rather than back to the toggle.
-  const newChatFromSheet = useRef(false);
+  // New chat or a conversation picked in the phone list closes it, and focus
+  // goes to the message box of the chat on screen rather than back to the
+  // toggle, which is scrolled away above a conversation.
+  const focusComposerOnClose = useRef(false);
 
   const { getThreads, threads, setThreads, threadsLoading, setThreadsLoading } =
     useThreads();
@@ -272,10 +279,10 @@ export default function ThreadHistory({
             className="flex lg:hidden"
             onCloseAutoFocus={(e) => {
               // Back to the toggle that opened the list, or to the message
-              // box of the chat New chat just started.
+              // box of the chat just started or picked.
               e.preventDefault();
-              if (newChatFromSheet.current) {
-                newChatFromSheet.current = false;
+              if (focusComposerOnClose.current) {
+                focusComposerOnClose.current = false;
                 focusComposer();
               } else {
                 focusConversationsToggle();
@@ -285,13 +292,16 @@ export default function ThreadHistory({
             <SidebarHeader
               onHide={() => setChatHistoryOpen(false)}
               onNewChat={() => {
-                newChatFromSheet.current = true;
+                focusComposerOnClose.current = true;
                 onNewChat();
                 setChatHistoryOpen(false);
               }}
               Heading={SheetTitle}
             />
-            {list(() => setChatHistoryOpen((o) => !o))}
+            {list(() => {
+              focusComposerOnClose.current = true;
+              setChatHistoryOpen((o) => !o);
+            })}
             <SiteLinks />
           </SheetContent>
         </Sheet>

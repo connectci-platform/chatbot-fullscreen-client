@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthStatus } from "@/lib/agent-token";
 import ThreadHistory from ".";
 import { ConversationsToggle, NewChatButton } from "../conversation-controls";
+import { COMPOSER_ID } from "../composer";
 
 const auth: { status: AuthStatus } = { status: "unknown" };
 const threadsApi = {
@@ -38,6 +39,10 @@ function renderHistory(searchParams = "") {
       <main>
         <ConversationsToggle />
         <NewChatButton onClick={onNewChat} />
+        <textarea
+          id={COMPOSER_ID}
+          aria-label="Message"
+        />
       </main>
     </NuqsTestingAdapter>,
   );
@@ -215,6 +220,36 @@ describe("ThreadHistory", () => {
     ).toHaveAttribute("inert");
   });
 
+  // The narrow bar's toggle sits at the top of the conversation's scroller
+  // (1024-1279px), so focusing it plainly would scroll the chat to the top.
+  it("returns focus to the toggle without scrolling the page to it", async () => {
+    const user = userEvent.setup();
+    renderHistory();
+    await user.click(
+      screen.getByRole("button", { name: "Show conversations" }),
+    );
+    const hide = screen.getByRole("button", { name: "Hide conversations" });
+    await waitFor(() => expect(hide).toHaveFocus());
+
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+    try {
+      await user.click(hide);
+      const show = await screen.findByRole("button", {
+        name: "Show conversations",
+      });
+      await waitFor(() => expect(show).toHaveFocus());
+      const toToggle = focus.mock.contexts
+        .map((el, i) => [el, focus.mock.calls[i][0]] as const)
+        .filter(([el]) => el === show);
+      expect(toToggle.length).toBeGreaterThan(0);
+      for (const [, options] of toToggle) {
+        expect(options).toEqual({ preventScroll: true });
+      }
+    } finally {
+      focus.mockRestore();
+    }
+  });
+
   it("doesn't take focus when the page loads with the sidebar open", () => {
     renderHistory("?chatHistoryOpen=true");
     expect(document.body).toHaveFocus();
@@ -347,6 +382,35 @@ describe("ThreadHistory", () => {
         expect(
           screen.queryByRole("dialog", { name: "Conversations" }),
         ).toBeNull(),
+      );
+    });
+
+    it("picking a conversation closes the list and puts focus in the message box", async () => {
+      auth.status = "signed_in";
+      threadsApi.threads = [
+        {
+          thread_id: "t-1",
+          values: { messages: [{ type: "human", content: "What is Anvil?" }] },
+        },
+      ];
+      const user = userEvent.setup();
+      renderHistory();
+      await user.click(
+        screen.getByRole("button", { name: "Show conversations" }),
+      );
+      const dialog = await screen.findByRole("dialog", {
+        name: "Conversations",
+      });
+      await user.click(
+        within(dialog).getByRole("button", { name: "What is Anvil?" }),
+      );
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Conversations" }),
+        ).toBeNull(),
+      );
+      await waitFor(() =>
+        expect(screen.getByRole("textbox", { name: "Message" })).toHaveFocus(),
       );
     });
 
