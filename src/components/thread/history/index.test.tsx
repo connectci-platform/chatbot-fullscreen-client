@@ -279,6 +279,26 @@ describe("ThreadHistory", () => {
     expect(sidebar).not.toHaveAttribute("aria-label");
   });
 
+  it("ends the sidebar with the site's links, for anyone, signed in or not", () => {
+    auth.status = "signed_out";
+    renderHistory("?chatHistoryOpen=true");
+    const sidebar = screen.getByRole("complementary", {
+      name: "Conversations",
+    });
+    const links = within(sidebar).getByRole("navigation", {
+      name: "ACCESS links",
+    });
+    for (const name of [
+      "NSF awards",
+      "Contact ACCESS",
+      "Acceptable Use",
+      "Code of Conduct",
+      "Privacy Policy",
+    ]) {
+      expect(within(links).getByRole("link", { name })).toBeInTheDocument();
+    }
+  });
+
   describe("on a phone", () => {
     beforeEach(() => setLargeScreen(false));
 
@@ -305,6 +325,15 @@ describe("ThreadHistory", () => {
       expect(
         within(dialog).getByRole("button", { name: "Hide conversations" }),
       ).not.toHaveAttribute("aria-controls");
+    });
+
+    it("ends the list with the site's links", () => {
+      auth.status = "signed_out";
+      renderHistory("?chatHistoryOpen=true");
+      const dialog = screen.getByRole("dialog", { name: "Conversations" });
+      expect(
+        within(dialog).getByRole("link", { name: "Code of Conduct" }),
+      ).toHaveAttribute("href", "https://access-ci.org/code-of-conduct/");
     });
 
     it("New chat starts a conversation and closes the list", async () => {

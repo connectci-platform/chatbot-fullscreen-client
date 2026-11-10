@@ -18,6 +18,7 @@ import {
 } from "../conversation-controls";
 import { useConversationsOpen } from "@/hooks/use-conversations-open";
 import { focusComposer } from "../composer";
+import { SiteLinks } from "../site-links";
 
 function ThreadList({
   threads,
@@ -79,7 +80,7 @@ function ThreadListEmpty({ loadFailed }: { loadFailed: boolean }) {
         : null;
 
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-6 text-center">
+    <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-1 px-6 text-center">
       {message && <p className="text-muted-foreground text-sm">{message}</p>}
     </div>
   );
@@ -87,7 +88,7 @@ function ThreadListEmpty({ loadFailed }: { loadFailed: boolean }) {
 
 function ThreadHistoryLoading() {
   return (
-    <div className="flex h-full w-full flex-col items-start justify-start gap-2 overflow-y-scroll [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent">
+    <div className="flex min-h-0 w-full flex-1 flex-col items-start justify-start gap-2 overflow-y-scroll [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent">
       {Array.from({ length: 30 }).map((_, i) => (
         <Skeleton
           key={`skeleton-${i}`}
@@ -254,6 +255,7 @@ export default function ThreadHistory({
           Heading="h2"
         />
         {list()}
+        <SiteLinks />
       </aside>
       <div className="lg:hidden">
         <Sheet
@@ -290,6 +292,7 @@ export default function ThreadHistory({
               Heading={SheetTitle}
             />
             {list(() => setChatHistoryOpen((o) => !o))}
+            <SiteLinks />
           </SheetContent>
         </Sheet>
       </div>
