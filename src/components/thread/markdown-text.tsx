@@ -6,12 +6,13 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
-import { FC, isValidElement, memo, useState } from "react";
+import { FC, isValidElement, memo, useMemo, useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { SyntaxHighlighter } from "@/components/thread/syntax-highlighter";
 
 import { TooltipIconButton } from "@/components/thread/tooltip-icon-button";
 import { cn } from "@/lib/utils";
+import { markdownBlocks } from "@/lib/markdown-blocks";
 
 import "katex/dist/katex.min.css";
 
@@ -74,7 +75,7 @@ const defaultComponents: any = {
   h1: ({ className, ...props }: { className?: string }) => (
     <h1
       className={cn(
-        "mb-8 scroll-m-20 text-4xl font-extrabold tracking-tight last:mb-0",
+        "text-heading mt-6 mb-3 scroll-m-20 text-4xl leading-[1.2] font-medium first:mt-0 last:mb-0",
         className,
       )}
       {...props}
@@ -83,7 +84,7 @@ const defaultComponents: any = {
   h2: ({ className, ...props }: { className?: string }) => (
     <h2
       className={cn(
-        "mt-8 mb-4 scroll-m-20 text-3xl font-semibold tracking-tight first:mt-0 last:mb-0",
+        "text-heading mt-6 mb-3 scroll-m-20 text-2xl leading-[1.2] font-bold first:mt-0 last:mb-0",
         className,
       )}
       {...props}
@@ -92,7 +93,7 @@ const defaultComponents: any = {
   h3: ({ className, ...props }: { className?: string }) => (
     <h3
       className={cn(
-        "mt-6 mb-4 scroll-m-20 text-2xl font-semibold tracking-tight first:mt-0 last:mb-0",
+        "text-brand-dark mt-5 mb-3 scroll-m-20 text-xl leading-[1.2] font-bold first:mt-0 last:mb-0",
         className,
       )}
       {...props}
@@ -101,7 +102,7 @@ const defaultComponents: any = {
   h4: ({ className, ...props }: { className?: string }) => (
     <h4
       className={cn(
-        "mt-6 mb-4 scroll-m-20 text-xl font-semibold tracking-tight first:mt-0 last:mb-0",
+        "text-heading mt-4 mb-2 scroll-m-20 text-lg leading-[1.2] font-bold first:mt-0 last:mb-0",
         className,
       )}
       {...props}
@@ -110,7 +111,7 @@ const defaultComponents: any = {
   h5: ({ className, ...props }: { className?: string }) => (
     <h5
       className={cn(
-        "my-4 text-lg font-semibold first:mt-0 last:mb-0",
+        "text-heading mt-4 mb-2 text-base font-bold first:mt-0 last:mb-0",
         className,
       )}
       {...props}
@@ -118,7 +119,10 @@ const defaultComponents: any = {
   ),
   h6: ({ className, ...props }: { className?: string }) => (
     <h6
-      className={cn("my-4 font-semibold first:mt-0 last:mb-0", className)}
+      className={cn(
+        "text-heading my-4 text-base font-bold first:mt-0 last:mb-0",
+        className,
+      )}
       {...props}
     />
   ),
@@ -232,6 +236,35 @@ const defaultComponents: any = {
   ),
 };
 
+const WITH_MATH = { remark: [remarkGfm, remarkMath], rehype: [rehypeKatex] };
+const WITHOUT_MATH = { remark: [remarkGfm], rehype: [] };
+
+/**
+ * One block of the text. Memoized on its text, so while an answer streams
+ * only the block still being written is parsed again on each token: parsing
+ * the whole answer every time froze the page for long answers.
+ */
+const MarkdownBlock = memo(function MarkdownBlock({
+  text,
+  components,
+  math,
+}: {
+  text: string;
+  components: Components;
+  math: boolean;
+}) {
+  const plugins = math ? WITH_MATH : WITHOUT_MATH;
+  return (
+    <ReactMarkdown
+      remarkPlugins={plugins.remark}
+      rehypePlugins={plugins.rehype}
+      components={components}
+    >
+      {text}
+    </ReactMarkdown>
+  );
+});
+
 const MarkdownTextImpl: FC<{
   children: string;
   /** Replaces the default renderer for these elements. */
@@ -239,19 +272,24 @@ const MarkdownTextImpl: FC<{
   /** Off for quoted text, where "$HOME and $PROJECT" isn't math. */
   math?: boolean;
 }> = ({ children, components, math = true }) => {
+  const merged = useMemo(
+    () =>
+      components ? { ...defaultComponents, ...components } : defaultComponents,
+    [components],
+  );
+  const blocks = useMemo(() => markdownBlocks(children), [children]);
+  // The blocks render as siblings, with no wrapper of their own, so
+  // first:/last: margins apply across the whole text as before.
   return (
     <div className="markdown-content">
-      <ReactMarkdown
-        remarkPlugins={math ? [remarkGfm, remarkMath] : [remarkGfm]}
-        rehypePlugins={math ? [rehypeKatex] : []}
-        components={
-          components
-            ? { ...defaultComponents, ...components }
-            : defaultComponents
-        }
-      >
-        {children}
-      </ReactMarkdown>
+      {blocks.map((block, i) => (
+        <MarkdownBlock
+          key={i}
+          text={block}
+          components={merged}
+          math={math}
+        />
+      ))}
     </div>
   );
 };
