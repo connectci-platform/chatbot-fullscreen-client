@@ -36,7 +36,6 @@ vi.mock("@access-ci/ui/react", () => ({
     );
   },
   Header: () => <div data-testid="header" />,
-  Footer: () => <div data-testid="footer" />,
 }));
 
 function mintResponse(status: number, body: unknown = {}) {

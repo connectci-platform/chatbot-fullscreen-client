@@ -8,7 +8,7 @@ describe("ChatDisclaimer", () => {
 
     expect(
       screen.getByText(
-        "AI-powered responses may not always be accurate. Don't share passwords or secrets.",
+        "AI can make mistakes. Don't share passwords or secrets.",
       ),
     ).toBeTruthy();
     const link = screen.getByRole("link", { name: "Privacy Notice" });
@@ -17,5 +17,12 @@ describe("ChatDisclaimer", () => {
     );
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+});
+
+describe("ChatDisclaimer", () => {
+  it("leaves the site links to the conversations sidebar", () => {
+    render(<ChatDisclaimer />);
+    expect(screen.queryByRole("navigation")).toBeNull();
   });
 });

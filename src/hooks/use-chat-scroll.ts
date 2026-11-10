@@ -112,6 +112,9 @@ export function useChatScroll({
     [],
   );
 
+  // Whether the empty screen has been put at its top since it appeared.
+  const showingEmpty = useRef(false);
+
   // Set directly on the element: it changes with layout, not with state.
   const spacerPx = useRef(0);
   const setSpacer = useCallback((height: number) => {
@@ -175,7 +178,15 @@ export function useChatScroll({
     }
 
     if (mode.current === "follow") {
-      scroller.scrollTop = scroller.scrollHeight;
+      if (all.length) {
+        scroller.scrollTop = scroller.scrollHeight;
+        showingEmpty.current = false;
+      } else if (!showingEmpty.current) {
+        // The empty screen opens at its top, where its top bar and logo
+        // are, once; after that it stays where the person scrolls it.
+        scroller.scrollTop = 0;
+        showingEmpty.current = true;
+      }
     }
     measure();
   }, [measure, questions, setSpacer]);

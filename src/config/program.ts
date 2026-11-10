@@ -29,6 +29,17 @@ export type ProgramConfig = {
    * affiliation. Null hides the office hours box.
    */
   officeHours: { affiliation: string; description: string } | null;
+  /**
+   * The site footer's required links, shown small under the disclaimer in
+   * place of the full footer so the chat fills the screen. Null shows none.
+   */
+  siteLinks: {
+    /** Names the row for screen readers. */
+    label: string;
+    /** The funding acknowledgment: `text` then a link. */
+    acknowledgment: { text: string; linkText: string; href: string } | null;
+    links: { label: string; href: string }[];
+  } | null;
   colors: {
     /** Primary buttons and calls to action. */
     primary: string;

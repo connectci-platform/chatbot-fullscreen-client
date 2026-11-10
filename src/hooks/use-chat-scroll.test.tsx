@@ -327,4 +327,50 @@ describe("useChatScroll", () => {
     resize();
     expect(topInView("q1")).toBe(QUESTION_TOP_OFFSET_PX);
   });
+
+  it("opens the empty screen at its top, where its top bar is", () => {
+    geometry.listHeight = 900;
+    geometry.offsets = {};
+    const rendered = render(
+      <Harness
+        threadId={null}
+        ids={[]}
+      />,
+    );
+    spacer = rendered.getByTestId("spacer") as HTMLDivElement;
+    resize();
+    expect(geometry.scrollTop).toBe(0);
+  });
+
+  it("leaves the empty screen where the person scrolled it", () => {
+    geometry.listHeight = 900;
+    geometry.offsets = {};
+    const rendered = render(
+      <Harness
+        threadId={null}
+        ids={[]}
+      />,
+    );
+    spacer = rendered.getByTestId("spacer") as HTMLDivElement;
+    geometry.scrollTop = 400;
+    fireEvent.wheel(rendered.getByTestId("scroller"));
+    fireEvent.scroll(rendered.getByTestId("scroller"));
+    resize();
+    expect(geometry.scrollTop).toBe(400);
+  });
+
+  it("starts a new conversation at the top of the empty screen", () => {
+    const rendered = renderLoadedThread();
+    expect(geometry.scrollTop).toBe(1500);
+    geometry.listHeight = 900;
+    geometry.offsets = {};
+    rendered.rerender(
+      <Harness
+        threadId={null}
+        ids={[]}
+      />,
+    );
+    resize();
+    expect(geometry.scrollTop).toBe(0);
+  });
 });
