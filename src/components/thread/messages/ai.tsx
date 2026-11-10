@@ -6,7 +6,11 @@ import { CommandBar } from "./shared";
 import { MarkdownText } from "../markdown-text";
 import { LoadExternalComponent } from "@langchain/langgraph-sdk/react-ui";
 import { cn } from "@/lib/utils";
-import { getCapabilitySuggestions } from "@/lib/capability-suggestions";
+import {
+  getCapabilitySuggestions,
+  isCapabilityOverview,
+} from "@/lib/capability-suggestions";
+import { getSuggestedQuestions } from "@/lib/suggested-questions";
 import { SuggestedQuestions } from "../suggested-questions";
 import { Fragment } from "react/jsx-runtime";
 import { isAgentInboxInterruptSchema } from "@/lib/agent-inbox-interrupt";
@@ -15,6 +19,18 @@ import { GenericInterruptView } from "./generic-interrupt";
 import { useArtifact } from "../artifact";
 import { AnswerSources } from "../answer-sources";
 import { AnswerRating } from "./answer-rating";
+import { BarChart3, Table2 } from "lucide-react";
+import { showChart } from "../xdmod-chart-panel";
+import { focusComposer } from "../composer";
+import { useMemo } from "react";
+import { answerWithSources } from "@/lib/answer-sources";
+import {
+  continuedAfter,
+  isToolCallNarration,
+  narrationParagraphs,
+} from "@/lib/tool-narration";
+import { isStoppedAnswer } from "@/lib/stopped-answer";
+import { showComparison } from "../software-comparison-panel";
 
 function CustomComponent({
   message,
@@ -79,14 +95,25 @@ export function AssistantMessage({
   message,
   isLoading,
   onAsk,
+  chartKey,
+  awaitingCheck = false,
+  comparisonKey,
 }: {
   message: Message | undefined;
   isLoading: boolean;
+  /** The Turnstile check is showing: nothing can be sent until it passes. */
+  awaitingCheck?: boolean;
+  /** The chart under this answer (its tool_call_id), if it has one. */
+  chartKey?: string;
+  /** The software comparison under this answer (its tool_call_id), if any. */
+  comparisonKey?: string;
   /** Sends a suggested question as if typed. */
   onAsk?: (question: string) => void;
 }) {
   const content = message?.content ?? [];
   const contentString = getContentString(content);
+  // Cut off, so there's no turn report to rate.
+  const stopped = isStoppedAnswer(message);
   const suggestions = getCapabilitySuggestions(message);
 
   const thread = useStreamContext();
@@ -96,30 +123,110 @@ export function AssistantMessage({
     (m) => m.type === "ai" || m.type === "tool",
   );
   const threadInterrupt = thread.interrupt;
+  // Only the newest answer offers what to ask next: once a newer question is
+  // asked, an earlier answer's suggestions are stale.
+  const isLatestAnswer =
+    !!message?.id &&
+    thread.messages.findLast((m) => m.type !== "tool")?.id === message.id;
+  const nextQuestions =
+    isLatestAnswer && !isLoading && !isCapabilityOverview(message)
+      ? getSuggestedQuestions(message)
+      : [];
 
-  if (message?.type === "tool") {
+  const streaming = isLoading && isLastMessage;
+  // Once the chips show, a sources list the model wrote at the end that
+  // links only those pages would list them twice.
+  const shownText = useMemo(() => {
+    if (!message || streaming) return contentString;
+    return answerWithSources(thread.messages, message)?.text ?? contentString;
+  }, [thread.messages, message, streaming, contentString]);
+  const narration = isToolCallNarration(
+    message,
+    contentString,
+    !!threadInterrupt,
+    !!message && continuedAfter(thread.messages, message),
+  );
+
+  // A stop before any text leaves an empty answer; the Stopped note says so.
+  if (
+    message?.type === "tool" ||
+    (stopped && contentString.trim().length === 0)
+  ) {
     return null;
   }
 
   return (
     <div className="group mr-auto flex w-full items-start gap-2">
       <div className="flex w-full flex-col gap-2">
-        {contentString.length > 0 && (
-          <div className="py-1">
-            <MarkdownText>{contentString}</MarkdownText>
+        {narration ? (
+          <div className="text-muted-foreground flex flex-col gap-2 text-sm">
+            {narrationParagraphs(contentString).map((paragraph, i) => (
+              <p key={i}>{paragraph}</p>
+            ))}
           </div>
+        ) : (
+          contentString.length > 0 && (
+            <div className="py-1">
+              <MarkdownText>{shownText}</MarkdownText>
+            </div>
+          )
         )}
-        <AnswerSources
-          message={message}
-          streaming={isLoading && isLastMessage}
-        />
+        {/* Cut off before it could cite anything, so no sources line. */}
+        {!stopped && (
+          <AnswerSources
+            message={message}
+            streaming={streaming}
+          />
+        )}
+        {chartKey && (
+          <button
+            type="button"
+            data-chart-key={chartKey}
+            onClick={() => showChart(chartKey)}
+            className="hover:text-brand hover:border-brand focus-visible:ring-brand mr-auto flex cursor-pointer items-center gap-2 border px-3 py-1.5 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
+          >
+            <BarChart3
+              aria-hidden
+              className="size-4"
+            />
+            Show chart
+          </button>
+        )}
+        {comparisonKey && (
+          <button
+            type="button"
+            data-comparison-key={comparisonKey}
+            onClick={() => showComparison(comparisonKey)}
+            className="hover:text-brand hover:border-brand focus-visible:ring-brand mr-auto flex cursor-pointer items-center gap-2 border px-3 py-1.5 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
+          >
+            <Table2
+              aria-hidden
+              className="size-4"
+            />
+            Show software availability
+          </button>
+        )}
 
         {onAsk && suggestions.length > 0 && (
           <SuggestedQuestions
             heading="Try one of these"
             questions={suggestions}
             onAsk={onAsk}
-            disabled={isLoading}
+            disabled={isLoading || awaitingCheck}
+            compact
+          />
+        )}
+        {onAsk && nextQuestions.length > 0 && (
+          <SuggestedQuestions
+            heading="Ask next"
+            questions={nextQuestions}
+            onAsk={(question) => {
+              onAsk(question);
+              // Asking starts a run, which removes these buttons: keep the
+              // keyboard user's focus somewhere useful.
+              focusComposer();
+            }}
+            disabled={awaitingCheck}
             compact
           />
         )}
@@ -135,12 +242,13 @@ export function AssistantMessage({
           isLastMessage={isLastMessage}
           hasNoAIOrToolMessages={hasNoAIOrToolMessages}
         />
-        {/* Tool-calling messages are stored with empty content; there is
-            nothing to copy or rate. Rating stays visible and comes first, so
-            the copy button fading in on hover doesn't shift it. */}
-        {contentString.length > 0 && (
+        {/* Tool-calling messages are stored with empty content or a line of
+            narration; there is nothing to copy or rate. Rating stays visible
+            and comes first, so the copy button fading in on hover doesn't
+            shift it. */}
+        {contentString.length > 0 && !narration && (
           <div className="mr-auto flex flex-wrap items-start gap-1">
-            {message && (
+            {message && !stopped && (
               <AnswerRating
                 message={message}
                 isLoading={isLoading}

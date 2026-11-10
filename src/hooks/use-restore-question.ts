@@ -3,7 +3,10 @@ import type { Message } from "@langchain/langgraph-sdk";
 
 type Content = Exclude<Message["content"], string>;
 
-function questionParts(message: Message): { text: string; blocks: Content } {
+export function questionParts(message: Message): {
+  text: string;
+  blocks: Content;
+} {
   const { content } = message;
   if (typeof content === "string") return { text: content, blocks: [] };
   return {

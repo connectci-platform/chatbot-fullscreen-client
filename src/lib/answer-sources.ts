@@ -20,31 +20,22 @@ export interface AnswerSource {
   /** The link as the answer wrote it. */
   url: string;
   /**
-   * Taken from the URL, never from the answer's wording: "host › path ›
-   * section". The model's link text could describe a page wrongly.
+   * Never from the answer's wording, which could describe a page wrongly:
+   * the heading the retrieved passages open with, or else a readable form
+   * of the URL's path ("Bridges 2 › User guide").
    */
   title: string;
-  /** The last two parts of the title, for the chip. */
+  /** The heading, or else the last two parts of the path, for the chip. */
   chipLabel: string;
   host: string;
   /** The answer's link text, or null for a bare URL. */
   linkText: string | null;
-  /** Excerpts the documentation search returned from this page, verbatim. */
-  passages: string[];
-}
-
-export interface AnswerSourcesResult {
-  sources: AnswerSource[];
   /**
-   * Why the answer shows no source, when that is worth saying:
-   * "unlinked" when the turn searched the documentation and the answer links
-   * none of what it retrieved; "not-retrieved" when the turn used no tools
-   * and the answer makes substantive claims (from the model's own memory,
-   * the main accuracy risk), whether or not it links pages. Otherwise null:
-   * short conversational replies, and answers drawn only from live data
-   * tools, which have no document to cite.
+   * Excerpts the documentation search returned from this page, verbatim.
+   * Empty for a page only the model's own sources list links: its chip opens
+   * the page, since there is no passage to show.
    */
-  noSource: "unlinked" | "not-retrieved" | null;
+  passages: string[];
 }
 
 function textOf(content: Message["content"]): string {
@@ -78,6 +69,61 @@ export function parsePassages(content: string): Passage[] {
     if (pageKey(url) && text) passages.push({ url, text });
   });
   return passages;
+}
+
+/** A curated document's source line: "Source: <URL>" and nothing else. */
+const HEADER_SOURCE =
+  /^(\*\*|__)?source\1?:\1?[ \t]*<?https?:\/\/\S+?>?[ \t]*$/i;
+
+/** The index fields that follow it. */
+const HEADER_FIELD =
+  /^(\*\*|__)?(keywords|tags|description|summary)\1?:\1?[ \t]*/i;
+
+/**
+ * A passage as the source panel shows it. A curated document opens with a
+ * header: its title, a "Source: <URL>" line, then index fields, on lines
+ * separated by one newline or two. In that header the Source line (the
+ * page the panel already links) and Keywords or Tags (for search) are
+ * dropped, and a Description or Summary is kept without its label. Any
+ * other passage, and everything after the header, is left as retrieved.
+ */
+export function readablePassage(passage: string): string {
+  const lines = passage.split("\n");
+  const nextLine = (from: number) => {
+    while (from < lines.length && !lines[from].trim()) from++;
+    return from;
+  };
+  const title = nextLine(0);
+  const first = lines[title]?.trim() ?? "";
+  if (!first || HEADER_SOURCE.test(first) || HEADER_FIELD.test(first)) {
+    return passage;
+  }
+  const source = nextLine(title + 1);
+  if (!HEADER_SOURCE.test(lines[source]?.trim() ?? "")) return passage;
+
+  const spaced = source > title + 1;
+  const kept = [lines[title]];
+  let rest = source + 1;
+  for (let at = nextLine(rest); at < lines.length; at = nextLine(rest)) {
+    const field = lines[at].trim().match(HEADER_FIELD);
+    if (!field) break;
+    rest = at + 1;
+    if (/^(?:keywords|tags)$/i.test(field[2])) continue;
+    // With blank lines between the header's lines, a description runs on
+    // to the end of its paragraph; on consecutive lines it is one line.
+    const text = [lines[at].trim().slice(field[0].length)];
+    while (
+      spaced &&
+      rest < lines.length &&
+      lines[rest].trim() &&
+      !HEADER_FIELD.test(lines[rest].trim())
+    ) {
+      text.push(lines[rest++]);
+    }
+    if (text.join("").trim()) kept.push(text.join("\n").trim());
+  }
+  const body = lines.slice(nextLine(rest)).join("\n");
+  return [...kept, body].filter((part) => part.trim()).join("\n\n");
 }
 
 const MARKDOWN_LINK =
@@ -131,31 +177,80 @@ function decode(part: string): string {
   }
 }
 
-/** "host", then each path segment, then the section. */
-function crumbs(url: URL): string[] {
-  const path = url.pathname.split("/").filter(Boolean).map(decode);
-  const section = url.hash ? [decode(url.hash.slice(1))] : [];
-  return [url.hostname, ...path, ...section];
-}
-
 function fragmentOf(url: string): string {
   return new URL(url).hash;
 }
 
-/**
- * Prose length at which an answer stops being a conversational reply (a
- * greeting, a thank-you, a one-line clarifying question) and starts making
- * claims a reader may want to check: about two sentences.
- */
-const SUBSTANTIVE_LENGTH = 160;
+/** What a chip is keyed by: the page, plus the section the link names. */
+function sourceKey(url: string): string | null {
+  const page = pageKey(url);
+  return page && `${page}${fragmentOf(url)}`;
+}
 
-/** The answer's prose: link text kept, URLs dropped, whitespace collapsed. */
-function proseLength(text: string): number {
-  return text
+/**
+ * Path segments that say nothing about the page: a language, a docs build
+ * ("latest", "stable"), a version, or a directory index.
+ */
+const NOISE_SEGMENT =
+  /^(?:en|latest|stable|current|v?\d+(?:\.\d+)*|index|default)$/i;
+
+/** Extensions of web pages and documents, not of versions ("openmpi-4.1.5"). */
+const WEB_EXTENSION = /\.(?:html?|php|aspx?|md|pdf|txt)$/i;
+
+/**
+ * The URL's path as words: "user_guide/running_jobs.html" becomes
+ * ["User guide", "Running jobs"]. The fragment is left out; anchors are
+ * often generated ids like "narrow-wysiwyg-7" that mean nothing to a reader.
+ */
+function pathWords(url: URL): string[] {
+  return url.pathname
+    .split("/")
+    .map((segment) =>
+      decode(segment)
+        .replace(WEB_EXTENSION, "")
+        .replace(/[-_\s]+/g, " ")
+        .trim(),
+    )
+    .filter((words) => words && !NOISE_SEGMENT.test(words))
+    .map((words) => words[0].toUpperCase() + words.slice(1));
+}
+
+const HEADING_LINE = /^(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/;
+
+/** Headings that name a kind of section, not a page or a topic. */
+const GENERIC_HEADING =
+  /^(?:overview|introduction|intro|notes?|examples?|example \d+|step \d+.*|summary|contents|table of contents|troubleshooting|faqs?|usage|background|details|more information|references|see also|prerequisites|next steps)$/i;
+
+/** The heading a passage opens with, as plain text, and its level. */
+function headingOf(passage: string): { level: number; text: string } | null {
+  const first = passage.trimStart().split("\n", 1)[0];
+  const match = first.match(HEADING_LINE);
+  if (!match) return null;
+  const text = match[2]
     .replace(MARKDOWN_LINK, "$1")
-    .replace(BARE_URL, "")
-    .replace(/\s+/g, " ")
-    .trim().length;
+    .replace(/[*_`]+/g, "")
+    .trim();
+  return text ? { level: match[1].length, text } : null;
+}
+
+/**
+ * The heading to label a link with, or null for the path label. Every
+ * passage behind the link must open with the same heading, since one
+ * section's heading would mislabel the whole page. A link to a section
+ * takes its section's heading; a link to the whole page only a page-level
+ * (H1 or H2) one. Generic headings like "Overview" or "Step 3" never label
+ * a link.
+ */
+function headingLabel(section: boolean, passages: string[]): string | null {
+  if (!passages.length) return null;
+  const headings = passages.map(headingOf);
+  const first = headings[0];
+  if (!first || GENERIC_HEADING.test(first.text)) return null;
+  if (!section && first.level > 2) return null;
+  const shared = headings.every(
+    (h) => h?.text === first.text && h.level === first.level,
+  );
+  return shared ? first.text : null;
 }
 
 /** The turn this message belongs to: everything after the last human message. */
@@ -177,7 +272,7 @@ function turnBefore(messages: Message[], index: number): Message[] {
 export function answerSources(
   messages: Message[],
   message: Message,
-): AnswerSourcesResult | null {
+): AnswerSource[] | null {
   if (message.type !== "ai" || message.tool_calls?.length) return null;
   // The capability overview is fixed text about the assistant, not a claim
   // that needs a documentation source.
@@ -204,9 +299,9 @@ export function answerSources(
   const seen = new Set<string>();
   for (const link of linksIn(text)) {
     const page = pageKey(link.url);
-    const fragment = page ? fragmentOf(link.url) : "";
-    const key = `${page}${fragment}`;
-    if (!page || seen.has(key)) continue;
+    const key = sourceKey(link.url);
+    if (!page || !key || seen.has(key)) continue;
+    const fragment = fragmentOf(link.url);
     // A link to a section is backed only by passages from that section;
     // a link to the whole page by every passage from it.
     const passages = (retrieved.get(page) ?? [])
@@ -214,27 +309,182 @@ export function answerSources(
       .map((p) => p.text);
     if (!passages.length) continue;
     seen.add(key);
-    const url = new URL(link.url);
-    const parts = crumbs(url);
-    const linkText =
-      link.label && !/^https?:\/\//.test(link.label) ? link.label : null;
-    sources.push({
-      key,
-      url: link.url,
-      title: parts.join(" › "),
-      chipLabel:
-        parts.slice(Math.max(1, parts.length - 2)).join(" › ") || url.hostname,
-      host: url.hostname,
-      linkText,
-      passages,
-    });
+    sources.push(sourceFor(link, key, passages));
   }
+  return sources;
+}
 
-  const tools = turn.filter((m) => m.type === "tool");
-  const searchedDocs = tools.some((m) => m.name === DOCS_TOOL);
-  const fromMemory = !tools.length && proseLength(text) >= SUBSTANTIVE_LENGTH;
-  let noSource: AnswerSourcesResult["noSource"] = null;
-  if (!sources.length && searchedDocs) noSource = "unlinked";
-  else if (!sources.length && fromMemory) noSource = "not-retrieved";
-  return { sources, noSource };
+function sourceFor(link: Link, key: string, passages: string[]): AnswerSource {
+  const url = new URL(link.url);
+  const heading = headingLabel(!!url.hash, passages);
+  const words = pathWords(url);
+  const linkText =
+    link.label && !/^https?:\/\//.test(link.label) ? link.label : null;
+  return {
+    key,
+    url: link.url,
+    title: heading ?? (words.join(" › ") || url.hostname),
+    chipLabel: heading ?? (words.slice(-2).join(" › ") || url.hostname),
+    host: url.hostname,
+    linkText,
+    passages,
+  };
+}
+
+/**
+ * A line that opens a sources section: a "Sources" heading, or a bold or
+ * plain "Source:" / "Sources:" label, with whatever follows it on the line.
+ */
+function sourcesLabel(line: string): string | null {
+  const match = line
+    .trim()
+    .match(
+      /^(#{1,6}\s+)?(\*\*|__|\*|_)?sources?(?![a-z])\s*(:)?\s*\2\s*(:)?\s*(.*)$/i,
+    );
+  if (!match) return null;
+  const [, heading, emphasis, colon, trailingColon, rest] = match;
+  if (!heading && !emphasis && !colon && !trailingColon) return null;
+  return rest;
+}
+
+/**
+ * Whether a line is nothing but links: an optional list marker, then one
+ * or more links or bare URLs, with at most punctuation between them. Any
+ * other text, or code, is content that a chip can't stand in for.
+ */
+function isLinkLine(line: string): boolean {
+  if (line.replace(CODE, "") !== line) return false;
+  const residue = line
+    .replace(MARKDOWN_LINK, "\uE000")
+    .replace(/<https?:\/\/[^\s>]+>/g, "\uE000")
+    .replace(BARE_URL, "\uE000")
+    .replace(/^\s*(?:[-*+]|\d+[.)])\s+/, "");
+  return residue.includes("\uE000") && !/[^\uE000\s,;.:|*_()–—-]/.test(residue);
+}
+
+/**
+ * Splits off the sources list the model wrote at the end of an answer, so
+ * the answer has one list: the chips. A section is a "Sources" label line
+ * followed only by lines that each link something; a line that links
+ * nothing (a citation the chips can't stand in for), or prose after the
+ * list, means it isn't one and the text is left alone. Pages the list links
+ * that aren't chips come back as extra chips, so nothing is lost. Links
+ * inside the answer's sentences are never touched.
+ */
+export function splitSourcesSection(
+  text: string,
+  sources: AnswerSource[],
+): { text: string; extra: AnswerSource[] } {
+  const unchanged = { text, extra: [] };
+  if (!sources.length) return unchanged;
+  // Code is blanked to find the label, so a "Sources:" line inside code
+  // can't start a section; the list itself is read as written, so code in
+  // it is content that keeps the section.
+  const blanked = text.replace(CODE, blank).split("\n");
+  const lines = text.split("\n");
+  let start = -1;
+  let sectionLinks: Link[] = [];
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (sourcesLabel(blanked[i]) === null) continue;
+    // Each "Source:" line in a run of them counts by the links after it.
+    const body = lines
+      .slice(i)
+      .map((l) => sourcesLabel(l) ?? l)
+      .filter((l) => l.trim());
+    if (!body.length || !body.every(isLinkLine)) break;
+    start = i;
+    sectionLinks = body.flatMap(linksIn);
+  }
+  if (start < 0) return unchanged;
+  const kept = lines
+    .slice(0, start)
+    .join("\n")
+    .replace(/(?:\n\s*(?:[-*_]\s*){3,})?\s*$/, "");
+  if (!kept.trim()) return unchanged;
+
+  // One chip per page: a chip for any section of it already covers it.
+  const pages = new Set(sources.map((s) => pageKey(s.url)));
+  const extra: AnswerSource[] = [];
+  for (const link of sectionLinks) {
+    const page = pageKey(link.url);
+    const key = sourceKey(link.url);
+    if (!page || !key || pages.has(page)) continue;
+    pages.add(page);
+    extra.push(sourceFor(link, key, []));
+  }
+  return { text: kept, extra };
+}
+
+/** What separates a site or resource name from the rest of a heading. */
+const PREFIX_END = / [—–|-] |: | › /g;
+
+/**
+ * Chip labels without the prefix their headings share, such as "Delta
+ * (NCSA) — ", which would otherwise fill every chip before the part that
+ * tells them apart. Needs two headings to tell what is shared; the full
+ * heading stays in the title.
+ */
+function distinctLabels(sources: AnswerSource[]): AnswerSource[] {
+  const headings = sources
+    .filter(
+      (s) => headingLabel(!!fragmentOf(s.url), s.passages) === s.chipLabel,
+    )
+    .map((s) => s.chipLabel);
+  if (headings.length < 2) return sources;
+  const ends = [...headings[0].matchAll(PREFIX_END)].map(
+    (m) => m.index + m[0].length,
+  );
+  const prefix = ends
+    .map((end) => headings[0].slice(0, end))
+    .reverse()
+    .find((p) => headings.every((h) => h.startsWith(p) && h.length > p.length));
+  if (!prefix) return sources;
+  return sources.map((s) =>
+    s.chipLabel.startsWith(prefix) && s.chipLabel.length > prefix.length
+      ? { ...s, chipLabel: s.chipLabel.slice(prefix.length) }
+      : s,
+  );
+}
+
+type AnswerView = { text: string; sources: AnswerSource[] };
+
+const views = new WeakMap<
+  Message,
+  { text: string; turn: Message[]; view: AnswerView | null }
+>();
+
+/**
+ * The answer as shown once it has finished: its text without a sources
+ * list the chips replace, and the chips. Null for messages that aren't a
+ * written answer. Worked out once per answer and turn: the message and the
+ * chips under it both ask, on every streamed token.
+ */
+export function answerWithSources(
+  messages: Message[],
+  message: Message,
+): AnswerView | null {
+  const index = messages.findIndex((m) => m === message || m.id === message.id);
+  const turn = index < 0 ? [] : turnBefore(messages, index);
+  const text = textOf(message.content);
+  const cached = views.get(message);
+  // The text is compared too, in case a streamed message is updated in place.
+  if (
+    cached &&
+    cached.text === text &&
+    cached.turn.length === turn.length &&
+    cached.turn.every((m, i) => m === turn[i])
+  ) {
+    return cached.view;
+  }
+  const linked = answerSources(messages, message);
+  let view: AnswerView | null = null;
+  if (linked) {
+    const split = splitSourcesSection(text, linked);
+    view = {
+      text: split.text,
+      sources: distinctLabels([...linked, ...split.extra]),
+    };
+  }
+  views.set(message, { text, turn, view });
+  return view;
 }

@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { ReactNode, useCallback, useEffect, useRef } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useStreamContext } from "@/providers/Stream";
@@ -21,16 +21,13 @@ import { useOfficeHours } from "@/hooks/useOfficeHours";
 import { getSupportUrl } from "@/lib/agent-token";
 import { TooltipIconButton } from "./tooltip-icon-button";
 import {
-  ArrowDown,
   LoaderCircle,
   PanelRightOpen,
   PanelRightClose,
   SquarePen,
-  XIcon,
   Plus,
 } from "lucide-react";
 import { useQueryState, parseAsBoolean } from "nuqs";
-import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import ThreadHistory from "./history";
 import { toast } from "sonner";
 import {
@@ -39,63 +36,39 @@ import {
   runErrorToastOptions,
 } from "@/lib/run-errors";
 import { useAuthStatus } from "@/hooks/use-agent-auth";
-import { useRestoreQuestion } from "@/hooks/use-restore-question";
+import {
+  questionParts,
+  useRestoreQuestion,
+} from "@/hooks/use-restore-question";
+import {
+  cutOffNote,
+  stopReason,
+  withFailedTurnMarked,
+  cutOffKey,
+  reloadCutOffs,
+  rememberReloadCutOff,
+  withReloadCutOffsMarked,
+  unansweredQuestion,
+  withoutUnansweredTurn,
+} from "@/lib/stopped-answer";
+import { StoppedNote } from "./stopped-note";
 import { TurnstileChallengePanel } from "./turnstile-challenge";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { SidePanel } from "./side-panel";
 import { Label } from "../ui/label";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { useInitialQuestion } from "@/hooks/use-initial-question";
 import { useFirstTokenReceived } from "@/hooks/use-first-token-received";
 import { ContentBlocksPreview } from "./ContentBlocksPreview";
-import {
-  useArtifactOpen,
-  ArtifactContent,
-  ArtifactTitle,
-  useArtifactContext,
-} from "./artifact";
+import { useArtifactOpen, useArtifactContext } from "./artifact";
 import { RegistrationPanel } from "./registration-panel";
 import { SoftwareComparisonPanel } from "./software-comparison-panel";
-
-function StickyToBottomContent(props: {
-  content: ReactNode;
-  footer?: ReactNode;
-  className?: string;
-  contentClassName?: string;
-}) {
-  const context = useStickToBottomContext();
-  return (
-    <div
-      ref={context.scrollRef}
-      style={{ width: "100%", height: "100%" }}
-      className={props.className}
-    >
-      <div
-        ref={context.contentRef}
-        className={props.contentClassName}
-      >
-        {props.content}
-      </div>
-
-      {props.footer}
-    </div>
-  );
-}
-
-function ScrollToBottom(props: { className?: string }) {
-  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
-
-  if (isAtBottom) return null;
-  return (
-    <Button
-      variant="outline"
-      className={props.className}
-      onClick={() => scrollToBottom()}
-    >
-      <ArrowDown className="h-4 w-4" />
-      <span>Scroll to bottom</span>
-    </Button>
-  );
-}
+import { XdmodChartPanel } from "./xdmod-chart-panel";
+import { COMPOSER_ID, focusComposer } from "./composer";
+import { chartViewsByMessage } from "@/lib/xdmod-chart";
+import { useChatScroll } from "@/hooks/use-chat-scroll";
+import { ScrollToBottomSlot } from "./scroll-to-bottom";
+import { comparisonsByMessage } from "@/lib/software-comparison";
 
 export function Thread() {
   const [artifactContext, setArtifactContext] = useArtifactContext();
@@ -129,12 +102,28 @@ export function Thread() {
   );
 
   const stream = useStreamContext();
-  const messages = stream.messages;
+  // Read once: a reload of this tab that cut off an answer, before this load.
+  const [cutOffs] = useState(reloadCutOffs);
+  // A run that timed out or failed left its answer cut off, as the agent saved
+  // it, and a reload's cut-off answer isn't the person's stop.
+  const messages = useMemo(
+    () =>
+      withReloadCutOffsMarked(
+        withFailedTurnMarked(stream.messages, stream.error),
+        threadId,
+        cutOffs,
+      ),
+    [stream.messages, stream.error, threadId, cutOffs],
+  );
+  // Once per update, not once per message: each answer only needs its key.
+  const chartViews = useMemo(() => chartViewsByMessage(messages), [messages]);
+  const comparisons = useMemo(() => comparisonsByMessage(messages), [messages]);
   const [firstTokenReceived, setFirstTokenReceived] = useFirstTokenReceived(
     messages,
     stream.runStatus,
   );
   const isLoading = stream.isLoading;
+  const chatScroll = useChatScroll({ threadId, contentVersion: messages });
   const challenge = isTurnstileChallenge(stream.error) ? stream.error : null;
   const awaitingCheck = !!challenge && !stream.turnstileFailed;
 
@@ -181,8 +170,28 @@ export function Thread() {
     }
   }, [stream.error, authStatus, setThreadId]);
 
-  const submitMessage = (text: string, blocks: typeof contentBlocks) => {
+  // Set by Edit: sending the edited question replaces the unanswered one.
+  const replaceOnSend = useRef(false);
+  useEffect(() => {
+    replaceOnSend.current = false;
+  }, [threadId]);
+
+  /**
+   * Sends a question. `replacing` is for Retry and Edit on an unanswered
+   * question: the new one takes that turn's place, on screen and in the
+   * thread the agent keeps, instead of following it.
+   */
+  const submitMessage = (
+    text: string,
+    blocks: typeof contentBlocks,
+    { replacing = false }: { replacing?: boolean } = {},
+  ) => {
     setFirstTokenReceived(false);
+    replaceOnSend.current = false;
+    const kept = (all: Message[]) =>
+      replacing
+        ? withoutUnansweredTurn(withFailedTurnMarked(all, stream.error))
+        : all;
 
     const newHumanMessage: Message = {
       id: uuidv4(),
@@ -193,7 +202,8 @@ export function Thread() {
       ] as Message["content"],
     };
 
-    const toolMessages = ensureToolCallsHaveResponses(stream.messages);
+    const toolMessages = ensureToolCallsHaveResponses(kept(stream.messages));
+    chatScroll.scrollToQuestion();
 
     const context =
       Object.keys(artifactContext).length > 0 ? artifactContext : undefined;
@@ -204,11 +214,12 @@ export function Thread() {
         streamMode: ["values"],
         streamSubgraphs: true,
         streamResumable: true,
+        ...(replacing && { context: { replace_stopped_turn: true } }),
         optimisticValues: (prev) => ({
           ...prev,
           context,
           messages: [
-            ...(prev.messages ?? []),
+            ...kept(prev.messages ?? []),
             ...toolMessages,
             newHumanMessage,
           ],
@@ -225,12 +236,91 @@ export function Thread() {
       awaitingCheck
     )
       return;
-    submitMessage(input, contentBlocks);
+    submitMessage(input, contentBlocks, {
+      replacing: replaceOnSend.current && !!unanswered,
+    });
     setInput("");
     setContentBlocks([]);
   };
 
+  /** A one-click question; held back while the Turnstile check is showing. */
+  const askSuggested = (question: string) => {
+    if (awaitingCheck) return;
+    submitMessage(question, []);
+  };
+
   useInitialQuestion((question) => submitMessage(question, []));
+
+  const unanswered = unansweredQuestion({
+    messages,
+    isLoading,
+    error: stream.error,
+    interrupted: !!stream.interrupt,
+    stopped: stream.stopped,
+  });
+
+  // The blocks came from this box, so they're the kind it holds.
+  const unansweredParts = () => {
+    if (!unanswered) return null;
+    const { text, blocks } = questionParts(unanswered.question);
+    return { text, blocks: blocks as unknown as typeof contentBlocks };
+  };
+
+  // Held from a Retry click until its run starts, so a double click sends once.
+  const retrying = useRef(false);
+  useEffect(() => {
+    if (isLoading) retrying.current = false;
+  }, [isLoading]);
+
+  /** Asks the unanswered question again as a new run. */
+  const retryQuestion = () => {
+    const parts = unansweredParts();
+    if (!parts || unanswered?.wrote || awaitingCheck || retrying.current)
+      return;
+    retrying.current = true;
+    submitMessage(parts.text, parts.blocks, { replacing: true });
+  };
+
+  /**
+   * Puts the unanswered question in the message box, unsent. A draft already
+   * there is kept, with the question on a new line after it.
+   */
+  const editQuestion = () => {
+    const parts = unansweredParts();
+    if (!parts) return;
+    setInput((draft) =>
+      draft.trim() ? `${draft}\n${parts.text}` : parts.text,
+    );
+    setContentBlocks((blocks) => [...blocks, ...parts.blocks]);
+    // A turn that made a change stays, so the record of it isn't lost.
+    replaceOnSend.current = !unanswered?.wrote;
+    focusComposer({ atEnd: true });
+  };
+
+  // Cancel goes away when the run stops, which would drop focus to the page.
+  // It moves to the Stopped note's Retry, or to the message box without one.
+  const retryButton = useRef<HTMLButtonElement>(null);
+  const focusAfterStop = useRef(false);
+  useEffect(() => {
+    if (isLoading || !focusAfterStop.current) return;
+    focusAfterStop.current = false;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    if (retryButton.current) retryButton.current.focus({ preventScroll: true });
+    else focusComposer();
+  });
+
+  // The agent saves an answer the page left mid-stream as a stop; remember
+  // it was a reload or a closed tab, not the Stop button.
+  const lastHuman = stream.messages.findLast((m) => m.type === "human");
+  const latestQuestion =
+    threadId && lastHuman ? cutOffKey(threadId, lastHuman) : null;
+  useEffect(() => {
+    if (!isLoading || !latestQuestion) return;
+    const onPageHide = () => rememberReloadCutOff(latestQuestion);
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, [isLoading, latestQuestion]);
 
   const chatStarted = !!threadId || !!messages.length;
   const showOfficeHours = !chatStarted && !chatHistoryOpen;
@@ -364,8 +454,10 @@ export function Thread() {
               className="absolute bottom-6 left-6 z-10 w-52 bg-white"
             />
           )}
-          <StickToBottom className="relative flex-1 overflow-hidden">
-            <StickyToBottomContent
+          <div className="relative flex-1 overflow-hidden">
+            <div
+              ref={chatScroll.scrollRef}
+              style={{ width: "100%", height: "100%" }}
               className={cn(
                 "absolute inset-0 overflow-y-scroll px-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent",
                 !chatStarted &&
@@ -376,198 +468,239 @@ export function Thread() {
                 chatStarted &&
                   "grid grid-cols-[minmax(0,1fr)] grid-rows-[1fr_auto]",
               )}
-              contentClassName="pt-8 pb-16 max-w-3xl mx-auto flex flex-col gap-4 w-full"
-              content={
-                <>
-                  {chatStarted && (
-                    <h1 className="flex pb-2">
-                      <ProgramLogo size="small" />
-                    </h1>
-                  )}
-                  {messages
-                    .filter((m) => !m.id?.startsWith(DO_NOT_RENDER_ID_PREFIX))
-                    .map((message, index) =>
-                      message.type === "human" ? (
-                        <HumanMessage
-                          key={message.id || `${message.type}-${index}`}
-                          message={message}
-                          isLoading={isLoading}
-                        />
-                      ) : (
-                        <AssistantMessage
-                          key={message.id || `${message.type}-${index}`}
-                          message={message}
-                          isLoading={isLoading}
-                          onAsk={(question) => submitMessage(question, [])}
-                        />
-                      ),
-                    )}
-                  {/* Special rendering case where there are no AI/tool messages, but there is an interrupt.
-                    We need to render it outside of the messages list, since there are no messages to render */}
-                  {hasNoAIOrToolMessages && !!stream.interrupt && (
-                    <AssistantMessage
-                      key="interrupt-msg"
-                      message={undefined}
-                      isLoading={isLoading}
-                    />
-                  )}
-                  {isLoading && !firstTokenReceived && (
-                    <AssistantMessageLoading
-                      status={stream.runStatus?.message}
-                    />
-                  )}
-                </>
-              }
-              footer={
-                <div className="sticky bottom-0 flex flex-col items-center gap-8 bg-white">
-                  {!chatStarted && (
-                    <h1 className="mb-4">
-                      <ProgramLogo />
-                    </h1>
-                  )}
-
-                  {chatStarted && (
-                    <ScrollToBottom className="animate-in fade-in-0 zoom-in-95 absolute bottom-full left-1/2 mb-4 -translate-x-1/2" />
-                  )}
-
-                  <div className="mx-auto mb-8 w-full max-w-3xl">
-                    {challenge && (
-                      <TurnstileChallengePanel
-                        siteKey={challenge.siteKey}
-                        failed={stream.turnstileFailed}
-                        onVerified={stream.resendWithToken}
-                        onFailed={stream.failChallenge}
-                      />
-                    )}
-                    <div
-                      ref={dropRef}
-                      className={cn(
-                        "relative z-10 w-full bg-white shadow-xs transition-all",
-                        dragOver
-                          ? "border-primary border-2 border-dotted"
-                          : "border-input border border-solid",
-                      )}
-                    >
-                      <form
-                        onSubmit={handleSubmit}
-                        className="mx-auto grid max-w-3xl grid-rows-[1fr_auto] gap-2"
-                      >
-                        <ContentBlocksPreview
-                          blocks={contentBlocks}
-                          onRemove={removeBlock}
-                        />
-                        <textarea
-                          value={input}
-                          onChange={(e) => setInput(e.target.value)}
-                          onPaste={handlePaste}
-                          onKeyDown={(e) => {
-                            if (
-                              e.key === "Enter" &&
-                              !e.shiftKey &&
-                              !e.metaKey &&
-                              !e.nativeEvent.isComposing
-                            ) {
-                              e.preventDefault();
-                              const el = e.target as HTMLElement | undefined;
-                              const form = el?.closest("form");
-                              form?.requestSubmit();
-                            }
-                          }}
-                          aria-label="Message"
-                          placeholder="Type your message..."
-                          className="field-sizing-content resize-none border-none bg-transparent p-3.5 pb-0 text-base text-black shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
-                        />
-
-                        <div className="flex items-center gap-6 p-2 pt-4">
-                          {program.features.fileUploads && (
-                            <>
-                              <Label
-                                htmlFor="file-input"
-                                className="flex cursor-pointer items-center gap-2"
-                              >
-                                <Plus className="size-5 text-gray-600" />
-                                <span className="text-sm text-gray-600">
-                                  Upload PDF or Image
-                                </span>
-                              </Label>
-                              <input
-                                id="file-input"
-                                type="file"
-                                onChange={handleFileUpload}
-                                multiple
-                                accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
-                                className="hidden"
-                              />
-                            </>
-                          )}
-                          {stream.isLoading ? (
-                            <Button
-                              key="stop"
-                              onClick={() => stream.stop()}
-                              className="ml-auto"
-                            >
-                              <LoaderCircle className="h-4 w-4 animate-spin" />
-                              Cancel
-                            </Button>
-                          ) : (
-                            <Button
-                              type="submit"
-                              className="ml-auto shadow-md transition-all"
-                              disabled={
-                                isLoading ||
-                                awaitingCheck ||
-                                (!input.trim() && contentBlocks.length === 0)
-                              }
-                            >
-                              Send
-                            </Button>
-                          )}
-                        </div>
-                      </form>
-                    </div>
-                    <ChatDisclaimer />
-                    {!chatStarted && (
-                      <StarterQuestions
-                        onAsk={(question) => submitMessage(question, [])}
-                      />
-                    )}
-                    {showOfficeHours && !isXlScreen && (
-                      <OfficeHours
-                        hours={officeHours}
-                        description={program.officeHours?.description ?? ""}
-                        supportUrl={supportUrl}
-                        className="mt-6"
-                      />
-                    )}
-                  </div>
-                </div>
-              }
-            />
-          </StickToBottom>
-        </motion.div>
-        <div
-          className={cn(
-            "relative flex flex-col border-l",
-            !artifactOpen && "hidden",
-          )}
-        >
-          <div className="absolute inset-0 flex min-w-[30vw] flex-col">
-            <div className="grid grid-cols-[1fr_auto] border-b p-4">
-              <ArtifactTitle className="truncate overflow-hidden" />
-              <button
-                onClick={closeArtifact}
-                aria-label="Close panel"
-                className="cursor-pointer"
+            >
+              <div
+                ref={chatScroll.contentRef}
+                className={cn(
+                  "mx-auto flex w-full max-w-3xl flex-col gap-4 pt-8",
+                  // At least the fade above the scroll-to-bottom band, so
+                  // the last line of an answer is clear of it at the end.
+                  chatStarted ? "pb-6" : "pb-16",
+                )}
               >
-                <XIcon className="size-5" />
-              </button>
+                {chatStarted && (
+                  <h1 className="flex pb-2">
+                    <ProgramLogo size="small" />
+                  </h1>
+                )}
+                {messages
+                  .filter((m) => !m.id?.startsWith(DO_NOT_RENDER_ID_PREFIX))
+                  .map((message, index, shownMessages) =>
+                    message.type === "human" ? (
+                      <HumanMessage
+                        key={message.id || `${message.type}-${index}`}
+                        message={message}
+                        isLoading={isLoading}
+                      />
+                    ) : (
+                      <Fragment key={message.id || `${message.type}-${index}`}>
+                        <AssistantMessage
+                          message={message}
+                          isLoading={isLoading}
+                          onAsk={askSuggested}
+                          awaitingCheck={awaitingCheck}
+                          chartKey={
+                            message.id
+                              ? chartViews.get(message.id)?.[0]?.key
+                              : undefined
+                          }
+                          comparisonKey={
+                            message.id ? comparisons.get(message.id) : undefined
+                          }
+                        />
+                        {/* An earlier stopped turn keeps its note; the
+                            latest one's, with Retry and Edit, is below. */}
+                        {stopReason(message) &&
+                          shownMessages[index + 1]?.type === "human" && (
+                            <p className="text-muted-foreground text-sm">
+                              {cutOffNote(stopReason(message)!)}
+                            </p>
+                          )}
+                      </Fragment>
+                    ),
+                  )}
+                {/* Special rendering case where there are no AI/tool messages, but there is an interrupt.
+                    We need to render it outside of the messages list, since there are no messages to render */}
+                {hasNoAIOrToolMessages && !!stream.interrupt && (
+                  <AssistantMessage
+                    key="interrupt-msg"
+                    message={undefined}
+                    isLoading={isLoading}
+                  />
+                )}
+                <StoppedNote
+                  turn={unanswered}
+                  retryRef={retryButton}
+                  onRetry={retryQuestion}
+                  onEdit={editQuestion}
+                />
+                {isLoading && !firstTokenReceived && (
+                  <AssistantMessageLoading status={stream.runStatus?.message} />
+                )}
+                {/* Room for a new question to scroll to the top; sized by
+                    useChatScroll. -mt-4 cancels the list's gap. */}
+                <div
+                  ref={chatScroll.spacerRef}
+                  aria-hidden
+                  data-testid="question-spacer"
+                  className="-mt-4 shrink-0"
+                />
+              </div>
+              <div
+                ref={chatScroll.footerRef}
+                className={cn(
+                  "sticky bottom-0 flex flex-col items-center bg-white",
+                  !chatStarted && "gap-8",
+                )}
+              >
+                {!chatStarted && (
+                  <h1 className="mb-4">
+                    <ProgramLogo />
+                  </h1>
+                )}
+
+                {chatStarted && (
+                  <ScrollToBottomSlot
+                    visible={!chatScroll.isAtBottom}
+                    onClick={() => {
+                      chatScroll.scrollToBottom();
+                      // The button goes away once at the end; keep focus.
+                      focusComposer();
+                    }}
+                  />
+                )}
+
+                {/* Tighter on a phone, where the footer would otherwise take more
+                    than half of a small screen. */}
+                <div className="mx-auto mb-3 w-full max-w-3xl sm:mb-8">
+                  {challenge && (
+                    <TurnstileChallengePanel
+                      siteKey={challenge.siteKey}
+                      failed={stream.turnstileFailed}
+                      onVerified={stream.resendWithToken}
+                      onFailed={stream.failChallenge}
+                    />
+                  )}
+                  <div
+                    ref={dropRef}
+                    className={cn(
+                      "relative z-10 w-full bg-white shadow-xs transition-all",
+                      dragOver
+                        ? "border-primary border-2 border-dotted"
+                        : "border-input border border-solid",
+                    )}
+                  >
+                    <form
+                      onSubmit={handleSubmit}
+                      className="mx-auto grid max-w-3xl grid-rows-[1fr_auto] gap-2"
+                    >
+                      <ContentBlocksPreview
+                        blocks={contentBlocks}
+                        onRemove={removeBlock}
+                      />
+                      <textarea
+                        id={COMPOSER_ID}
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onPaste={handlePaste}
+                        onKeyDown={(e) => {
+                          if (
+                            e.key === "Enter" &&
+                            !e.shiftKey &&
+                            !e.metaKey &&
+                            !e.nativeEvent.isComposing
+                          ) {
+                            e.preventDefault();
+                            const el = e.target as HTMLElement | undefined;
+                            const form = el?.closest("form");
+                            form?.requestSubmit();
+                          }
+                        }}
+                        aria-label="Message"
+                        placeholder="Type your message..."
+                        className="field-sizing-content max-h-[30dvh] resize-none overflow-y-auto border-none bg-transparent p-3.5 pb-0 text-base text-black shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
+                      />
+
+                      <div className="flex items-center gap-6 p-2 sm:pt-4">
+                        {program.features.fileUploads && (
+                          <>
+                            <Label
+                              htmlFor="file-input"
+                              className="flex cursor-pointer items-center gap-2"
+                            >
+                              <Plus className="size-5 text-gray-600" />
+                              <span className="text-sm text-gray-600">
+                                Upload PDF or Image
+                              </span>
+                            </Label>
+                            <input
+                              id="file-input"
+                              type="file"
+                              onChange={handleFileUpload}
+                              multiple
+                              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+                              className="hidden"
+                            />
+                          </>
+                        )}
+                        {stream.isLoading ? (
+                          <Button
+                            key="stop"
+                            onClick={() => {
+                              focusAfterStop.current = true;
+                              stream.stop();
+                            }}
+                            className="ml-auto"
+                          >
+                            <LoaderCircle className="h-4 w-4 animate-spin" />
+                            Cancel
+                          </Button>
+                        ) : (
+                          <Button
+                            type="submit"
+                            className="ml-auto shadow-md transition-all"
+                            disabled={
+                              isLoading ||
+                              awaitingCheck ||
+                              (!input.trim() && contentBlocks.length === 0)
+                            }
+                          >
+                            Send
+                          </Button>
+                        )}
+                      </div>
+                    </form>
+                  </div>
+                  <ChatDisclaimer />
+                  {!chatStarted && (
+                    <StarterQuestions
+                      onAsk={(question) => submitMessage(question, [])}
+                    />
+                  )}
+                  {showOfficeHours && !isXlScreen && (
+                    <OfficeHours
+                      hours={officeHours}
+                      description={program.officeHours?.description ?? ""}
+                      supportUrl={supportUrl}
+                      className="mt-6"
+                    />
+                  )}
+                </div>
+              </div>
             </div>
-            <ArtifactContent className="relative min-h-0 flex-grow overflow-hidden" />
           </div>
-        </div>
+        </motion.div>
+        <SidePanel
+          open={artifactOpen}
+          onClose={closeArtifact}
+        />
       </div>
       <RegistrationPanel onConfirm={(text) => submitMessage(text, [])} />
       <SoftwareComparisonPanel />
+      <XdmodChartPanel
+        onAsk={askSuggested}
+        awaitingCheck={awaitingCheck}
+      />
     </div>
   );
 }

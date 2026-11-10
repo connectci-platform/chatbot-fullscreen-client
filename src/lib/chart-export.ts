@@ -1,0 +1,493 @@
+import type {
+  CaptionFacts,
+  CaptionWarning,
+  ChartView,
+  EarlyEnd,
+} from "./xdmod-chart";
+
+const WARNING_TEXT: Record<CaptionWarning, string> = {
+  "waiting-not-counted":
+    "Jobs still waiting aren't counted, and the last few days may be incomplete.",
+  "not-comparable-across-resources":
+    "CPU hours don't allow for each resource's compute power per core, so they aren't comparable across resources. ACE measures are.",
+  "mean-of-jobs":
+    "This is an average per job, so a few long jobs can pull it up.",
+};
+
+const DAY = /^(\d{4})-(\d{2})-(\d{2})/;
+
+/** A UTC date, so "2026-08-01" stays Aug 1 wherever the reader is. */
+export function parseDay(iso: string): Date | null {
+  const m = DAY.exec(iso);
+  if (!m) return null;
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+}
+
+/** "2026-08-01" as "Aug 1, 2026". Anything else comes back unchanged. */
+export function formatDay(iso: string): string {
+  const day = parseDay(iso);
+  if (!day) return iso;
+  return day.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/** A period's start date, named at the chart's unit: "Aug 2026", "Q3 2026". */
+export function formatPeriod(start: string, unit?: string): string {
+  const day = parseDay(start);
+  if (!day) return start;
+  const year = day.getUTCFullYear();
+  switch (unit) {
+    case "Year":
+      return String(year);
+    case "Quarter":
+      return `Q${Math.floor(day.getUTCMonth() / 3) + 1} ${year}`;
+    case "Month":
+      return day.toLocaleDateString("en-US", {
+        month: "short",
+        year: "numeric",
+        timeZone: "UTC",
+      });
+    default:
+      return formatDay(start);
+  }
+}
+
+/**
+ * Where XDMoD's data stops, as far as the caption can honestly say. A day
+ * is said when it's before the counted end. A period start is not a day the
+ * data stops (the period may be full), so it's said only as "no data after"
+ * that period, and only when later periods in the range are empty.
+ */
+function dataEnd(
+  caption: CaptionFacts,
+): { day: string } | { period: string } | null {
+  const through = caption.dataThrough;
+  if (!through) return null;
+  if ((caption.dataThroughPrecision ?? "day") === "day") {
+    return through < caption.counted.end ? { day: through } : null;
+  }
+  return caption.noDataAfter
+    ? { period: formatPeriod(through, caption.unit) }
+    : null;
+}
+
+/** Which ranks a chart past the top shows: "4 to 8". */
+function rankRange(caption: CaptionFacts, shown: number): string | null {
+  const offset = caption.offset ?? 0;
+  return offset > 0 && shown > 0 ? `${offset + 1} to ${offset + shown}` : null;
+}
+
+/** How many of how many the chart shows, or null when it shows them all. */
+function shownLine(caption: CaptionFacts, shown: number): string | null {
+  const ranks = rankRange(caption, shown);
+  if (ranks) {
+    const offset = caption.offset ?? 0;
+    // XDMoD pages an ordered dimension in bucket order, not by value.
+    if (caption.ordered) {
+      const of = caption.total === undefined ? "" : ` of ${caption.total}`;
+      return `Showing buckets ${ranks}${of}, leaving out the first ${offset}.`;
+    }
+    if (caption.total !== undefined) {
+      return `Showing ranks ${ranks} of ${caption.total} ${caption.groupNoun ?? "groups"}, not the top ${offset}.`;
+    }
+    return `Showing ranks ${ranks}, not the top ${offset}${caption.hasMore ? "; XDMoD has more" : ""}.`;
+  }
+  if (!caption.hasMore) return null;
+  if (caption.total === undefined) {
+    return `Showing the top ${shown}; XDMoD has more.`;
+  }
+  return caption.ordered
+    ? `Showing ${shown} of ${caption.total} buckets.`
+    : `Showing the top ${shown} of ${caption.total} ${caption.groupNoun ?? "groups"}.`;
+}
+
+/** When an early end is, at the precision it's known. */
+function earlyEndWhen(end: EarlyEnd, unit?: string): string {
+  return end.precision === "day"
+    ? formatDay(end.through)
+    : formatPeriod(end.through, unit);
+}
+
+const MAX_LISTED_NAMES = 6;
+
+/** "A", "A and B", "A, B and C", past six "A, B, C, D, E, F and 2 more". */
+function listNames(names: string[]): string {
+  if (names.length > MAX_LISTED_NAMES) {
+    return `${names.slice(0, MAX_LISTED_NAMES).join(", ")} and ${names.length - MAX_LISTED_NAMES} more`;
+  }
+  return names.length < 2
+    ? names.join("")
+    : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/**
+ * The early ends as one sentence, worded only as strongly as is known, with
+ * names that stop on the same date together.
+ */
+function earlyEndsLine(ends: EarlyEnd[], unit?: string): string {
+  const groups = new Map<
+    string,
+    { source: EarlyEnd["source"]; when: string; names: string[] }
+  >();
+  for (const end of ends) {
+    const when = earlyEndWhen(end, unit);
+    const key = `${end.source}|${when}`;
+    const group = groups.get(key) ?? { source: end.source, when, names: [] };
+    group.names.push(end.name);
+    groups.set(key, group);
+  }
+  const text = [...groups.values()]
+    .map((g) =>
+      g.source === "resource"
+        ? `XDMoD has no data from ${listNames(g.names)} after ${g.when}`
+        : `nothing is recorded for ${listNames(g.names)} after ${g.when}`,
+    )
+    .join("; ");
+  return `${text[0].toUpperCase()}${text.slice(1)}.`;
+}
+
+/**
+ * The caption under a chart, one line per fact, in reading order. The panel
+ * and the PNG both draw these, so they always say the same thing. `shown` is
+ * how many series or bars the chart draws.
+ */
+export function captionLines(caption: CaptionFacts, shown: number): string[] {
+  const range = `${formatDay(caption.counted.start)} to ${formatDay(caption.counted.end)}`;
+  const lines = [`${caption.measure}: ${caption.definition}`];
+  // Right under the definition, which reads as ACCESS-wide.
+  if (caption.filters.length > 0) {
+    lines.push(`Filtered to ${caption.filters.join("; ")}`);
+  }
+  lines.push(
+    caption.unit ? `${range}, by ${caption.unit.toLowerCase()}` : range,
+  );
+  // XDMoD's public data often stops weeks before the range does.
+  const end = dataEnd(caption);
+  if (end) {
+    const lead =
+      "day" in end
+        ? `XDMoD has data through ${formatDay(end.day)}`
+        : `XDMoD has no data after ${end.period}`;
+    lines.push(
+      caption.partialPeriod
+        ? `${lead}, so ${formatPeriod(caption.partialPeriod, caption.unit)} may be partial.`
+        : `${lead}.`,
+    );
+  }
+  if (caption.earlyEnds?.length) {
+    lines.push(earlyEndsLine(caption.earlyEnds, caption.unit));
+  }
+  const showing = shownLine(caption, shown);
+  if (showing) lines.push(showing);
+  // A partial period already says the end isn't settled.
+  if (caption.incomplete && !caption.partialPeriod) {
+    lines.push(
+      caption.unit
+        ? "The last period is still in progress."
+        : "The range runs to today, so it's still in progress.",
+    );
+  }
+  for (const warning of caption.warnings) lines.push(WARNING_TEXT[warning]);
+  lines.push(
+    `Source: ${caption.source}, retrieved ${formatDay(caption.retrieved)}`,
+  );
+  return lines;
+}
+
+/** How many series or bars a view draws. */
+export function shownCount(view: ChartView): number {
+  return view.kind === "line" ? view.series.length : view.bars.length;
+}
+
+function csvCell(value: string | number | null): string {
+  if (value === null) return "";
+  // A spreadsheet runs a text cell that starts like a formula; names come
+  // from XDMoD, so they're kept as text. Numbers stay numbers.
+  const text =
+    typeof value === "string" && /^[=+\-@\t\r]/.test(value)
+      ? `'${value}`
+      : String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+const csvRow = (cells: (string | number | null)[]) =>
+  cells.map(csvCell).join(",");
+
+/**
+ * The chart's numbers as CSV: what was counted first, so the file still
+ * makes sense on its own, then one row per period or bar. Missing values are
+ * empty cells.
+ */
+export function chartCsv(view: ChartView): string {
+  const { caption } = view;
+  const end = dataEnd(caption);
+  const rows: (string | number | null)[][] = [
+    ["Measure", caption.measure],
+    ["Counted", `${caption.counted.start} to ${caption.counted.end}`],
+    ...(end
+      ? [
+          ("day" in end
+            ? ["Data through", end.day]
+            : ["No data after", end.period]) as [string, string],
+        ]
+      : []),
+    ...(caption.partialPeriod
+      ? [
+          [
+            "Partial period",
+            formatPeriod(caption.partialPeriod, caption.unit),
+          ] as [string, string],
+        ]
+      : []),
+    ...(caption.earlyEnds ?? []).map(
+      (e) =>
+        [
+          e.source === "resource"
+            ? `No data after (${e.name})`
+            : `Nothing recorded after (${e.name})`,
+          e.precision === "day" ? e.through : earlyEndWhen(e, caption.unit),
+        ] as [string, string],
+    ),
+    ["Filters", caption.filters.length ? caption.filters.join("; ") : "None"],
+    ...(rankRange(caption, shownCount(view))
+      ? [
+          (caption.ordered
+            ? ["Buckets", `${rankRange(caption, shownCount(view))}`]
+            : [
+                "Ranks",
+                `${rankRange(caption, shownCount(view))} by value`,
+              ]) as [string, string],
+        ]
+      : []),
+    ["Retrieved", caption.retrieved],
+    ["Source", caption.source],
+    ...(view.link ? [["XDMoD link", view.link] as [string, string]] : []),
+  ];
+  const lines = rows.map(csvRow);
+  lines.push("");
+  if (view.kind === "line") {
+    lines.push(csvRow(["Period", ...view.series.map((s) => s.name)]));
+    for (const [i, start] of periods(view).entries()) {
+      lines.push(
+        csvRow([start, ...view.series.map((s) => s.points[i]?.value ?? null)]),
+      );
+    }
+  } else {
+    lines.push(csvRow([view.dimension, caption.measure]));
+    for (const bar of view.bars) lines.push(csvRow([bar.name, bar.value]));
+  }
+  return lines.join("\n");
+}
+
+/**
+ * The periods of a line chart, from its longest series. XDMoD gives every
+ * series the same periods, so they line up by index.
+ */
+export function periods(view: ChartView): string[] {
+  let longest: string[] = [];
+  for (const s of view.series) {
+    if (s.points.length > longest.length) {
+      longest = s.points.map((p) => p.start);
+    }
+  }
+  return longest;
+}
+
+/**
+ * The index of the period that contains `day`: the last one starting on or
+ * before it. XDMoD's data_through can fall mid-period (Oct 19 in a monthly
+ * chart), so an exact match on period starts would miss it. -1 if `day` is
+ * before the first period.
+ */
+export function periodContaining(starts: string[], day: string): number {
+  const target = day.slice(0, 10);
+  let found = -1;
+  starts.forEach((start, i) => {
+    if (start.slice(0, 10) <= target) found = i;
+  });
+  return found;
+}
+
+/** A file name (no extension) from the measure and the counted range. */
+export function chartFileName(view: ChartView): string {
+  const slug = view.caption.measure
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  const { start, end } = view.caption.counted;
+  return `xdmod-${slug}-${start}-to-${end}`;
+}
+
+function saveBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  // Let the click start the download before the URL goes away.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+export function downloadChartCsv(view: ChartView): void {
+  saveBlob(
+    new Blob([chartCsv(view)], { type: "text/csv;charset=utf-8" }),
+    `${chartFileName(view)}.csv`,
+  );
+}
+
+/** Greedy word wrap; a word wider than the line gets a line of its own. */
+export function wrapText(
+  text: string,
+  maxWidth: number,
+  measure: (s: string) => number,
+): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && measure(next) > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = next;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Couldn't draw the chart image"));
+    img.src = src;
+  });
+}
+
+export type LegendEntry = { name: string; color: string };
+
+const SCALE = 2;
+const PAD = 16;
+const FONT = "Archivo, Arial, Helvetica, sans-serif";
+const TEXT = "#0b0b0b";
+const MUTED = "#52514e";
+const CAPTION_SIZE = 12;
+const CAPTION_LINE = 17;
+const LEGEND_LINE = 20;
+const LEGEND_FONT = `13px ${FONT}`;
+const LEGEND_INDENT = 18;
+const TITLE_FONT = `600 15px ${FONT}`;
+const TITLE_LINE = 21;
+
+/**
+ * Saves the chart as a PNG with its legend and caption, so the picture
+ * carries its own context when it's pasted somewhere else. The chart's SVG is
+ * drawn as an image, so its colors must be literal (no CSS variables).
+ */
+export async function downloadChartPng(
+  svg: SVGSVGElement,
+  caption: CaptionFacts,
+  fileName: string,
+  {
+    legend = [],
+    shown = 1,
+    title,
+  }: { legend?: LegendEntry[]; shown?: number; title?: string } = {},
+): Promise<void> {
+  const width =
+    Number(svg.getAttribute("width")) || svg.getBoundingClientRect().width;
+  const height =
+    Number(svg.getAttribute("height")) || svg.getBoundingClientRect().height;
+
+  const clone = svg.cloneNode(true) as SVGSVGElement;
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  clone.setAttribute("width", String(width));
+  clone.setAttribute("height", String(height));
+  clone.setAttribute("font-family", FONT);
+  const markup = new XMLSerializer().serializeToString(clone);
+  const img = await loadImage(
+    `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`,
+  );
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Couldn't draw the chart image");
+
+  const textWidth = width - PAD * 2;
+  ctx.font = `${CAPTION_SIZE}px ${FONT}`;
+  const lines = captionLines(caption, shown).flatMap((line) =>
+    wrapText(line, textWidth, (s) => ctx.measureText(s).width),
+  );
+  ctx.font = TITLE_FONT;
+  const titleLines = title
+    ? wrapText(title, textWidth, (s) => ctx.measureText(s).width)
+    : [];
+  const titleHeight = titleLines.length
+    ? titleLines.length * TITLE_LINE + PAD / 2
+    : 0;
+  ctx.font = LEGEND_FONT;
+  const legendLines = (legend.length > 1 ? legend : []).map((entry) => ({
+    color: entry.color,
+    lines: wrapText(
+      entry.name,
+      textWidth - LEGEND_INDENT,
+      (s) => ctx.measureText(s).width,
+    ),
+  }));
+  const legendHeight =
+    legendLines.reduce((n, entry) => n + entry.lines.length, 0) * LEGEND_LINE;
+  const total =
+    PAD +
+    titleHeight +
+    legendHeight +
+    height +
+    PAD / 2 +
+    lines.length * CAPTION_LINE +
+    PAD;
+
+  canvas.width = width * SCALE;
+  canvas.height = total * SCALE;
+  ctx.scale(SCALE, SCALE);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, total);
+  ctx.textBaseline = "top";
+
+  let y = PAD;
+  ctx.font = TITLE_FONT;
+  ctx.fillStyle = TEXT;
+  for (const line of titleLines) {
+    ctx.fillText(line, PAD, y);
+    y += TITLE_LINE;
+  }
+  if (titleLines.length) y += PAD / 2;
+  ctx.font = LEGEND_FONT;
+  for (const entry of legendLines) {
+    ctx.fillStyle = entry.color;
+    ctx.fillRect(PAD, y + 5, 12, 3);
+    ctx.fillStyle = TEXT;
+    for (const line of entry.lines) {
+      ctx.fillText(line, PAD + LEGEND_INDENT, y);
+      y += LEGEND_LINE;
+    }
+  }
+  ctx.drawImage(img, 0, y, width, height);
+  y += height + PAD / 2;
+
+  ctx.font = `${CAPTION_SIZE}px ${FONT}`;
+  ctx.fillStyle = MUTED;
+  for (const line of lines) {
+    ctx.fillText(line, PAD, y);
+    y += CAPTION_LINE;
+  }
+
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/png"),
+  );
+  if (!blob) throw new Error("Couldn't save the chart image");
+  saveBlob(blob, `${fileName}.png`);
+}
