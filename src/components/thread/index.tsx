@@ -49,6 +49,7 @@ import {
 import { StoppedNote } from "./stopped-note";
 import { TurnstileChallengePanel } from "./turnstile-challenge";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useQuestionHistory } from "@/hooks/use-question-history";
 import { SidePanel } from "./side-panel";
 import { Label } from "../ui/label";
 import { useFileUpload } from "@/hooks/use-file-upload";
@@ -125,6 +126,24 @@ export function Thread() {
     getQuestion: stream.challengedQuestion,
     setInput,
     setBlocks: setContentBlocks,
+  });
+
+  // This conversation's questions, for Up and Down in the message box.
+  const askedQuestions = useMemo(
+    () =>
+      messages
+        .filter(
+          (m) =>
+            m.type === "human" && !m.id?.startsWith(DO_NOT_RENDER_ID_PREFIX),
+        )
+        .map((m) => questionParts(m).text),
+    [messages],
+  );
+  const questionHistory = useQuestionHistory({
+    questions: askedQuestions,
+    input,
+    setInput,
+    resetKey: threadId,
   });
 
   const lastError = useRef<string | undefined>(undefined);
@@ -602,6 +621,7 @@ export function Thread() {
                           onChange={(e) => setInput(e.target.value)}
                           onPaste={handlePaste}
                           onKeyDown={(e) => {
+                            questionHistory.onKeyDown(e);
                             if (
                               e.key === "Enter" &&
                               !e.shiftKey &&
