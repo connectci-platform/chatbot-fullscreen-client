@@ -21,6 +21,7 @@ import { useOfficeHours } from "@/hooks/useOfficeHours";
 import { getSupportUrl } from "@/lib/agent-token";
 import { TooltipIconButton } from "./tooltip-icon-button";
 import {
+  ArrowUp,
   LoaderCircle,
   PanelRightOpen,
   PanelRightClose,
@@ -67,7 +68,7 @@ import { XdmodChartPanel } from "./xdmod-chart-panel";
 import { COMPOSER_ID, focusComposer } from "./composer";
 import { chartViewsByMessage } from "@/lib/xdmod-chart";
 import { useChatScroll } from "@/hooks/use-chat-scroll";
-import { ScrollToBottomSlot } from "./scroll-to-bottom";
+import { ScrollToBottomButton } from "./scroll-to-bottom";
 import { comparisonsByMessage } from "@/lib/software-comparison";
 
 export function Thread() {
@@ -323,6 +324,32 @@ export function Thread() {
   }, [isLoading, latestQuestion]);
 
   const chatStarted = !!threadId || !!messages.length;
+
+  const historyToggle = (!chatHistoryOpen || !isLargeScreen) && (
+    <Button
+      className="hover:bg-gray-100"
+      variant="ghost"
+      aria-label={chatHistoryOpen ? "Hide conversations" : "Show conversations"}
+      onClick={() => setChatHistoryOpen((p) => !p)}
+    >
+      {chatHistoryOpen ? (
+        <PanelRightOpen className="size-5" />
+      ) : (
+        <PanelRightClose className="size-5" />
+      )}
+    </Button>
+  );
+  const newConversation = (
+    <TooltipIconButton
+      size="lg"
+      className="p-4"
+      tooltip="New conversation"
+      variant="ghost"
+      onClick={() => setThreadId(null)}
+    >
+      <SquarePen className="size-5" />
+    </TooltipIconButton>
+  );
   const showOfficeHours = !chatStarted && !chatHistoryOpen;
   const hasNoAIOrToolMessages = !messages.find(
     (m) => m.type === "ai" || m.type === "tool",
@@ -381,68 +408,21 @@ export function Thread() {
               : { duration: 0 }
           }
         >
+          {/* On a wide screen the bar floats over the corners, clear of
+              the centered conversation. Narrower, it's at the top of the
+              conversation below and scrolls away with it. */}
           {!chatStarted && (
-            <div className="absolute top-0 left-0 z-10 flex w-full items-center justify-between gap-3 p-2 pl-4">
-              <div>
-                {(!chatHistoryOpen || !isLargeScreen) && (
-                  <Button
-                    className="hover:bg-gray-100"
-                    variant="ghost"
-                    aria-label={
-                      chatHistoryOpen
-                        ? "Hide conversations"
-                        : "Show conversations"
-                    }
-                    onClick={() => setChatHistoryOpen((p) => !p)}
-                  >
-                    {chatHistoryOpen ? (
-                      <PanelRightOpen className="size-5" />
-                    ) : (
-                      <PanelRightClose className="size-5" />
-                    )}
-                  </Button>
-                )}
-              </div>
+            <div className="absolute top-0 left-0 z-10 hidden w-full items-center justify-between gap-3 p-2 pl-4 xl:flex">
+              <div>{historyToggle}</div>
             </div>
           )}
           {chatStarted && (
-            <div className="relative z-10 flex items-center justify-between gap-3 p-2 xl:absolute xl:inset-x-0 xl:top-0">
+            <div className="absolute inset-x-0 top-0 z-10 hidden items-center justify-between gap-3 p-2 xl:flex">
               <div className="relative flex items-center justify-start gap-2">
-                <div className="absolute left-0 z-10">
-                  {(!chatHistoryOpen || !isLargeScreen) && (
-                    <Button
-                      className="hover:bg-gray-100"
-                      variant="ghost"
-                      aria-label={
-                        chatHistoryOpen
-                          ? "Hide conversations"
-                          : "Show conversations"
-                      }
-                      onClick={() => setChatHistoryOpen((p) => !p)}
-                    >
-                      {chatHistoryOpen ? (
-                        <PanelRightOpen className="size-5" />
-                      ) : (
-                        <PanelRightClose className="size-5" />
-                      )}
-                    </Button>
-                  )}
-                </div>
+                <div className="absolute left-0 z-10">{historyToggle}</div>
               </div>
 
-              <div className="flex items-center gap-4">
-                <TooltipIconButton
-                  size="lg"
-                  className="p-4"
-                  tooltip="New conversation"
-                  variant="ghost"
-                  onClick={() => setThreadId(null)}
-                >
-                  <SquarePen className="size-5" />
-                </TooltipIconButton>
-              </div>
-
-              <div className="from-background to-background/0 absolute inset-x-0 top-full h-5 bg-gradient-to-b xl:hidden" />
+              <div className="flex items-center gap-4">{newConversation}</div>
             </div>
           )}
 
@@ -460,22 +440,33 @@ export function Thread() {
               style={{ width: "100%", height: "100%" }}
               className={cn(
                 "absolute inset-0 overflow-y-scroll px-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent",
-                !chatStarted &&
-                  "flex flex-col items-stretch pt-[4vh] sm:pt-[16vh]",
+                !chatStarted && "flex flex-col items-stretch xl:pt-[16vh]",
                 // minmax(0,1fr): without it the grid column grows to fit
                 // the widest unbreakable text (a long path or URL) and the
                 // whole chat scrolls sideways on a phone.
+                // The first row is the narrow screens' top bar.
                 chatStarted &&
-                  "grid grid-cols-[minmax(0,1fr)] grid-rows-[1fr_auto]",
+                  "grid grid-cols-[minmax(0,1fr)] grid-rows-[auto_1fr_auto] xl:grid-rows-[1fr_auto]",
               )}
             >
               <div
+                data-testid="thread-top-bar"
+                className="-mx-2 flex items-center justify-between gap-3 py-2 xl:hidden"
+              >
+                <div>{historyToggle}</div>
+                {chatStarted && newConversation}
+              </div>
+              <div
                 ref={chatScroll.contentRef}
                 className={cn(
-                  "mx-auto flex w-full max-w-3xl flex-col gap-4 pt-8",
+                  "mx-auto flex w-full max-w-3xl flex-col gap-4 xl:pt-8",
                   // At least the fade above the scroll-to-bottom band, so
                   // the last line of an answer is clear of it at the end.
-                  chatStarted ? "pb-6" : "pb-16",
+                  // The empty screen keeps its space above the logo, less
+                  // the top bar's row on a narrow screen.
+                  chatStarted
+                    ? "pb-6"
+                    : "pt-[max(0px,calc(4vh-20px))] pb-16 sm:pt-[calc(16vh-20px)] xl:pt-8",
                 )}
               >
                 {chatStarted && (
@@ -549,8 +540,11 @@ export function Thread() {
               <div
                 ref={chatScroll.footerRef}
                 className={cn(
-                  "sticky bottom-0 flex flex-col items-center bg-white",
-                  !chatStarted && "gap-8",
+                  "flex flex-col items-center bg-white",
+                  // Pinned under the messages. The empty screen has none,
+                  // and pinned on a short screen it would ride up over the
+                  // top bar.
+                  chatStarted ? "sticky bottom-0" : "gap-8",
                 )}
               >
                 {!chatStarted && (
@@ -559,20 +553,19 @@ export function Thread() {
                   </h1>
                 )}
 
-                {chatStarted && (
-                  <ScrollToBottomSlot
-                    visible={!chatScroll.isAtBottom}
-                    onClick={() => {
-                      chatScroll.scrollToBottom();
-                      // The button goes away once at the end; keep focus.
-                      focusComposer();
-                    }}
-                  />
-                )}
-
                 {/* Tighter on a phone, where the footer would otherwise take more
                     than half of a small screen. */}
-                <div className="mx-auto mb-3 w-full max-w-3xl sm:mb-8">
+                <div className="relative mx-auto mb-2 w-full max-w-3xl sm:mb-4">
+                  {chatStarted && (
+                    <ScrollToBottomButton
+                      visible={!chatScroll.isAtBottom}
+                      onClick={() => {
+                        chatScroll.scrollToBottom();
+                        // The button goes away once at the end; keep focus.
+                        focusComposer();
+                      }}
+                    />
+                  )}
                   {challenge && (
                     <TurnstileChallengePanel
                       siteKey={challenge.siteKey}
@@ -592,44 +585,23 @@ export function Thread() {
                   >
                     <form
                       onSubmit={handleSubmit}
-                      className="mx-auto grid max-w-3xl grid-rows-[1fr_auto] gap-2"
+                      className="mx-auto flex max-w-3xl flex-col"
                     >
                       <ContentBlocksPreview
                         blocks={contentBlocks}
                         onRemove={removeBlock}
                       />
-                      <textarea
-                        id={COMPOSER_ID}
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onPaste={handlePaste}
-                        onKeyDown={(e) => {
-                          if (
-                            e.key === "Enter" &&
-                            !e.shiftKey &&
-                            !e.metaKey &&
-                            !e.nativeEvent.isComposing
-                          ) {
-                            e.preventDefault();
-                            const el = e.target as HTMLElement | undefined;
-                            const form = el?.closest("form");
-                            form?.requestSubmit();
-                          }
-                        }}
-                        aria-label="Message"
-                        placeholder="Type your message..."
-                        className="field-sizing-content max-h-[30dvh] resize-none overflow-y-auto border-none bg-transparent p-3.5 pb-0 text-base text-black shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
-                      />
-
-                      <div className="flex items-center gap-6 p-2 sm:pt-4">
+                      {/* The box and its buttons on one row, Send inside the
+                          box at the right. */}
+                      <div className="flex items-end">
                         {program.features.fileUploads && (
                           <>
                             <Label
                               htmlFor="file-input"
-                              className="flex cursor-pointer items-center gap-2"
+                              className="flex size-11 shrink-0 cursor-pointer items-center justify-center"
                             >
                               <Plus className="size-5 text-gray-600" />
-                              <span className="text-sm text-gray-600">
+                              <span className="sr-only">
                                 Upload PDF or Image
                               </span>
                             </Label>
@@ -643,29 +615,63 @@ export function Thread() {
                             />
                           </>
                         )}
+                        <textarea
+                          id={COMPOSER_ID}
+                          value={input}
+                          onChange={(e) => setInput(e.target.value)}
+                          onPaste={handlePaste}
+                          onKeyDown={(e) => {
+                            if (
+                              e.key === "Enter" &&
+                              !e.shiftKey &&
+                              !e.metaKey &&
+                              !e.nativeEvent.isComposing
+                            ) {
+                              e.preventDefault();
+                              const el = e.target as HTMLElement | undefined;
+                              const form = el?.closest("form");
+                              form?.requestSubmit();
+                            }
+                          }}
+                          aria-label="Message"
+                          placeholder="Type your message..."
+                          rows={1}
+                          // One line to start, growing with the question.
+                          className="field-sizing-content max-h-[30dvh] min-h-11 min-w-0 flex-1 resize-none overflow-y-auto border-none bg-transparent px-3 py-2.5 text-base leading-6 text-black shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
+                        />
                         {stream.isLoading ? (
                           <Button
                             key="stop"
+                            type="button"
+                            size="icon"
+                            aria-label="Cancel"
                             onClick={() => {
                               focusAfterStop.current = true;
                               stream.stop();
                             }}
-                            className="ml-auto"
+                            className="size-11 shrink-0"
                           >
-                            <LoaderCircle className="h-4 w-4 animate-spin" />
-                            Cancel
+                            <LoaderCircle
+                              aria-hidden
+                              className="size-5 animate-spin"
+                            />
                           </Button>
                         ) : (
                           <Button
                             type="submit"
-                            className="ml-auto shadow-md transition-all"
+                            size="icon"
+                            aria-label="Send"
+                            className="size-11 shrink-0"
                             disabled={
                               isLoading ||
                               awaitingCheck ||
                               (!input.trim() && contentBlocks.length === 0)
                             }
                           >
-                            Send
+                            <ArrowUp
+                              aria-hidden
+                              className="size-5"
+                            />
                           </Button>
                         )}
                       </div>

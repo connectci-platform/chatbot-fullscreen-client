@@ -19,8 +19,7 @@ export const access: ProgramConfig = {
   accountName: "ACCESS account",
   supportUrl: "https://support.access-ci.org",
   privacyUrl: "https://support.access-ci.org/tools/access-qa-tool/privacy",
-  disclaimer:
-    "AI-powered responses may not always be accurate. Don't share passwords or secrets.",
+  disclaimer: "AI can make mistakes. Don't share passwords or secrets.",
   features: { fileUploads: false, siteHeader: false },
   starterQuestions: [
     "Sign me up for an upcoming GPU training",
@@ -33,6 +32,28 @@ export const access: ProgramConfig = {
   officeHours: {
     affiliation: "access_nairr_office_hours",
     description: "Talk with ACCESS staff.",
+  },
+  // The links the ACCESS site footer (@access-ci/ui) requires, same URLs.
+  // Its awards sentence is shortened to a link to the page that lists them.
+  siteLinks: {
+    label: "ACCESS links",
+    acknowledgment: {
+      text: "ACCESS is supported by",
+      linkText: "NSF awards",
+      href: "https://access-ci.org/about/acknowledging-access/",
+    },
+    links: [
+      { label: "Contact ACCESS", href: "https://access-ci.org/contact/" },
+      {
+        label: "Acceptable Use",
+        href: "https://access-ci.org/acceptable-use/",
+      },
+      {
+        label: "Code of Conduct",
+        href: "https://access-ci.org/code-of-conduct/",
+      },
+      { label: "Privacy Policy", href: "https://access-ci.org/privacy-policy" },
+    ],
   },
   colors: {
     primary: "#fec340",
