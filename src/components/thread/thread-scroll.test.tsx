@@ -69,9 +69,9 @@ vi.mock("@/hooks/use-chat-scroll", () => ({
 }));
 vi.mock("@/hooks/useMediaQuery", () => ({ useMediaQuery: () => true }));
 
-function renderThread() {
+function renderThread(searchParams = "?threadId=t-1") {
   return render(
-    <NuqsTestingAdapter searchParams="?threadId=t-1">
+    <NuqsTestingAdapter searchParams={searchParams}>
       <Thread />
     </NuqsTestingAdapter>,
   );
@@ -179,5 +179,51 @@ describe("Thread scrolling", () => {
     renderThread();
     const list = screen.getByText("What is Anvil?").closest(".max-w-3xl");
     expect(list).toHaveClass("pb-6");
+  });
+});
+
+describe("Thread layout", () => {
+  beforeEach(() => {
+    stream.messages = [
+      question,
+      { id: "a-1", type: "ai", content: "Anvil is a supercomputer." },
+    ];
+    stream.isLoading = false;
+    stream.error = undefined;
+    stream.stopped = false;
+  });
+
+  it.each([
+    ["a conversation", "?threadId=t-1"],
+    ["the empty screen", ""],
+  ])(
+    "gives the top bar on %s a solid background, above the messages rather than over them",
+    (_, searchParams) => {
+      if (!searchParams) stream.messages = [];
+      renderThread(searchParams);
+      const bar = screen.getByTestId("thread-top-bar");
+      expect(
+        within(bar).getByRole("button", { name: "Show conversations" }),
+      ).toBeInTheDocument();
+      expect(bar).toHaveClass("bg-white");
+      // Positioned over the scrolling messages, text would pass under it.
+      expect(bar.className).not.toMatch(/(^|\s|:)absolute(\s|$)/);
+      expect(
+        bar.compareDocumentPosition(
+          screen.getByRole("textbox", { name: "Message" }),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    },
+  );
+
+  it("keeps a swipe in the conversation from scrolling the page to the footer", () => {
+    renderThread();
+    const scroller = screen
+      .getByRole("textbox", { name: "Message" })
+      .closest(".overflow-y-scroll");
+    expect(scroller).toHaveClass("overscroll-contain");
+    // Containment needs something to scroll, so a short conversation is
+    // kept a pixel taller than the view.
+    expect(scroller).toHaveClass("after:absolute", "after:h-[calc(100%+1px)]");
   });
 });

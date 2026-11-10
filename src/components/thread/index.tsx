@@ -381,55 +381,34 @@ export function Thread() {
               : { duration: 0 }
           }
         >
-          {!chatStarted && (
-            <div className="absolute top-0 left-0 z-10 flex w-full items-center justify-between gap-3 p-2 pl-4">
-              <div>
-                {(!chatHistoryOpen || !isLargeScreen) && (
-                  <Button
-                    className="hover:bg-gray-100"
-                    variant="ghost"
-                    aria-label={
-                      chatHistoryOpen
-                        ? "Hide conversations"
-                        : "Show conversations"
-                    }
-                    onClick={() => setChatHistoryOpen((p) => !p)}
-                  >
-                    {chatHistoryOpen ? (
-                      <PanelRightOpen className="size-5" />
-                    ) : (
-                      <PanelRightClose className="size-5" />
-                    )}
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
-          {chatStarted && (
-            <div className="relative z-10 flex items-center justify-between gap-3 p-2 xl:absolute xl:inset-x-0 xl:top-0">
-              <div className="relative flex items-center justify-start gap-2">
-                <div className="absolute left-0 z-10">
-                  {(!chatHistoryOpen || !isLargeScreen) && (
-                    <Button
-                      className="hover:bg-gray-100"
-                      variant="ghost"
-                      aria-label={
-                        chatHistoryOpen
-                          ? "Hide conversations"
-                          : "Show conversations"
-                      }
-                      onClick={() => setChatHistoryOpen((p) => !p)}
-                    >
-                      {chatHistoryOpen ? (
-                        <PanelRightOpen className="size-5" />
-                      ) : (
-                        <PanelRightClose className="size-5" />
-                      )}
-                    </Button>
+          {/* In the flow above the messages, with a solid background, so
+              text never scrolls under the buttons. */}
+          <div
+            data-testid="thread-top-bar"
+            className="relative z-10 flex min-h-13 shrink-0 items-center justify-between gap-3 bg-white p-2"
+          >
+            <div>
+              {(!chatHistoryOpen || !isLargeScreen) && (
+                <Button
+                  className="hover:bg-gray-100"
+                  variant="ghost"
+                  aria-label={
+                    chatHistoryOpen
+                      ? "Hide conversations"
+                      : "Show conversations"
+                  }
+                  onClick={() => setChatHistoryOpen((p) => !p)}
+                >
+                  {chatHistoryOpen ? (
+                    <PanelRightOpen className="size-5" />
+                  ) : (
+                    <PanelRightClose className="size-5" />
                   )}
-                </div>
-              </div>
+                </Button>
+              )}
+            </div>
 
+            {chatStarted && (
               <div className="flex items-center gap-4">
                 <TooltipIconButton
                   size="lg"
@@ -441,10 +420,12 @@ export function Thread() {
                   <SquarePen className="size-5" />
                 </TooltipIconButton>
               </div>
+            )}
 
-              <div className="from-background to-background/0 absolute inset-x-0 top-full h-5 bg-gradient-to-b xl:hidden" />
-            </div>
-          )}
+            {chatStarted && (
+              <div className="from-background to-background/0 pointer-events-none absolute inset-x-0 top-full h-5 bg-gradient-to-b" />
+            )}
+          </div>
 
           {showOfficeHours && isXlScreen && (
             <OfficeHours
@@ -459,7 +440,13 @@ export function Thread() {
               ref={chatScroll.scrollRef}
               style={{ width: "100%", height: "100%" }}
               className={cn(
-                "absolute inset-0 overflow-y-scroll px-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent",
+                // A swipe that reaches the end of the conversation would
+                // otherwise scroll the page, bringing the footer up and
+                // leaving the message box mid-screen. overscroll-contain
+                // stops that, but only once there's something to scroll, so
+                // the ::after keeps even a short conversation a pixel taller
+                // than the view.
+                "absolute inset-0 overflow-y-scroll overscroll-contain px-4 after:pointer-events-none after:absolute after:top-0 after:left-0 after:h-[calc(100%+1px)] after:w-px [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent",
                 !chatStarted &&
                   "flex flex-col items-stretch pt-[4vh] sm:pt-[16vh]",
                 // minmax(0,1fr): without it the grid column grows to fit
