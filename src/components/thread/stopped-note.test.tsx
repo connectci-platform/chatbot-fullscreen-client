@@ -217,8 +217,236 @@ describe("the Stopped note", () => {
   });
 
   it("leaves other failures to their own message", () => {
-    stream.error = Object.assign(new Error("x"), { name: "timeout" });
+    stream.error = Object.assign(new Error("x"), { name: "TypeError" });
     renderThread();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("says a turn that just timed out didn't finish, and hides its sources line", () => {
+    stream.error = Object.assign(new Error("x"), { name: "timeout" });
+    stream.messages = [
+      question,
+      { id: "a-1", type: "ai", content: "Anvil is a supercomputer at" },
+    ];
+    renderThread();
+    expect(screen.getByText("Anvil is a supercomputer at")).toBeTruthy();
+    expect(screen.getByText("This answer didn't finish.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.queryByText(/No documentation was retrieved/)).toBeNull();
+
+    // Retry replaces the cut-off turn.
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    const [, options] = stream.submit.mock.calls[0];
+    expect(options.context).toEqual({ replace_stopped_turn: true });
+    expect(
+      options.optimisticValues({ messages: stream.messages }).messages,
+    ).toHaveLength(1);
+  });
+
+  const savedStop: Message = {
+    id: "a-1",
+    type: "ai",
+    content: "Anvil is a",
+    response_metadata: { stopped: true },
+  };
+  const later: Message = { id: "q-2", type: "human", content: "Delta?" };
+  const laterAnswer: Message = { id: "a-2", type: "ai", content: "Delta is." };
+
+  it("shows under an answer the agent saved as stopped, as after a reload", () => {
+    stream.messages = [question, savedStop];
+    renderThread();
+    expect(screen.getByText("Anvil is a")).toBeTruthy();
+    expect(note()).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.queryByText(/No documentation was retrieved/)).toBeNull();
+  });
+
+  it("keeps an earlier stopped turn's text and note after the next answer", () => {
+    stream.messages = [question, savedStop, later, laterAnswer];
+    renderThread();
+    expect(screen.getByText("Anvil is a")).toBeTruthy();
+    const kept = note()!;
+    expect(
+      screen.getByText("Anvil is a").compareDocumentPosition(kept) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      kept.compareDocumentPosition(screen.getByText("Delta?")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // Only the latest unanswered turn can be asked again.
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("shows no empty answer for a stop before any text", () => {
+    stream.messages = [question, { ...savedStop, content: "" }];
+    const { container } = renderThread();
+    expect(note()).toBeTruthy();
+    expect(container.querySelectorAll("div.group.mr-auto")).toHaveLength(0);
+  });
+
+  it("Retry replaces the stopped turn instead of adding one", () => {
+    stream.messages = [question, savedStop];
+    renderThread();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    const [values, options] = stream.submit.mock.calls[0];
+    expect(values.messages).toHaveLength(1);
+    expect(options.context).toEqual({ replace_stopped_turn: true });
+    const shown = options.optimisticValues({ messages: [question, savedStop] });
+    expect(shown.messages).toHaveLength(1);
+    expect(shown.messages[0].id).not.toBe("q-1");
+  });
+
+  it("sending an edited question replaces the stopped turn", () => {
+    stream.messages = [question, savedStop];
+    renderThread();
+    fireEvent.click(screen.getByRole("button", { name: "Edit question" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const [, options] = stream.submit.mock.calls[0];
+    expect(options.context).toEqual({ replace_stopped_turn: true });
+    expect(
+      options.optimisticValues({ messages: [question, savedStop] }).messages,
+    ).toHaveLength(1);
+  });
+
+  it("a new question keeps the stopped turn", () => {
+    stream.messages = [question, savedStop];
+    renderThread();
+    const box = screen.getByRole("textbox", { name: "Message" });
+    fireEvent.change(box, { target: { value: "Delta?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const [, options] = stream.submit.mock.calls[0];
+    expect(options.context).toBeUndefined();
+    expect(
+      options.optimisticValues({ messages: [question, savedStop] }).messages,
+    ).toHaveLength(3);
+  });
+
+  it("moves focus from Cancel to Retry when the answer stops", () => {
+    stream.isLoading = true;
+    const { rerender } = renderThread();
+    const cancel = screen.getByRole("button", { name: /cancel/i });
+    cancel.focus();
+    fireEvent.click(cancel);
+
+    stream.isLoading = false;
+    stream.stopped = true;
+    rerender(
+      <NuqsTestingAdapter searchParams="?threadId=t-1">
+        <Thread />
+      </NuqsTestingAdapter>,
+    );
+    expect(screen.getByRole("button", { name: "Retry" })).toHaveFocus();
+  });
+
+  it("moves focus to the message box when a stop leaves no note", () => {
+    stream.isLoading = true;
+    const { rerender } = renderThread();
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+    // The answer was delivered before the stop reached the agent.
+    stream.isLoading = false;
+    stream.messages = [question, laterAnswer];
+    rerender(
+      <NuqsTestingAdapter searchParams="?threadId=t-1">
+        <Thread />
+      </NuqsTestingAdapter>,
+    );
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveFocus();
+  });
+
+  it("says a turn that timed out or failed didn't finish, with Retry", () => {
+    for (const reason of ["timeout", "error"]) {
+      stream.messages = [
+        question,
+        { ...savedStop, response_metadata: { stopped: true, reason } },
+      ];
+      const { unmount } = renderThread();
+      expect(screen.getByText("This answer didn't finish.")).toBeTruthy();
+      expect(note()).toBeNull();
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: "Edit question" }),
+      ).toBeTruthy();
+      expect(screen.queryByText(/No documentation was retrieved/)).toBeNull();
+      unmount();
+    }
+  });
+
+  it("keeps an earlier unfinished turn's note after the next answer", () => {
+    stream.messages = [
+      question,
+      { ...savedStop, response_metadata: { stopped: true, reason: "error" } },
+      later,
+      laterAnswer,
+    ];
+    renderThread();
+    expect(screen.getByText("This answer didn't finish.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  const writeCall: Message = {
+    id: "m-1",
+    type: "ai",
+    content: "",
+    tool_calls: [{ id: "c-1", name: "create_announcement", args: {} }],
+  };
+  const writeResult: Message = {
+    id: "t-1",
+    type: "tool",
+    content: "created",
+    tool_call_id: "c-1",
+  };
+
+  it("after a change, warns and offers Edit but not Retry", () => {
+    stream.messages = [question, writeCall, writeResult, savedStop];
+    renderThread();
+    expect(
+      screen.getByText(
+        "You stopped this answer. A change may already have been made, so check before asking again.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+
+    // Edit keeps the turn: sending adds the question after it.
+    fireEvent.click(screen.getByRole("button", { name: "Edit question" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    const [, options] = stream.submit.mock.calls[0];
+    expect(options.context).toBeUndefined();
+    expect(
+      options.optimisticValues({ messages: stream.messages }).messages,
+    ).toHaveLength(5);
+  });
+
+  it("says a turn that failed after a change didn't finish, with the warning", () => {
+    stream.messages = [
+      question,
+      writeCall,
+      writeResult,
+      { ...savedStop, response_metadata: { stopped: true, reason: "timeout" } },
+    ];
+    renderThread();
+    expect(
+      screen.getByText(
+        "This answer didn't finish. A change may already have been made, so check before asking again.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("keeps the plain note on an earlier turn that made a change", () => {
+    stream.messages = [
+      question,
+      writeCall,
+      writeResult,
+      savedStop,
+      later,
+      laterAnswer,
+    ];
+    renderThread();
+    expect(note()).toBeTruthy();
+    expect(screen.queryByText(/A change may already/)).toBeNull();
   });
 });
