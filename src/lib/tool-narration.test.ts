@@ -35,6 +35,15 @@ describe("isToolCallNarration", () => {
     expect(isToolCallNarration(calling(linked), linked)).toBe(false);
   });
 
+  it("keeps a lone heading as the answer it heads", () => {
+    // A section heading the model wrote before looking that section up,
+    // left as all there is when the turn timed out.
+    for (const text of ["## Anvil", "### Anvil wait times\n", "- Anvil"]) {
+      expect(isToolCallNarration(calling(text), text)).toBe(false);
+      expect(isToolCallNarration(calling(text), text, false, true)).toBe(false);
+    }
+  });
+
   it("is nothing for a tool call with no text", () => {
     expect(isToolCallNarration(calling(""), "")).toBe(false);
   });

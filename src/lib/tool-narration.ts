@@ -52,8 +52,11 @@ export function isToolCallNarration(
   }
   const line = text.trim();
   if (!line || /https?:\/\//.test(line)) return false;
+  // Structure first: a lone "## Anvil" before the lookup for that section is
+  // a short line too, and it heads the answer that follows.
+  if (STRUCTURE.test(line)) return false;
   if (line.length <= NARRATION_LENGTH && !line.includes("\n")) return true;
-  return continued && line.length <= NOTES_LENGTH && !STRUCTURE.test(line);
+  return continued && line.length <= NOTES_LENGTH;
 }
 
 function textOf(content: Message["content"]): string {
