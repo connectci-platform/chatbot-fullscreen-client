@@ -21,6 +21,7 @@ import { useOfficeHours } from "@/hooks/useOfficeHours";
 import { getSupportUrl } from "@/lib/agent-token";
 import { TooltipIconButton } from "./tooltip-icon-button";
 import {
+  ArrowUp,
   LoaderCircle,
   PanelRightOpen,
   PanelRightClose,
@@ -67,7 +68,7 @@ import { XdmodChartPanel } from "./xdmod-chart-panel";
 import { COMPOSER_ID, focusComposer } from "./composer";
 import { chartViewsByMessage } from "@/lib/xdmod-chart";
 import { useChatScroll } from "@/hooks/use-chat-scroll";
-import { ScrollToBottomSlot } from "./scroll-to-bottom";
+import { ScrollToBottomButton } from "./scroll-to-bottom";
 import { comparisonsByMessage } from "@/lib/software-comparison";
 
 export function Thread() {
@@ -552,20 +553,19 @@ export function Thread() {
                   </h1>
                 )}
 
-                {chatStarted && (
-                  <ScrollToBottomSlot
-                    visible={!chatScroll.isAtBottom}
-                    onClick={() => {
-                      chatScroll.scrollToBottom();
-                      // The button goes away once at the end; keep focus.
-                      focusComposer();
-                    }}
-                  />
-                )}
-
                 {/* Tighter on a phone, where the footer would otherwise take more
                     than half of a small screen. */}
-                <div className="mx-auto mb-3 w-full max-w-3xl sm:mb-8">
+                <div className="relative mx-auto mb-2 w-full max-w-3xl sm:mb-4">
+                  {chatStarted && (
+                    <ScrollToBottomButton
+                      visible={!chatScroll.isAtBottom}
+                      onClick={() => {
+                        chatScroll.scrollToBottom();
+                        // The button goes away once at the end; keep focus.
+                        focusComposer();
+                      }}
+                    />
+                  )}
                   {challenge && (
                     <TurnstileChallengePanel
                       siteKey={challenge.siteKey}
@@ -585,44 +585,23 @@ export function Thread() {
                   >
                     <form
                       onSubmit={handleSubmit}
-                      className="mx-auto grid max-w-3xl grid-rows-[1fr_auto] gap-2"
+                      className="mx-auto flex max-w-3xl flex-col"
                     >
                       <ContentBlocksPreview
                         blocks={contentBlocks}
                         onRemove={removeBlock}
                       />
-                      <textarea
-                        id={COMPOSER_ID}
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onPaste={handlePaste}
-                        onKeyDown={(e) => {
-                          if (
-                            e.key === "Enter" &&
-                            !e.shiftKey &&
-                            !e.metaKey &&
-                            !e.nativeEvent.isComposing
-                          ) {
-                            e.preventDefault();
-                            const el = e.target as HTMLElement | undefined;
-                            const form = el?.closest("form");
-                            form?.requestSubmit();
-                          }
-                        }}
-                        aria-label="Message"
-                        placeholder="Type your message..."
-                        className="field-sizing-content max-h-[30dvh] resize-none overflow-y-auto border-none bg-transparent p-3.5 pb-0 text-base text-black shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
-                      />
-
-                      <div className="flex items-center gap-6 p-2 sm:pt-4">
+                      {/* The box and its buttons on one row, Send inside the
+                          box at the right. */}
+                      <div className="flex items-end">
                         {program.features.fileUploads && (
                           <>
                             <Label
                               htmlFor="file-input"
-                              className="flex cursor-pointer items-center gap-2"
+                              className="flex size-11 shrink-0 cursor-pointer items-center justify-center"
                             >
                               <Plus className="size-5 text-gray-600" />
-                              <span className="text-sm text-gray-600">
+                              <span className="sr-only">
                                 Upload PDF or Image
                               </span>
                             </Label>
@@ -636,29 +615,63 @@ export function Thread() {
                             />
                           </>
                         )}
+                        <textarea
+                          id={COMPOSER_ID}
+                          value={input}
+                          onChange={(e) => setInput(e.target.value)}
+                          onPaste={handlePaste}
+                          onKeyDown={(e) => {
+                            if (
+                              e.key === "Enter" &&
+                              !e.shiftKey &&
+                              !e.metaKey &&
+                              !e.nativeEvent.isComposing
+                            ) {
+                              e.preventDefault();
+                              const el = e.target as HTMLElement | undefined;
+                              const form = el?.closest("form");
+                              form?.requestSubmit();
+                            }
+                          }}
+                          aria-label="Message"
+                          placeholder="Type your message..."
+                          rows={1}
+                          // One line to start, growing with the question.
+                          className="field-sizing-content max-h-[30dvh] min-h-11 min-w-0 flex-1 resize-none overflow-y-auto border-none bg-transparent px-3 py-2.5 text-base leading-6 text-black shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
+                        />
                         {stream.isLoading ? (
                           <Button
                             key="stop"
+                            type="button"
+                            size="icon"
+                            aria-label="Cancel"
                             onClick={() => {
                               focusAfterStop.current = true;
                               stream.stop();
                             }}
-                            className="ml-auto"
+                            className="size-11 shrink-0"
                           >
-                            <LoaderCircle className="h-4 w-4 animate-spin" />
-                            Cancel
+                            <LoaderCircle
+                              aria-hidden
+                              className="size-5 animate-spin"
+                            />
                           </Button>
                         ) : (
                           <Button
                             type="submit"
-                            className="ml-auto shadow-md transition-all"
+                            size="icon"
+                            aria-label="Send"
+                            className="size-11 shrink-0"
                             disabled={
                               isLoading ||
                               awaitingCheck ||
                               (!input.trim() && contentBlocks.length === 0)
                             }
                           >
-                            Send
+                            <ArrowUp
+                              aria-hidden
+                              className="size-5"
+                            />
                           </Button>
                         )}
                       </div>

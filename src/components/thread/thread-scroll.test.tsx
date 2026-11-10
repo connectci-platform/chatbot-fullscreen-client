@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "@langchain/langgraph-sdk";
@@ -119,20 +120,20 @@ describe("Thread scrolling", () => {
     ).toBeLessThan(stream.submit.mock.invocationCallOrder[0]);
   });
 
-  it("puts Scroll to bottom in its own band above the message box", () => {
+  it("floats a small round Scroll to bottom just above the message box, at its right edge", () => {
     renderThread();
-    const slot = screen.getByTestId("scroll-to-bottom-slot");
-    const button = within(slot).getByRole("button", {
-      name: "Scroll to bottom",
-    });
-    // Not floating over the messages: a band in the footer's flow, taller
-    // (h-11, 44px, on a phone; h-12, 48px, wider) than the button (h-9,
-    // 36px), directly above the box.
-    expect(slot).not.toHaveClass("absolute");
-    expect(slot).toHaveClass("h-11", "sm:h-12");
-    expect(button).toHaveClass("h-9");
+    const button = screen.getByRole("button", { name: "Scroll to bottom" });
+    // Out of the flow, so it takes no band of its own; 44px and round.
+    expect(button).toHaveClass(
+      "absolute",
+      "bottom-full",
+      "right-0",
+      "size-11",
+      "rounded-full",
+    );
+    expect(button).toHaveTextContent(/^$/);
     expect(
-      slot.compareDocumentPosition(
+      button.compareDocumentPosition(
         screen.getByRole("textbox", { name: "Message" }),
       ) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -143,6 +144,14 @@ describe("Thread scrolling", () => {
     expect(chatScroll.scrollToBottom).toHaveBeenCalledOnce();
     // The button goes away at the end, so focus moves to the message box.
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveFocus();
+  });
+
+  it.each(["{Enter}", " "])("works from the keyboard with %s", async (key) => {
+    renderThread();
+    const button = screen.getByRole("button", { name: "Scroll to bottom" });
+    button.focus();
+    await userEvent.keyboard(key);
+    expect(chatScroll.scrollToBottom).toHaveBeenCalledOnce();
   });
 
   it("moves focus to the message box without cancelling the smooth scroll", () => {
@@ -163,16 +172,34 @@ describe("Thread scrolling", () => {
     focus.mockRestore();
   });
 
-  it("keeps the band's space when the button is hidden at the end", () => {
+  it("shows no Scroll to bottom at the end of the conversation", () => {
     chatScroll.isAtBottom = true;
     renderThread();
-    expect(screen.getByTestId("scroll-to-bottom-slot")).toHaveClass(
-      "h-11",
-      "sm:h-12",
-    );
     expect(
       screen.queryByRole("button", { name: "Scroll to bottom" }),
     ).toBeNull();
+  });
+
+  it("starts the message box one line tall, with Send inside it as an icon", () => {
+    renderThread();
+    const box = screen.getByRole("textbox", { name: "Message" });
+    expect(box).toHaveAttribute("rows", "1");
+    expect(box).toHaveClass("field-sizing-content", "max-h-[30dvh]");
+    const send = screen.getByRole("button", { name: "Send" });
+    expect(send).toHaveClass("size-11");
+    expect(send).toHaveTextContent(/^$/);
+    // On the box's own row, not a row of its own under it.
+    expect(send.parentElement).toBe(box.parentElement);
+  });
+
+  it("puts Cancel where Send was while the answer comes", () => {
+    stream.isLoading = true;
+    renderThread();
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    const box = screen.getByRole("textbox", { name: "Message" });
+    expect(cancel).toHaveClass("size-11");
+    expect(cancel.parentElement).toBe(box.parentElement);
+    expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
   });
 
   it("pads the message list at least as tall as the fade above the band", () => {
