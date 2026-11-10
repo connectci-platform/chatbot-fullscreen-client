@@ -1420,7 +1420,7 @@ describe("XdmodChartPanel data tables", () => {
     useMessages(tableTurn(table()));
     render(tree());
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("The table couldn't be loaded.");
+    expect(alert.textContent).toContain("The table failed to load.");
     expect(screen.queryByRole("region", { name: "Data table" })).toBeNull();
 
     fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
@@ -1449,7 +1449,7 @@ describe("XdmodChartPanel data tables", () => {
     useMessages(turn);
     render(tree());
     expect((await screen.findByRole("alert")).textContent).toContain(
-      "couldn't be loaded",
+      "failed to load",
     );
   });
 

@@ -363,7 +363,7 @@ export async function fetchTableRows(
   get: (path: string) => Promise<Response>,
 ): Promise<TableCell[][]> {
   const res = await get(`attachments/${encodeURIComponent(view.id)}`);
-  if (!res.ok) throw new Error(`The table couldn't be loaded (${res.status})`);
+  if (!res.ok) throw new Error(`The table failed to load (${res.status})`);
   const body: unknown = await res.json();
   const rows = isRecord(body) ? body.rows : null;
   if (!rowsFit(rows, view.columns) || rows.length !== view.rowCount) {

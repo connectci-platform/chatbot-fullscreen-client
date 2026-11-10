@@ -255,7 +255,7 @@ function TableBody({
           role="alert"
           className="flex flex-wrap items-center gap-2 text-sm"
         >
-          <p>The table couldn&apos;t be loaded.</p>
+          <p>The table failed to load.</p>
           <button
             type="button"
             className={BUTTON}
