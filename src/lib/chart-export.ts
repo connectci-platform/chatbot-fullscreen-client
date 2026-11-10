@@ -1,10 +1,15 @@
-import type { CaptionFacts, CaptionWarning, ChartView } from "./xdmod-chart";
+import type {
+  CaptionFacts,
+  CaptionWarning,
+  ChartView,
+  EarlyEnd,
+} from "./xdmod-chart";
 
 const WARNING_TEXT: Record<CaptionWarning, string> = {
   "waiting-not-counted":
     "Jobs still waiting aren't counted, and the last few days may be incomplete.",
   "not-comparable-across-resources":
-    "CPU hours and SUs aren't comparable across resources. ACE measures are.",
+    "CPU hours don't allow for each resource's compute power per core, so they aren't comparable across resources. ACE measures are.",
   "mean-of-jobs":
     "This is an average per job, so a few long jobs can pull it up.",
 };
@@ -70,8 +75,27 @@ function dataEnd(
     : null;
 }
 
+/** Which ranks a chart past the top shows: "4 to 8". */
+function rankRange(caption: CaptionFacts, shown: number): string | null {
+  const offset = caption.offset ?? 0;
+  return offset > 0 && shown > 0 ? `${offset + 1} to ${offset + shown}` : null;
+}
+
 /** How many of how many the chart shows, or null when it shows them all. */
 function shownLine(caption: CaptionFacts, shown: number): string | null {
+  const ranks = rankRange(caption, shown);
+  if (ranks) {
+    const offset = caption.offset ?? 0;
+    // XDMoD pages an ordered dimension in bucket order, not by value.
+    if (caption.ordered) {
+      const of = caption.total === undefined ? "" : ` of ${caption.total}`;
+      return `Showing buckets ${ranks}${of}, leaving out the first ${offset}.`;
+    }
+    if (caption.total !== undefined) {
+      return `Showing ranks ${ranks} of ${caption.total} ${caption.groupNoun ?? "groups"}, not the top ${offset}.`;
+    }
+    return `Showing ranks ${ranks}, not the top ${offset}${caption.hasMore ? "; XDMoD has more" : ""}.`;
+  }
   if (!caption.hasMore) return null;
   if (caption.total === undefined) {
     return `Showing the top ${shown}; XDMoD has more.`;
@@ -81,6 +105,51 @@ function shownLine(caption: CaptionFacts, shown: number): string | null {
     : `Showing the top ${shown} of ${caption.total} ${caption.groupNoun ?? "groups"}.`;
 }
 
+/** When an early end is, at the precision it's known. */
+function earlyEndWhen(end: EarlyEnd, unit?: string): string {
+  return end.precision === "day"
+    ? formatDay(end.through)
+    : formatPeriod(end.through, unit);
+}
+
+const MAX_LISTED_NAMES = 6;
+
+/** "A", "A and B", "A, B and C", past six "A, B, C, D, E, F and 2 more". */
+function listNames(names: string[]): string {
+  if (names.length > MAX_LISTED_NAMES) {
+    return `${names.slice(0, MAX_LISTED_NAMES).join(", ")} and ${names.length - MAX_LISTED_NAMES} more`;
+  }
+  return names.length < 2
+    ? names.join("")
+    : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/**
+ * The early ends as one sentence, worded only as strongly as is known, with
+ * names that stop on the same date together.
+ */
+function earlyEndsLine(ends: EarlyEnd[], unit?: string): string {
+  const groups = new Map<
+    string,
+    { source: EarlyEnd["source"]; when: string; names: string[] }
+  >();
+  for (const end of ends) {
+    const when = earlyEndWhen(end, unit);
+    const key = `${end.source}|${when}`;
+    const group = groups.get(key) ?? { source: end.source, when, names: [] };
+    group.names.push(end.name);
+    groups.set(key, group);
+  }
+  const text = [...groups.values()]
+    .map((g) =>
+      g.source === "resource"
+        ? `XDMoD has no data from ${listNames(g.names)} after ${g.when}`
+        : `nothing is recorded for ${listNames(g.names)} after ${g.when}`,
+    )
+    .join("; ");
+  return `${text[0].toUpperCase()}${text.slice(1)}.`;
+}
+
 /**
  * The caption under a chart, one line per fact, in reading order. The panel
  * and the PNG both draw these, so they always say the same thing. `shown` is
@@ -88,10 +157,14 @@ function shownLine(caption: CaptionFacts, shown: number): string | null {
  */
 export function captionLines(caption: CaptionFacts, shown: number): string[] {
   const range = `${formatDay(caption.counted.start)} to ${formatDay(caption.counted.end)}`;
-  const lines = [
-    `${caption.measure}: ${caption.definition}`,
+  const lines = [`${caption.measure}: ${caption.definition}`];
+  // Right under the definition, which reads as ACCESS-wide.
+  if (caption.filters.length > 0) {
+    lines.push(`Filtered to ${caption.filters.join("; ")}`);
+  }
+  lines.push(
     caption.unit ? `${range}, by ${caption.unit.toLowerCase()}` : range,
-  ];
+  );
   // XDMoD's public data often stops weeks before the range does.
   const end = dataEnd(caption);
   if (end) {
@@ -105,12 +178,13 @@ export function captionLines(caption: CaptionFacts, shown: number): string[] {
         : `${lead}.`,
     );
   }
-  if (caption.filters.length > 0) {
-    lines.push(`Filtered to ${caption.filters.join("; ")}`);
+  if (caption.earlyEnds?.length) {
+    lines.push(earlyEndsLine(caption.earlyEnds, caption.unit));
   }
   const showing = shownLine(caption, shown);
   if (showing) lines.push(showing);
-  if (caption.incomplete) {
+  // A partial period already says the end isn't settled.
+  if (caption.incomplete && !caption.partialPeriod) {
     lines.push(
       caption.unit
         ? "The last period is still in progress."
@@ -169,7 +243,26 @@ export function chartCsv(view: ChartView): string {
           ] as [string, string],
         ]
       : []),
+    ...(caption.earlyEnds ?? []).map(
+      (e) =>
+        [
+          e.source === "resource"
+            ? `No data after (${e.name})`
+            : `Nothing recorded after (${e.name})`,
+          e.precision === "day" ? e.through : earlyEndWhen(e, caption.unit),
+        ] as [string, string],
+    ),
     ["Filters", caption.filters.length ? caption.filters.join("; ") : "None"],
+    ...(rankRange(caption, shownCount(view))
+      ? [
+          (caption.ordered
+            ? ["Buckets", `${rankRange(caption, shownCount(view))}`]
+            : [
+                "Ranks",
+                `${rankRange(caption, shownCount(view))} by value`,
+              ]) as [string, string],
+        ]
+      : []),
     ["Retrieved", caption.retrieved],
     ["Source", caption.source],
     ...(view.link ? [["XDMoD link", view.link] as [string, string]] : []),
@@ -288,6 +381,8 @@ const CAPTION_LINE = 17;
 const LEGEND_LINE = 20;
 const LEGEND_FONT = `13px ${FONT}`;
 const LEGEND_INDENT = 18;
+const TITLE_FONT = `600 15px ${FONT}`;
+const TITLE_LINE = 21;
 
 /**
  * Saves the chart as a PNG with its legend and caption, so the picture
@@ -298,7 +393,11 @@ export async function downloadChartPng(
   svg: SVGSVGElement,
   caption: CaptionFacts,
   fileName: string,
-  { legend = [], shown = 1 }: { legend?: LegendEntry[]; shown?: number } = {},
+  {
+    legend = [],
+    shown = 1,
+    title,
+  }: { legend?: LegendEntry[]; shown?: number; title?: string } = {},
 ): Promise<void> {
   const width =
     Number(svg.getAttribute("width")) || svg.getBoundingClientRect().width;
@@ -324,6 +423,13 @@ export async function downloadChartPng(
   const lines = captionLines(caption, shown).flatMap((line) =>
     wrapText(line, textWidth, (s) => ctx.measureText(s).width),
   );
+  ctx.font = TITLE_FONT;
+  const titleLines = title
+    ? wrapText(title, textWidth, (s) => ctx.measureText(s).width)
+    : [];
+  const titleHeight = titleLines.length
+    ? titleLines.length * TITLE_LINE + PAD / 2
+    : 0;
   ctx.font = LEGEND_FONT;
   const legendLines = (legend.length > 1 ? legend : []).map((entry) => ({
     color: entry.color,
@@ -336,7 +442,13 @@ export async function downloadChartPng(
   const legendHeight =
     legendLines.reduce((n, entry) => n + entry.lines.length, 0) * LEGEND_LINE;
   const total =
-    PAD + legendHeight + height + PAD / 2 + lines.length * CAPTION_LINE + PAD;
+    PAD +
+    titleHeight +
+    legendHeight +
+    height +
+    PAD / 2 +
+    lines.length * CAPTION_LINE +
+    PAD;
 
   canvas.width = width * SCALE;
   canvas.height = total * SCALE;
@@ -346,6 +458,13 @@ export async function downloadChartPng(
   ctx.textBaseline = "top";
 
   let y = PAD;
+  ctx.font = TITLE_FONT;
+  ctx.fillStyle = TEXT;
+  for (const line of titleLines) {
+    ctx.fillText(line, PAD, y);
+    y += TITLE_LINE;
+  }
+  if (titleLines.length) y += PAD / 2;
   ctx.font = LEGEND_FONT;
   for (const entry of legendLines) {
     ctx.fillStyle = entry.color;

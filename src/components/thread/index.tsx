@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useStreamContext } from "@/providers/Stream";
@@ -25,7 +25,6 @@ import {
   PanelRightOpen,
   PanelRightClose,
   SquarePen,
-  XIcon,
   Plus,
 } from "lucide-react";
 import { useQueryState, parseAsBoolean } from "nuqs";
@@ -41,21 +40,23 @@ import {
   questionParts,
   useRestoreQuestion,
 } from "@/hooks/use-restore-question";
-import { unansweredQuestion } from "@/lib/stopped-answer";
+import {
+  cutOffNote,
+  stopReason,
+  withFailedTurnMarked,
+  unansweredQuestion,
+  withoutUnansweredTurn,
+} from "@/lib/stopped-answer";
 import { StoppedNote } from "./stopped-note";
 import { TurnstileChallengePanel } from "./turnstile-challenge";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { SidePanel } from "./side-panel";
 import { Label } from "../ui/label";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { useInitialQuestion } from "@/hooks/use-initial-question";
 import { useFirstTokenReceived } from "@/hooks/use-first-token-received";
 import { ContentBlocksPreview } from "./ContentBlocksPreview";
-import {
-  useArtifactOpen,
-  ArtifactContent,
-  ArtifactTitle,
-  useArtifactContext,
-} from "./artifact";
+import { useArtifactOpen, useArtifactContext } from "./artifact";
 import { RegistrationPanel } from "./registration-panel";
 import { SoftwareComparisonPanel } from "./software-comparison-panel";
 import { XdmodChartPanel } from "./xdmod-chart-panel";
@@ -96,7 +97,8 @@ export function Thread() {
   );
 
   const stream = useStreamContext();
-  const messages = stream.messages;
+  // A run that timed out or failed left its answer cut off, as the agent saved it.
+  const messages = withFailedTurnMarked(stream.messages, stream.error);
   // Once per update, not once per message: each answer only needs its key.
   const chartViews = useMemo(() => chartViewsByMessage(messages), [messages]);
   const [firstTokenReceived, setFirstTokenReceived] = useFirstTokenReceived(
@@ -151,8 +153,28 @@ export function Thread() {
     }
   }, [stream.error, authStatus, setThreadId]);
 
-  const submitMessage = (text: string, blocks: typeof contentBlocks) => {
+  // Set by Edit: sending the edited question replaces the unanswered one.
+  const replaceOnSend = useRef(false);
+  useEffect(() => {
+    replaceOnSend.current = false;
+  }, [threadId]);
+
+  /**
+   * Sends a question. `replacing` is for Retry and Edit on an unanswered
+   * question: the new one takes that turn's place, on screen and in the
+   * thread the agent keeps, instead of following it.
+   */
+  const submitMessage = (
+    text: string,
+    blocks: typeof contentBlocks,
+    { replacing = false }: { replacing?: boolean } = {},
+  ) => {
     setFirstTokenReceived(false);
+    replaceOnSend.current = false;
+    const kept = (all: Message[]) =>
+      replacing
+        ? withoutUnansweredTurn(withFailedTurnMarked(all, stream.error))
+        : all;
 
     const newHumanMessage: Message = {
       id: uuidv4(),
@@ -163,7 +185,7 @@ export function Thread() {
       ] as Message["content"],
     };
 
-    const toolMessages = ensureToolCallsHaveResponses(stream.messages);
+    const toolMessages = ensureToolCallsHaveResponses(kept(stream.messages));
     chatScroll.scrollToQuestion();
 
     const context =
@@ -175,11 +197,12 @@ export function Thread() {
         streamMode: ["values"],
         streamSubgraphs: true,
         streamResumable: true,
+        ...(replacing && { context: { replace_stopped_turn: true } }),
         optimisticValues: (prev) => ({
           ...prev,
           context,
           messages: [
-            ...(prev.messages ?? []),
+            ...kept(prev.messages ?? []),
             ...toolMessages,
             newHumanMessage,
           ],
@@ -196,7 +219,9 @@ export function Thread() {
       awaitingCheck
     )
       return;
-    submitMessage(input, contentBlocks);
+    submitMessage(input, contentBlocks, {
+      replacing: replaceOnSend.current && !!unanswered,
+    });
     setInput("");
     setContentBlocks([]);
   };
@@ -233,9 +258,10 @@ export function Thread() {
   /** Asks the unanswered question again as a new run. */
   const retryQuestion = () => {
     const parts = unansweredParts();
-    if (!parts || awaitingCheck || retrying.current) return;
+    if (!parts || unanswered?.wrote || awaitingCheck || retrying.current)
+      return;
     retrying.current = true;
-    submitMessage(parts.text, parts.blocks);
+    submitMessage(parts.text, parts.blocks, { replacing: true });
   };
 
   /**
@@ -249,8 +275,23 @@ export function Thread() {
       draft.trim() ? `${draft}\n${parts.text}` : parts.text,
     );
     setContentBlocks((blocks) => [...blocks, ...parts.blocks]);
+    // A turn that made a change stays, so the record of it isn't lost.
+    replaceOnSend.current = !unanswered?.wrote;
     focusComposer({ atEnd: true });
   };
+
+  // Cancel goes away when the run stops, which would drop focus to the page.
+  // It moves to the Stopped note's Retry, or to the message box without one.
+  const retryButton = useRef<HTMLButtonElement>(null);
+  const focusAfterStop = useRef(false);
+  useEffect(() => {
+    if (isLoading || !focusAfterStop.current) return;
+    focusAfterStop.current = false;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    if (retryButton.current) retryButton.current.focus({ preventScroll: true });
+    else focusComposer();
+  });
 
   const chatStarted = !!threadId || !!messages.length;
   const showOfficeHours = !chatStarted && !chatHistoryOpen;
@@ -415,7 +456,7 @@ export function Thread() {
                 )}
                 {messages
                   .filter((m) => !m.id?.startsWith(DO_NOT_RENDER_ID_PREFIX))
-                  .map((message, index) =>
+                  .map((message, index, shownMessages) =>
                     message.type === "human" ? (
                       <HumanMessage
                         key={message.id || `${message.type}-${index}`}
@@ -423,18 +464,27 @@ export function Thread() {
                         isLoading={isLoading}
                       />
                     ) : (
-                      <AssistantMessage
-                        key={message.id || `${message.type}-${index}`}
-                        message={message}
-                        isLoading={isLoading}
-                        onAsk={askSuggested}
-                        awaitingCheck={awaitingCheck}
-                        chartKey={
-                          message.id
-                            ? chartViews.get(message.id)?.[0]?.key
-                            : undefined
-                        }
-                      />
+                      <Fragment key={message.id || `${message.type}-${index}`}>
+                        <AssistantMessage
+                          message={message}
+                          isLoading={isLoading}
+                          onAsk={askSuggested}
+                          awaitingCheck={awaitingCheck}
+                          chartKey={
+                            message.id
+                              ? chartViews.get(message.id)?.[0]?.key
+                              : undefined
+                          }
+                        />
+                        {/* An earlier stopped turn keeps its note; the
+                            latest one's, with Retry and Edit, is below. */}
+                        {stopReason(message) &&
+                          shownMessages[index + 1]?.type === "human" && (
+                            <p className="text-muted-foreground text-sm">
+                              {cutOffNote(stopReason(message)!)}
+                            </p>
+                          )}
+                      </Fragment>
                     ),
                   )}
                 {/* Special rendering case where there are no AI/tool messages, but there is an interrupt.
@@ -448,6 +498,7 @@ export function Thread() {
                 )}
                 <StoppedNote
                   turn={unanswered}
+                  retryRef={retryButton}
                   onRetry={retryQuestion}
                   onEdit={editQuestion}
                 />
@@ -563,7 +614,10 @@ export function Thread() {
                         {stream.isLoading ? (
                           <Button
                             key="stop"
-                            onClick={() => stream.stop()}
+                            onClick={() => {
+                              focusAfterStop.current = true;
+                              stream.stop();
+                            }}
                             className="ml-auto"
                           >
                             <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -604,26 +658,10 @@ export function Thread() {
             </div>
           </div>
         </motion.div>
-        <div
-          className={cn(
-            "relative flex flex-col border-l",
-            !artifactOpen && "hidden",
-          )}
-        >
-          <div className="absolute inset-0 flex min-w-[30vw] flex-col">
-            <div className="grid grid-cols-[1fr_auto] border-b p-4">
-              <ArtifactTitle className="truncate overflow-hidden" />
-              <button
-                onClick={closeArtifact}
-                aria-label="Close panel"
-                className="cursor-pointer"
-              >
-                <XIcon className="size-5" />
-              </button>
-            </div>
-            <ArtifactContent className="relative min-h-0 flex-grow overflow-hidden" />
-          </div>
-        </div>
+        <SidePanel
+          open={artifactOpen}
+          onClose={closeArtifact}
+        />
       </div>
       <RegistrationPanel onConfirm={(text) => submitMessage(text, [])} />
       <SoftwareComparisonPanel />
