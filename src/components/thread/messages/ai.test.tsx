@@ -276,7 +276,7 @@ describe("AssistantMessage", () => {
     const first = screen.getByText(/^The curated documentation/);
     expect(first.tagName).toBe("P");
     expect(first.closest(".text-muted-foreground")).toBeTruthy();
-    expect(first.textContent).toContain("shows wait times: null,");
+    expect(first.textContent).toContain("shows wait_times: null,");
     expect(
       screen.getByText(
         "Let me check whether XDMoD has a metric like avg waitduration hours.",
@@ -284,6 +284,58 @@ describe("AssistantMessage", () => {
     ).toBeTruthy();
     expect(screen.queryByRole("code")).toBeNull();
     expect(screen.queryByTestId("rating")).toBeNull();
+  });
+
+  it("keeps an answer before a follow-up lookup as an answer", () => {
+    const table =
+      "| | Delta | Anvil |\n|-|-|-|\n| GPUs | A100 | A100 |\n\nLet me check the queues too.";
+    const first: Message = {
+      id: "ai-13",
+      type: "ai",
+      content: table,
+      tool_calls: [{ id: "call-13", name: "get_resource", args: {} }],
+    };
+    const result: Message = {
+      id: "tool-13",
+      type: "tool",
+      tool_call_id: "call-13",
+      content: "{}",
+    };
+    const more: Message = {
+      id: "ai-14",
+      type: "ai",
+      content: "Both have short queues today.",
+    };
+    stream.messages = [first, result, more];
+    renderMessage(first);
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getByTestId("rating")).toBeTruthy();
+  });
+
+  it("keeps notes an answer when the model only called another tool after them", () => {
+    const text =
+      "Delta has CPU and GPU partitions.\n\nLet me check the queues next.";
+    const first: Message = {
+      id: "ai-15",
+      type: "ai",
+      content: text,
+      tool_calls: [{ id: "call-15", name: "get_resource", args: {} }],
+    };
+    const second: Message = {
+      id: "ai-16",
+      type: "ai",
+      content: "",
+      tool_calls: [{ id: "call-16", name: "get_chart_data", args: {} }],
+    };
+    // The run stopped before the second lookup came back.
+    stream.messages = [first, second];
+    renderMessage(first);
+    expect(
+      screen
+        .getByText("Delta has CPU and GPU partitions.")
+        .closest(".text-muted-foreground"),
+    ).toBeNull();
+    expect(screen.getByTestId("rating")).toBeTruthy();
   });
 
   describe("with an XDMoD chart", () => {
