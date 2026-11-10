@@ -12,7 +12,7 @@ import { useAuthStatus } from "@/hooks/use-agent-auth";
 import {
   CONVERSATIONS_HIDE_ID,
   CONVERSATIONS_SIDEBAR_ID,
-  CONVERSATIONS_TOGGLE_ID,
+  CONVERSATIONS_TOGGLE_ATTR,
   HideConversationsButton,
   NewChatButton,
 } from "../conversation-controls";
@@ -30,10 +30,7 @@ function ThreadList({
 
   return (
     <div className="min-h-0 w-full flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent">
-      <ul
-        aria-label="Conversations"
-        className="flex w-full flex-col gap-1 px-2 pb-2"
-      >
+      <ul className="flex w-full flex-col gap-1 px-2 pb-2">
         {threads.map((t) => {
           let itemText = t.thread_id;
           if (
@@ -101,14 +98,29 @@ function ThreadHistoryLoading() {
   );
 }
 
+const SIDEBAR_HEADING_ID = "conversations-sidebar-heading";
+
+/** The top bar's toggle that's showing (wide or narrow screens' bar). */
+function focusConversationsToggle() {
+  const toggles = document.querySelectorAll<HTMLElement>(
+    `[${CONVERSATIONS_TOGGLE_ATTR}]`,
+  );
+  Array.from(toggles)
+    .find((el) => el.getClientRects().length > 0 || toggles.length === 1)
+    ?.focus();
+}
+
 /** The sidebar's or the phone list's top: Hide, New chat, then the heading. */
 function SidebarHeader({
   hideId,
+  headingId,
   onHide,
   onNewChat,
   Heading,
 }: {
   hideId?: string;
+  /** For the sidebar, which is named by its heading. */
+  headingId?: string;
   onHide: () => void;
   onNewChat: () => void;
   Heading: "h2" | typeof SheetTitle;
@@ -119,10 +131,15 @@ function SidebarHeader({
         <HideConversationsButton
           id={hideId}
           onClick={onHide}
+          controlsSidebar={Heading === "h2"}
         />
         <NewChatButton onClick={onNewChat} />
       </div>
-      <Heading className="px-2 text-xl font-semibold tracking-tight">
+      <Heading
+        // Only when given: the dialog's title keeps the id it's named by.
+        {...(headingId && { id: headingId })}
+        className="px-2 text-xl font-semibold tracking-tight"
+      >
         Conversations
       </Heading>
     </div>
@@ -158,7 +175,7 @@ export default function ThreadHistory({
       active === document.body ||
       sidebarRef.current?.contains(active)
     ) {
-      document.getElementById(CONVERSATIONS_TOGGLE_ID)?.focus();
+      focusConversationsToggle();
     }
   }, [chatHistoryOpen, isLargeScreen]);
 
@@ -219,7 +236,7 @@ export default function ThreadHistory({
       <aside
         ref={sidebarRef}
         id={CONVERSATIONS_SIDEBAR_ID}
-        aria-label="Conversations"
+        aria-labelledby={SIDEBAR_HEADING_ID}
         inert={!chatHistoryOpen}
         onKeyDown={(e) => {
           if (e.key !== "Escape" || e.defaultPrevented) return;
@@ -231,6 +248,7 @@ export default function ThreadHistory({
       >
         <SidebarHeader
           hideId={CONVERSATIONS_HIDE_ID}
+          headingId={SIDEBAR_HEADING_ID}
           onHide={() => setChatHistoryOpen(false)}
           onNewChat={onNewChat}
           Heading="h2"
@@ -258,7 +276,7 @@ export default function ThreadHistory({
                 newChatFromSheet.current = false;
                 focusComposer();
               } else {
-                document.getElementById(CONVERSATIONS_TOGGLE_ID)?.focus();
+                focusConversationsToggle();
               }
             }}
           >

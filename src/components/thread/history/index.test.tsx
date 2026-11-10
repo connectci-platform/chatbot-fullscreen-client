@@ -120,7 +120,7 @@ describe("ThreadHistory", () => {
       show.getAttribute("aria-controls")!,
     );
     expect(sidebar).not.toBeNull();
-    expect(sidebar).toHaveAttribute("aria-label", "Conversations");
+    expect(sidebar).toHaveAccessibleName("Conversations");
   });
 
   it("keeps a closed sidebar's controls out of keyboard reach", () => {
@@ -233,7 +233,9 @@ describe("ThreadHistory", () => {
       },
     ];
     renderHistory("?chatHistoryOpen=true&threadId=t-2");
-    const nav = screen.getByRole("list", { name: "Conversations" });
+    const nav = within(
+      screen.getByRole("complementary", { name: "Conversations" }),
+    ).getByRole("list");
     const items = within(nav).getAllByRole("listitem");
     expect(items).toHaveLength(2);
     const anvil = within(nav).getByRole("button", { name: "What is Anvil?" });
@@ -244,6 +246,37 @@ describe("ThreadHistory", () => {
 
     await userEvent.click(anvil);
     expect(anvil).toHaveAttribute("aria-current", "page");
+  });
+
+  it("draws the toggle, Hide and New chat icons at 24px", () => {
+    const { unmount } = renderHistory();
+    expect(
+      screen
+        .getByRole("button", { name: "Show conversations" })
+        .querySelector("svg"),
+    ).toHaveClass("size-6");
+    unmount();
+    renderHistory("?chatHistoryOpen=true");
+    const sidebar = screen.getByRole("complementary", {
+      name: "Conversations",
+    });
+    for (const name of ["Hide conversations", "New chat"]) {
+      expect(
+        within(sidebar).getByRole("button", { name }).querySelector("svg"),
+      ).toHaveClass("size-6");
+    }
+  });
+
+  it("names the sidebar by its heading, once", () => {
+    renderHistory("?chatHistoryOpen=true");
+    const sidebar = screen.getByRole("complementary", {
+      name: "Conversations",
+    });
+    const heading = within(sidebar).getByRole("heading", {
+      name: "Conversations",
+    });
+    expect(sidebar).toHaveAttribute("aria-labelledby", heading.id);
+    expect(sidebar).not.toHaveAttribute("aria-label");
   });
 
   describe("on a phone", () => {
@@ -268,6 +301,10 @@ describe("ThreadHistory", () => {
       expect(
         within(dialog).queryByRole("button", { name: "Close" }),
       ).toBeNull();
+      // There's no sidebar on screen for it to point at.
+      expect(
+        within(dialog).getByRole("button", { name: "Hide conversations" }),
+      ).not.toHaveAttribute("aria-controls");
     });
 
     it("New chat starts a conversation and closes the list", async () => {

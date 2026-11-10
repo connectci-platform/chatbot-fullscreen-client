@@ -7,8 +7,12 @@ import { cn } from "@/lib/utils";
 
 /** The conversations sidebar, which the toggles control. */
 export const CONVERSATIONS_SIDEBAR_ID = "conversations-sidebar";
-/** The top bar's toggle, where focus goes back when the sidebar closes. */
-export const CONVERSATIONS_TOGGLE_ID = "conversations-toggle";
+/**
+ * Marks the top bar's toggle, where focus goes back when the sidebar
+ * closes. There's one in the wide screens' bar and one in the narrow
+ * screens', and only one of them shows.
+ */
+export const CONVERSATIONS_TOGGLE_ATTR = "data-conversations-toggle";
 /** The open sidebar's Hide button, where focus goes when it opens. */
 export const CONVERSATIONS_HIDE_ID = "conversations-hide";
 
@@ -30,7 +34,7 @@ export const NewChatButton = forwardRef<HTMLButtonElement, ButtonProps>(
     >
       <MessageSquarePlus
         aria-hidden
-        className="size-5"
+        className="size-6"
       />
       New chat
     </Button>
@@ -43,17 +47,22 @@ NewChatButton.displayName = "NewChatButton";
  * open sidebar has its own Hide button, so this one steps aside; on a phone
  * the list opens over the page and this stays where it was.
  */
-export function ConversationsToggle() {
+export function ConversationsToggle({
+  labelled = false,
+}: {
+  /** Says "Conversations" beside the icon, where the bar has room. */
+  labelled?: boolean;
+}) {
   const [open, setOpen] = useConversationsOpen();
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
   if (open && isLargeScreen) return null;
 
   return (
     <Button
-      id={CONVERSATIONS_TOGGLE_ID}
+      {...{ [CONVERSATIONS_TOGGLE_ATTR]: "" }}
       type="button"
       variant="ghost"
-      className="size-11 hover:bg-gray-100"
+      className={cn("hover:bg-gray-100", labelled ? "h-11 px-3" : "size-11")}
       aria-label={open ? "Hide conversations" : "Show conversations"}
       aria-expanded={open}
       // On a phone the list opens as a dialog instead of the sidebar.
@@ -64,14 +73,15 @@ export function ConversationsToggle() {
       {open ? (
         <PanelLeftClose
           aria-hidden
-          className="size-5"
+          className="size-6"
         />
       ) : (
         <PanelLeftOpen
           aria-hidden
-          className="size-5"
+          className="size-6"
         />
       )}
+      {labelled && "Conversations"}
     </Button>
   );
 }
@@ -83,9 +93,12 @@ export function ConversationsToggle() {
 export function HideConversationsButton({
   onClick,
   id,
+  controlsSidebar,
 }: {
   onClick: () => void;
   id?: string;
+  /** True in the sidebar itself; false in the phone's dialog. */
+  controlsSidebar: boolean;
 }) {
   return (
     <Button
@@ -95,12 +108,13 @@ export function HideConversationsButton({
       className="h-11 px-3 hover:bg-gray-100"
       aria-label="Hide conversations"
       aria-expanded
-      aria-controls={CONVERSATIONS_SIDEBAR_ID}
+      // In the phone's dialog there's no sidebar on screen to point at.
+      aria-controls={controlsSidebar ? CONVERSATIONS_SIDEBAR_ID : undefined}
       onClick={onClick}
     >
       <PanelLeftClose
         aria-hidden
-        className="size-5"
+        className="size-6"
       />
       Hide
     </Button>
