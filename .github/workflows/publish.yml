@@ -76,7 +76,7 @@ jobs:
 
     steps:
       - name: Deploy chatbot to production
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.PRODUCTION_HOST }}
           username: ${{ secrets.PRODUCTION_USER }}
@@ -115,7 +115,7 @@ jobs:
             docker compose -f docker-compose.prod.yml images chatbot
 
       - name: Smoke test
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.PRODUCTION_HOST }}
           username: ${{ secrets.PRODUCTION_USER }}
