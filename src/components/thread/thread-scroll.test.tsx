@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "@langchain/langgraph-sdk";
@@ -200,21 +200,33 @@ describe("Message box recall", () => {
     stream.submit.mockClear();
   });
 
-  it("Up and Down walk through this conversation's questions, and Enter sends one again", () => {
+  it("Up and Down walk through this conversation's questions, and Enter sends one again", async () => {
     renderThread();
-    const box = screen.getByRole("textbox", { name: "Message" });
+    const box = screen.getByRole<HTMLTextAreaElement>("textbox", {
+      name: "Message",
+    });
+    // The hook acts once the browser has moved the caret, a task later.
+    // jsdom doesn't move it, so this does, as for one-line text: Up to the
+    // start, Down to the end.
+    const press = async (key: string) => {
+      fireEvent.keyDown(box, { key });
+      const to = key === "ArrowUp" ? 0 : box.value.length;
+      box.setSelectionRange(to, to);
+      await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    };
     fireEvent.change(box, { target: { value: "draft" } });
-    (box as HTMLTextAreaElement).setSelectionRange(0, 0);
+    box.setSelectionRange(0, 0);
 
-    fireEvent.keyDown(box, { key: "ArrowUp" });
+    await press("ArrowUp");
     expect(box).toHaveValue("And Delta?");
-    fireEvent.keyDown(box, { key: "ArrowUp" });
+    await press("ArrowUp");
     expect(box).toHaveValue("What is Anvil?");
-    fireEvent.keyDown(box, { key: "ArrowDown" });
-    fireEvent.keyDown(box, { key: "ArrowDown" });
+    await press("ArrowDown");
+    await press("ArrowDown");
     expect(box).toHaveValue("draft");
 
-    fireEvent.keyDown(box, { key: "ArrowUp" });
+    box.setSelectionRange(0, 0);
+    await press("ArrowUp");
     fireEvent.keyDown(box, { key: "Enter" });
     expect(stream.submit).toHaveBeenCalledOnce();
     const sent = stream.submit.mock.calls[0][0].messages.at(-1);

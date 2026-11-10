@@ -623,7 +623,7 @@ export function Thread() {
                         onChange={(e) => setInput(e.target.value)}
                         onPaste={handlePaste}
                         onKeyDown={(e) => {
-                          if (questionHistory.onKeyDown(e)) return;
+                          questionHistory.onKeyDown(e);
                           if (
                             e.key === "Enter" &&
                             !e.shiftKey &&

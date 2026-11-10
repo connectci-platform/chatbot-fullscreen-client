@@ -14,30 +14,38 @@ type Browsing = {
   draft: string;
 };
 
-function caretOnFirstLine(box: HTMLTextAreaElement) {
-  return !box.value.slice(0, box.selectionStart).includes("\n");
-}
+/** Runs `then` once the browser has moved the caret for the key. */
+export type AfterNativeMove = (then: () => void) => void;
 
-function caretOnLastLine(box: HTMLTextAreaElement) {
-  return !box.value.slice(box.selectionEnd).includes("\n");
-}
+const afterNativeMoveDefault: AfterNativeMove = (then) => {
+  setTimeout(then, 0);
+};
 
 /**
  * Up and Down in the message box recall this conversation's earlier
- * questions, like a shell's history. Up with the caret on the box's first
- * line puts the previous question in it, and again goes further back. Down
- * with the caret on the last line walks forward and, past the newest,
- * brings back what was being typed. With the caret anywhere else the arrows
- * move it as usual, so a multi-line question can still be edited.
+ * questions, like a shell's history. The browser moves the caret first, so
+ * lines that wrap are walked like any other; only once the caret can't go
+ * further does the key recall. Up at the very start of the box puts the
+ * previous question in it, and again goes further back. Down at the very
+ * end walks forward and, past the newest, brings back what was being typed.
+ *
+ * In a draft the caret has to be at the start (or end) already when the key
+ * is pressed, so the press that only moves it there never replaces the
+ * draft. A recalled question is walked straight through: reaching its start
+ * or end is enough.
  *
  * Anything else that changes the box (typing, Edit question) ends the look
  * back, leaving the text as the person's own; so does another conversation.
+ *
+ * Only the text is recalled. The ACCESS composer has uploads switched off,
+ * so a question's attachments aren't brought back.
  */
 export function useQuestionHistory({
   questions,
   input,
   setInput,
   resetKey,
+  afterNativeMove = afterNativeMoveDefault,
 }: {
   /** This conversation's questions, oldest first. */
   questions: string[];
@@ -45,6 +53,8 @@ export function useQuestionHistory({
   setInput: Dispatch<SetStateAction<string>>;
   /** Changes when the conversation does. */
   resetKey: unknown;
+  /** For tests, which have no browser to move the caret. */
+  afterNativeMove?: AfterNativeMove;
 }) {
   const browsing = useRef<Browsing | null>(null);
   // The text this hook last put in the box, to tell it from other changes.
@@ -72,40 +82,49 @@ export function useQuestionHistory({
     setInput(text);
   };
 
-  /** Handles Up or Down when it's a recall; true if it was. */
-  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>): boolean => {
-    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return false;
+  /** Watches Up and Down; recalls once the browser has moved the caret. */
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    const key = e.key;
+    if (key !== "ArrowUp" && key !== "ArrowDown") return;
     // An input method uses the arrows to pick a candidate.
-    if (e.nativeEvent.isComposing || e.keyCode === 229) return false;
-    if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return false;
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
     const box = e.currentTarget;
-    if (box.selectionStart !== box.selectionEnd) return false;
+    if (box.selectionStart !== box.selectionEnd) return;
+    const before = box.selectionStart;
 
-    const current = browsing.current;
-    if (e.key === "ArrowUp") {
-      if (!caretOnFirstLine(box)) return false;
-      let index = (current ? current.index : stops.length) - 1;
-      // Already in the box (Edit question put it there): go past it.
-      while (index >= 0 && stops[index] === input) index--;
-      if (index < 0) return false;
-      e.preventDefault();
-      browsing.current = { index, draft: current ? current.draft : input };
-      show(stops[index]);
-      return true;
-    }
+    afterNativeMove(() => {
+      if (box.selectionStart !== box.selectionEnd) return;
+      const caret = box.selectionStart;
+      const current = browsing.current;
+      // Still where it was, or anywhere in a recalled question.
+      const settled = caret === before || current !== null;
 
-    if (!current || !caretOnLastLine(box)) return false;
-    e.preventDefault();
-    const index = current.index + 1;
-    if (index >= stops.length) {
-      browsing.current = null;
-      recalled.current = null;
-      setInput(current.draft);
-    } else {
-      browsing.current = { ...current, index };
-      show(stops[index]);
-    }
-    return true;
+      if (key === "ArrowUp") {
+        if (caret !== 0 || !settled) return;
+        let index = (current ? current.index : stops.length) - 1;
+        // Already in the box (Edit question put it there): go past it.
+        while (index >= 0 && stops[index] === box.value) index--;
+        if (index < 0) return;
+        browsing.current = {
+          index,
+          draft: current ? current.draft : box.value,
+        };
+        show(stops[index]);
+        return;
+      }
+
+      if (!current || caret !== box.value.length || !settled) return;
+      const index = current.index + 1;
+      if (index >= stops.length) {
+        browsing.current = null;
+        recalled.current = null;
+        setInput(current.draft);
+      } else {
+        browsing.current = { ...current, index };
+        show(stops[index]);
+      }
+    });
   };
 
   return { onKeyDown };
