@@ -82,6 +82,7 @@ describe("unansweredQuestion", () => {
       question,
       stoppedHere: false,
       reason: "user",
+      wrote: false,
     });
   });
 
@@ -99,7 +100,7 @@ describe("unansweredQuestion", () => {
         stopped: true,
         messages: [question, partial],
       }),
-    ).toEqual({ question, stoppedHere: true, reason: "user" });
+    ).toEqual({ question, stoppedHere: true, reason: "user", wrote: false });
   });
 
   it("ignores hidden tool responses after the question", () => {
@@ -136,6 +137,7 @@ describe("unansweredQuestion", () => {
       question,
       stoppedHere: true,
       reason: "timeout",
+      wrote: false,
     });
     expect(
       unansweredQuestion({ ...idle, messages, error: failed })?.reason,
@@ -146,7 +148,7 @@ describe("unansweredQuestion", () => {
     const cancelled = Object.assign(new Error(), { name: "cancelled" });
     expect(
       unansweredQuestion({ ...idle, messages: [question], error: cancelled }),
-    ).toEqual({ question, stoppedHere: true, reason: "user" });
+    ).toEqual({ question, stoppedHere: true, reason: "user", wrote: false });
   });
 });
 
@@ -179,7 +181,12 @@ describe("a stopped answer the agent saved", () => {
       interrupted: false,
       stopped: false,
     });
-    expect(at).toEqual({ question, stoppedHere: true, reason: "user" });
+    expect(at).toEqual({
+      question,
+      stoppedHere: true,
+      reason: "user",
+      wrote: false,
+    });
   });
 
   it("is what Retry and Edit replace, with its question", () => {
@@ -270,5 +277,71 @@ describe("a run that failed on screen", () => {
     expect((marked[3] as { tool_calls?: unknown[] }).tool_calls).toEqual([]);
     expect(withFailedTurnMarked(thread, undefined)).toBe(thread);
     expect(withFailedTurnMarked([], timeout)).toEqual([]);
+  });
+});
+
+describe("a cut-off turn that made a change", () => {
+  const call: Message = {
+    id: "m-1",
+    type: "ai",
+    content: "Posting it.",
+    tool_calls: [{ id: "c-1", name: "create_announcement", args: {} }],
+  };
+  const result: Message = {
+    id: "t-1",
+    type: "tool",
+    content: "created",
+    tool_call_id: "c-1",
+  };
+  const cut = (reason?: string): Message => ({
+    id: "a-1",
+    type: "ai",
+    content: "Done, it",
+    response_metadata: { stopped: true, ...(reason && { reason }) },
+  });
+  const idle = {
+    isLoading: false,
+    error: undefined,
+    interrupted: false,
+    stopped: false,
+  };
+
+  it("is the latest unanswered turn, marked as having written", () => {
+    expect(
+      unansweredQuestion({
+        ...idle,
+        messages: [question, call, result, cut()],
+      }),
+    ).toEqual({ question, stoppedHere: true, reason: "user", wrote: true });
+    expect(
+      unansweredQuestion({
+        ...idle,
+        messages: [question, call, result, cut("error")],
+      })?.reason,
+    ).toBe("error");
+  });
+
+  it("isn't one when the write's turn finished", () => {
+    const answer: Message = { id: "a-2", type: "ai", content: "Posted." };
+    expect(
+      unansweredQuestion({
+        ...idle,
+        messages: [question, call, result, answer],
+      }),
+    ).toBeNull();
+  });
+
+  it("isn't removed when it's asked again", () => {
+    const thread = [question, call, result, cut()];
+    expect(withoutUnansweredTurn(thread)).toBe(thread);
+  });
+
+  it("says a change may already have been made", () => {
+    expect(cutOffNote("user", true)).toBe(
+      "You stopped this answer. A change may already have been made, so check before asking again.",
+    );
+    expect(cutOffNote("timeout", true)).toBe(
+      "This answer didn't finish. A change may already have been made, so check before asking again.",
+    );
   });
 });

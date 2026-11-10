@@ -363,4 +363,66 @@ describe("the Stopped note", () => {
     expect(screen.getByText("This answer didn't finish.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
+
+  const writeCall: Message = {
+    id: "m-1",
+    type: "ai",
+    content: "",
+    tool_calls: [{ id: "c-1", name: "create_announcement", args: {} }],
+  };
+  const writeResult: Message = {
+    id: "t-1",
+    type: "tool",
+    content: "created",
+    tool_call_id: "c-1",
+  };
+
+  it("after a change, warns and offers Edit but not Retry", () => {
+    stream.messages = [question, writeCall, writeResult, savedStop];
+    renderThread();
+    expect(
+      screen.getByText(
+        "You stopped this answer. A change may already have been made, so check before asking again.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+
+    // Edit keeps the turn: sending adds the question after it.
+    fireEvent.click(screen.getByRole("button", { name: "Edit question" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    const [, options] = stream.submit.mock.calls[0];
+    expect(options.context).toBeUndefined();
+    expect(
+      options.optimisticValues({ messages: stream.messages }).messages,
+    ).toHaveLength(5);
+  });
+
+  it("says a turn that failed after a change didn't finish, with the warning", () => {
+    stream.messages = [
+      question,
+      writeCall,
+      writeResult,
+      { ...savedStop, response_metadata: { stopped: true, reason: "timeout" } },
+    ];
+    renderThread();
+    expect(
+      screen.getByText(
+        "This answer didn't finish. A change may already have been made, so check before asking again.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("keeps the plain note on an earlier turn that made a change", () => {
+    stream.messages = [
+      question,
+      writeCall,
+      writeResult,
+      savedStop,
+      later,
+      laterAnswer,
+    ];
+    renderThread();
+    expect(note()).toBeTruthy();
+    expect(screen.queryByText(/A change may already/)).toBeNull();
+  });
 });

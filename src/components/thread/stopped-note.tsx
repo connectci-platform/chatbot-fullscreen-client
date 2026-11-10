@@ -15,7 +15,7 @@ export function StoppedNote({
   retryRef,
 }: {
   /** Null while there's nothing to show. */
-  turn: { stoppedHere: boolean; reason: StopReason } | null;
+  turn: { stoppedHere: boolean; reason: StopReason; wrote: boolean } | null;
   onRetry: () => void;
   onEdit: () => void;
   /** Retry, so focus can move to it when Cancel goes away. */
@@ -30,19 +30,22 @@ export function StoppedNote({
         <div className="flex flex-col items-start gap-2 text-sm">
           <p className="text-muted-foreground">
             {turn.stoppedHere
-              ? cutOffNote(turn.reason)
+              ? cutOffNote(turn.reason, turn.wrote)
               : "This question didn't get an answer."}
           </p>
           <div className="flex gap-2">
-            <Button
-              ref={retryRef}
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onRetry}
-            >
-              Retry
-            </Button>
+            {/* Asking again could make the change a second time. */}
+            {!turn.wrote && (
+              <Button
+                ref={retryRef}
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onRetry}
+              >
+                Retry
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"

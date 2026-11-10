@@ -309,7 +309,8 @@ export function Thread() {
   /** Asks the unanswered question again as a new run. */
   const retryQuestion = () => {
     const parts = unansweredParts();
-    if (!parts || awaitingCheck || retrying.current) return;
+    if (!parts || unanswered?.wrote || awaitingCheck || retrying.current)
+      return;
     retrying.current = true;
     submitMessage(parts.text, parts.blocks, { replacing: true });
   };
@@ -325,7 +326,8 @@ export function Thread() {
       draft.trim() ? `${draft}\n${parts.text}` : parts.text,
     );
     setContentBlocks((blocks) => [...blocks, ...parts.blocks]);
-    replaceOnSend.current = true;
+    // A turn that made a change stays, so the record of it isn't lost.
+    replaceOnSend.current = !unanswered?.wrote;
     focusComposer();
   };
 

@@ -68,11 +68,37 @@ export function withFailedTurnMarked(
   );
 }
 
-/** The note under a cut-off answer. */
-export function cutOffNote(reason: StopReason): string {
-  return reason === "user"
-    ? "You stopped this answer."
-    : "This answer didn't finish.";
+/**
+ * The note under a cut-off answer. `wrote` is for a latest turn that made a
+ * change before it was cut off, which asking again could make twice.
+ */
+export function cutOffNote(reason: StopReason, wrote = false): string {
+  const note =
+    reason === "user"
+      ? "You stopped this answer."
+      : "This answer didn't finish.";
+  return wrote
+    ? `${note} A change may already have been made, so check before asking again.`
+    : note;
+}
+
+/**
+ * Whether the turn from `at` was cut off after making a change: the agent
+ * keeps a cut-off turn's write calls and their results ahead of its stopped
+ * text, and asking again doesn't remove them.
+ */
+function cutOffAfterWrite(messages: Message[], at: number): boolean {
+  const tail = messages.slice(at + 1);
+  return (
+    tail.some((m) => m.type === "tool") &&
+    isStoppedAnswer(tail.at(-1)) &&
+    tail.every(
+      (m) =>
+        m.type === "tool" ||
+        isStoppedAnswer(m) ||
+        (m.type === "ai" && (m.tool_calls?.length ?? 0) > 0),
+    )
+  );
 }
 
 /**
@@ -161,7 +187,13 @@ export function unansweredQuestion({
   error: unknown;
   interrupted: boolean;
   stopped: boolean;
-}): { question: Message; stoppedHere: boolean; reason: StopReason } | null {
+}): {
+  question: Message;
+  stoppedHere: boolean;
+  reason: StopReason;
+  /** It made a change before it was cut off, so it can't simply be asked again. */
+  wrote: boolean;
+} | null {
   if (isLoading || interrupted) return null;
   // Other failures have their own message, and a Turnstile check its panel.
   const failed = failedRunReason(error);
@@ -170,15 +202,16 @@ export function unansweredQuestion({
   const at = visible.findLastIndex((m) => m.type === "human");
   if (at === -1) return null;
   const question = visible[at];
+  const wrote = cutOffAfterWrite(visible, at);
   const savedStopped =
-    unansweredFrom(visible) === at && at < visible.length - 1;
+    (unansweredFrom(visible) === at && at < visible.length - 1) || wrote;
   const stoppedHere = stopped || savedStopped || isStopError(error) || !!failed;
   // A stop seen here is the person's; a failure or a saved stop says why.
   const reason =
     failed ??
     ((savedStopped && !stopped && stopReason(visible.at(-1))) || "user");
   if (at === visible.length - 1 || savedStopped) {
-    return { question, stoppedHere, reason };
+    return { question, stoppedHere, reason, wrote };
   }
-  return stopped ? { question, stoppedHere, reason } : null;
+  return stopped ? { question, stoppedHere, reason, wrote } : null;
 }
