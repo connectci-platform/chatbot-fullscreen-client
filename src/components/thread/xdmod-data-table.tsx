@@ -31,13 +31,16 @@ function formatCell(
  */
 export const XdmodDataTable = memo(function XdmodDataTable({
   view,
+  rows: all,
 }: {
   view: TableView;
+  /** Every stored row, fetched from the agent. */
+  rows: TableCell[][];
 }) {
   const [page, setPage] = useState(0);
-  const pages = Math.max(1, Math.ceil(view.rows.length / PAGE_ROWS));
+  const pages = Math.max(1, Math.ceil(all.length / PAGE_ROWS));
   const first = page * PAGE_ROWS;
-  const rows = view.rows.slice(first, first + PAGE_ROWS);
+  const rows = all.slice(first, first + PAGE_ROWS);
   const cell = "border-b px-3 py-2 text-right tabular-nums";
   const head = "border-b px-3 py-2 text-left align-bottom";
   const right = (c: TableColumn) => c.kind === "number";
@@ -121,7 +124,7 @@ export const XdmodDataTable = memo(function XdmodDataTable({
             aria-live="polite"
           >
             Rows {ROWS.format(first + 1)} to {ROWS.format(first + rows.length)}{" "}
-            of {ROWS.format(view.rows.length)}
+            of {ROWS.format(all.length)}
           </p>
         </div>
       )}

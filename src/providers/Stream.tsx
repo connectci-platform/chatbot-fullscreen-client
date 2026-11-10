@@ -59,6 +59,8 @@ type TypedStream = ReturnType<typeof useTypedStream>;
 
 type StreamContextType = TypedStream & {
   apiUrl: string;
+  /** The conversation's id, once it has one. */
+  threadId: string | null;
   runStatus: RunStatusEvent | null;
   /** Sends the challenged question again with a passed Turnstile token. */
   resendWithToken: (token: string) => void;
@@ -184,7 +186,10 @@ const StreamSession = ({
     client,
     assistantId,
     threadId: threadId ?? null,
-    fetchStateHistory: true,
+    // Only the latest snapshot: nothing here reads branches or earlier
+    // checkpoints, and each snapshot carries the whole thread, so the
+    // default of 10 sent it 10 times on every reload and after every run.
+    fetchStateHistory: { limit: 1 },
     onCustomEvent: (event, options) => {
       if (isRequiresAuthEvent(event)) {
         showRequiresAuth(event);
@@ -402,6 +407,7 @@ const StreamSession = ({
         stop,
         stopped,
         apiUrl,
+        threadId: threadId ?? null,
         runStatus,
         resendWithToken: resend,
         turnstileFailed,

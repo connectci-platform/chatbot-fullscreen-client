@@ -19,10 +19,15 @@ type Unit = "Day" | "Month" | "Quarter" | "Year";
 /**
  * The xdmod-data server's full table, version 1, as access-mcp defines it
  * (packages/xdmod-mcp-data/src/xdmod_mcp_data/raw_table.py): every row of a
- * get_raw_data result, which the model never sees. It crosses a network
- * boundary, so `parseTable` checks it before anything here trusts it.
+ * get_raw_data result, which the model never sees. The agent stores it once
+ * per thread (access-agent src/tool_attachments.py) and leaves this reference
+ * on the tool message: the table's description without its rows, plus the id
+ * its rows are fetched by. It crosses a network boundary, so `parseRef`
+ * checks it before anything here trusts it.
  */
-interface TablePayload {
+interface TableRef {
+  id: string;
+  kind: "table";
   version: 1;
   source: string;
   realm: string;
@@ -33,7 +38,6 @@ interface TablePayload {
   requested: { start: string; end: string };
   filters: Record<string, string[]>;
   columns: TableColumn[];
-  rows: TableCell[][];
   row_count: number;
   retrieved: string;
 }
@@ -51,7 +55,10 @@ export type TableView = {
   /** The grouping column's name, when there is one: "User". */
   group: string | null;
   columns: TableColumn[];
-  rows: TableCell[][];
+  /** The stored table's id, which fetches its rows from the agent. */
+  id: string;
+  /** How many rows the stored table has. */
+  rowCount: number;
   /** The period the rows are by, when the table is a timeseries. */
   unit?: Unit;
   requested: { start: string; end: string };
@@ -87,7 +94,10 @@ function isFilters(v: unknown): v is Record<string, string[]> {
 }
 
 /** Every row as long as the columns, each cell the type its column holds. */
-function rowsFit(rows: unknown, columns: TableColumn[]): rows is TableCell[][] {
+export function rowsFit(
+  rows: unknown,
+  columns: TableColumn[],
+): rows is TableCell[][] {
   if (!Array.isArray(rows)) return false;
   const numeric = columns.map((c) => c.kind === "number");
   for (const row of rows) {
@@ -109,8 +119,9 @@ function rowsFit(rows: unknown, columns: TableColumn[]): rows is TableCell[][] {
   return true;
 }
 
-function parseTable(raw: unknown): TablePayload | null {
-  if (!isRecord(raw) || raw.version !== 1) return null;
+function parseRef(raw: unknown): TableRef | null {
+  if (!isRecord(raw) || raw.version !== 1 || raw.kind !== "table") return null;
+  if (!isString(raw.id) || !/^[0-9a-f]{32}$/.test(raw.id)) return null;
   const { requested, columns } = raw;
   if (
     !isString(raw.source) ||
@@ -134,37 +145,33 @@ function parseTable(raw: unknown): TablePayload | null {
   ) {
     return null;
   }
-  if (!rowsFit(raw.rows, columns) || raw.row_count !== raw.rows.length) {
+  const count = raw.row_count;
+  if (typeof count !== "number" || !Number.isInteger(count) || count < 1) {
     return null;
   }
-  return raw as unknown as TablePayload;
+  return raw as unknown as TableRef;
 }
 
 /**
  * Parsed tables by tool message. A streamed token replaces only the message
  * it belongs to, so every other message object, and its parse, carries over.
  */
-const parsed = new WeakMap<Message, TablePayload | null>();
+const parsed = new WeakMap<Message, TableRef | null>();
 
-/** The table on a get_raw_data result, or null for anything else. */
-function tableOf(message: Message): TablePayload | null {
+/** The stored table a get_raw_data result refers to, or null for anything else. */
+function tableOf(message: Message): TableRef | null {
   if (message.type !== "tool" || message.name !== TABLE_TOOL) return null;
   let hit = parsed.get(message);
   if (hit === undefined) {
     const artifact = (message as { artifact?: unknown }).artifact;
     const content = isRecord(artifact) ? artifact.structured_content : null;
-    const table = isRecord(content) ? parseTable(content.table) : null;
-    hit = table && table.rows.length > 0 ? table : null;
+    hit = isRecord(content) ? parseRef(content.table_ref) : null;
     parsed.set(message, hit);
   }
   return hit;
 }
 
-function toView(
-  key: string,
-  messageId: string,
-  table: TablePayload,
-): TableView {
+function toView(key: string, messageId: string, table: TableRef): TableView {
   const measure = table.columns[table.columns.length - 1].name;
   const group = table.columns.find((c) => c.kind === "label")?.name ?? null;
   const grouped = table.dimension !== null && group !== null;
@@ -176,7 +183,8 @@ function toView(
     measure,
     group: grouped ? group : null,
     columns: table.columns,
-    rows: table.rows,
+    id: table.id,
+    rowCount: table.row_count,
     ...(table.columns.some((c) => c.kind === "period") &&
     UNITS.has(table.aggregation_unit)
       ? { unit: table.aggregation_unit as Unit }
@@ -269,13 +277,13 @@ export function latestAnswerHasXdmodItem(messages: Message[]): boolean {
 }
 
 /**
- * The whole table as CSV: a header row of column names, then every row the
- * server sent, not just the page on screen. Cells are escaped as the chart's
+ * The whole table as CSV: a header row of column names, then every stored
+ * row, not just the page on screen. Cells are escaped as the chart's
  * CSV escapes them, formula-looking names included.
  */
-export function tableCsv(view: TableView): string {
+export function tableCsv(view: TableView, rows: TableCell[][]): string {
   const lines = [csvRow(view.columns.map((c) => c.name))];
-  for (const row of view.rows) lines.push(csvRow(row));
+  for (const row of rows) lines.push(csvRow(row));
   return lines.join("\n");
 }
 
@@ -291,9 +299,9 @@ export function tableFileName(view: TableView): string {
   return `xdmod-${slug(view.title)}-${start}-to-${end}`;
 }
 
-export function downloadTableCsv(view: TableView): void {
+export function downloadTableCsv(view: TableView, rows: TableCell[][]): void {
   saveBlob(
-    new Blob([tableCsv(view)], { type: "text/csv;charset=utf-8" }),
+    new Blob([tableCsv(view, rows)], { type: "text/csv;charset=utf-8" }),
     `${tableFileName(view)}.csv`,
   );
 }
@@ -308,7 +316,7 @@ export function tableCaptionLines(view: TableView): string[] {
   }
   const range = `${formatDay(view.requested.start)} to ${formatDay(view.requested.end)}`;
   lines.push(view.unit ? `${range}, by ${view.unit.toLowerCase()}` : range);
-  const n = view.rows.length;
+  const n = view.rowCount;
   const per = view.unit
     ? view.group
       ? `one per ${view.unit.toLowerCase()} and ${view.group.toLowerCase()}`
@@ -344,4 +352,22 @@ export function itemLabels(items: XdmodItem[]): Map<string, string> {
     labels.set(t.key, twins > 1 ? `${base} ${n}` : base);
   }
   return labels;
+}
+
+/**
+ * Fetches a stored table's rows from the agent, on the thread's own access
+ * check. Rejects when the request fails or the rows don't fit the reference.
+ */
+export async function fetchTableRows(
+  view: TableView,
+  get: (path: string) => Promise<Response>,
+): Promise<TableCell[][]> {
+  const res = await get(`attachments/${encodeURIComponent(view.id)}`);
+  if (!res.ok) throw new Error(`The table couldn't be loaded (${res.status})`);
+  const body: unknown = await res.json();
+  const rows = isRecord(body) ? body.rows : null;
+  if (!rowsFit(rows, view.columns) || rows.length !== view.rowCount) {
+    throw new Error("The table that came back doesn't match this answer");
+  }
+  return rows;
 }

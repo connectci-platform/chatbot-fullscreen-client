@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { toast } from "sonner";
 import {
   chartFileName,
@@ -12,12 +19,15 @@ import { newestPanelStep } from "@/lib/software-comparison";
 import { getSuggestedQuestions } from "@/lib/suggested-questions";
 import { cn } from "@/lib/utils";
 import type { ChartView } from "@/lib/xdmod-chart";
+import { threadGet } from "@/lib/thread-attachments";
 import {
   downloadTableCsv,
+  fetchTableRows,
   itemLabels,
   latestAnswerHasXdmodItem,
   tableCaptionLines,
   xdmodItemsByMessage,
+  type TableCell,
   type TableView,
   type XdmodItem,
 } from "@/lib/xdmod-table";
@@ -149,21 +159,114 @@ function ChartBody({
  * Every row of a get_raw_data result, a page at a time, with a CSV of all of
  * them. A table has no chart to switch to.
  */
+type Get = (path: string) => Promise<Response>;
+
+/**
+ * Rows by stored table id, so switching away and back, or downloading after
+ * viewing, doesn't fetch them again. A failed fetch is forgotten so Retry
+ * asks again.
+ */
+const loadedRows = new Map<string, Promise<TableCell[][]>>();
+
+function loadRows(view: TableView, get: Get | null): Promise<TableCell[][]> {
+  if (!get) return Promise.reject(new Error("This conversation has no id yet"));
+  let rows = loadedRows.get(view.id);
+  if (!rows) {
+    rows = fetchTableRows(view, get);
+    loadedRows.set(view.id, rows);
+    rows.catch(() => loadedRows.delete(view.id));
+  }
+  return rows;
+}
+
+type RowsState =
+  | { status: "loading" }
+  | { status: "ready"; rows: TableCell[][] }
+  | { status: "error" };
+
+/** A stored table's rows, fetched when the table is first shown. */
+function useTableRows(view: TableView, get: Get | null) {
+  const [state, setState] = useState<RowsState>({ status: "loading" });
+  const load = useCallback(() => {
+    setState({ status: "loading" });
+    const rows = loadRows(view, get);
+    rows.then(
+      (r) => setState({ status: "ready", rows: r }),
+      () => setState({ status: "error" }),
+    );
+    return rows;
+  }, [view, get]);
+  useEffect(() => {
+    let live = true;
+    loadRows(view, get).then(
+      (rows) => live && setState({ status: "ready", rows }),
+      () => live && setState({ status: "error" }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [view, get]);
+  return { state, load };
+}
+
 function TableBody({
   view,
+  get,
   questions,
   busy,
   onAsk,
 }: {
   view: TableView;
+  /** Reads under this conversation on the agent. */
+  get: Get | null;
   questions: string[];
   busy: boolean;
   onAsk: (text: string) => void;
 }) {
   const lines = tableCaptionLines(view);
+  const { state, load } = useTableRows(view, get);
+  const download = () => {
+    if (state.status === "ready") {
+      downloadTableCsv(view, state.rows);
+      return;
+    }
+    load()
+      .then((rows) => downloadTableCsv(view, rows))
+      .catch(() => {});
+  };
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-6">
-      <XdmodDataTable view={view} />
+      {state.status === "ready" && (
+        <XdmodDataTable
+          view={view}
+          rows={state.rows}
+        />
+      )}
+      {state.status === "loading" && (
+        <p
+          role="status"
+          className="text-muted-foreground text-sm"
+        >
+          Loading the table…
+        </p>
+      )}
+      {state.status === "error" && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-2 text-sm"
+        >
+          <p>The table couldn&apos;t be loaded.</p>
+          <button
+            type="button"
+            className={BUTTON}
+            onClick={() => {
+              load().catch(() => {});
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-col gap-1 text-sm">
         {lines.map((line) => (
@@ -180,7 +283,8 @@ function TableBody({
         <button
           type="button"
           className={BUTTON}
-          onClick={() => downloadTableCsv(view)}
+          onClick={download}
+          disabled={state.status === "loading"}
         >
           Download CSV
         </button>
@@ -276,6 +380,11 @@ export function XdmodChartPanel({
   const view = turn?.find((v) => v.key === selected) ?? turn?.[0] ?? null;
 
   const answerId = view?.messageId;
+  const { apiUrl, threadId } = stream;
+  const get = useMemo(
+    () => (apiUrl && threadId ? threadGet(apiUrl, threadId) : null),
+    [apiUrl, threadId],
+  );
   const questions = getSuggestedQuestions(
     stream.messages.find((m) => m.id === answerId),
   );
@@ -364,6 +473,7 @@ export function XdmodChartPanel({
           <TableBody
             key={view.key}
             view={view}
+            get={get}
             questions={questions}
             busy={stream.isLoading || awaitingCheck}
             onAsk={onAsk}

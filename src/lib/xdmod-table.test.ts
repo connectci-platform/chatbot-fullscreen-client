@@ -5,10 +5,12 @@ import {
   latestAnswerHasXdmodItem,
   tableCaptionLines,
   latestXdmodItems,
+  fetchTableRows,
   tableCsv,
   tableFileName,
   tableViewsByMessage,
   xdmodItemsByMessage,
+  type TableCell,
   type TableView,
 } from "./xdmod-table";
 
@@ -39,7 +41,15 @@ function tablePayload(over: Json = {}): Json {
   };
 }
 
-function rawTurn(p: unknown, key = "raw-1", tool = "get_raw_data"): Message[] {
+const ID = "0123456789abcdef0123456789abcdef";
+
+/** The reference the agent leaves on the message: the payload without its rows. */
+function asRef(p: Json): Json {
+  const { rows: _rows, ...rest } = p;
+  return { id: ID, kind: "table", ...rest };
+}
+
+function rawTurn(p: Json, key = "raw-1", tool = "get_raw_data"): Message[] {
   return [
     { id: `h-${key}`, type: "human", content: "q" },
     {
@@ -54,7 +64,7 @@ function rawTurn(p: unknown, key = "raw-1", tool = "get_raw_data"): Message[] {
       name: tool,
       tool_call_id: key,
       content: "summary",
-      artifact: { structured_content: { table: p } },
+      artifact: { structured_content: { table_ref: asRef(p) } },
     },
     { id: `ai-${key}`, type: "ai", content: "Here it is." },
   ] as unknown as Message[];
@@ -73,7 +83,8 @@ describe("tableViewsByMessage", () => {
     expect(view.kind).toBe("table");
     expect(view.key).toBe("raw-1");
     expect(view.title).toBe("CPU Hours: Total by User");
-    expect(view.rows).toHaveLength(2);
+    expect(view.id).toBe(ID);
+    expect(view.rowCount).toBe(2);
     expect(view.columns.map((c) => c.name)).toEqual([
       "User",
       "CPU Hours: Total",
@@ -100,26 +111,31 @@ describe("tableViewsByMessage", () => {
 
   it.each([
     ["a newer version", { version: 2 }],
-    ["a row of the wrong length", { rows: [["only one cell"]], row_count: 1 }],
-    ["text where a number goes", { rows: [["a", "12"]], row_count: 1 }],
-    ["a number where a name goes", { rows: [[12, 1]], row_count: 1 }],
-    ["a row count that disagrees", { row_count: 3 }],
+    ["an id that isn't one", { id: "../history" }],
+    ["another kind", { kind: "chart" }],
+    ["a row count that isn't one", { row_count: "2" }],
+    ["no rows", { row_count: 0 }],
     ["an unknown column kind", { columns: [{ name: "x", kind: "date" }] }],
-    ["no rows", { rows: [], row_count: 0 }],
   ])("ignores %s", (_, over) => {
-    expect(tableViewsByMessage(rawTurn(tablePayload(over))).size).toBe(0);
+    const turn = rawTurn(tablePayload());
+    const tool = turn[2] as unknown as {
+      artifact: { structured_content: { table_ref: Json } };
+    };
+    Object.assign(tool.artifact.structured_content.table_ref, over);
+    expect(tableViewsByMessage(turn).size).toBe(0);
+  });
+
+  it("ignores a full table left on the message", () => {
+    const turn = rawTurn(tablePayload());
+    (turn[2] as unknown as { artifact: Json }).artifact = {
+      structured_content: { table: tablePayload() },
+    };
+    expect(tableViewsByMessage(turn).size).toBe(0);
   });
 
   it("ignores a table on another tool", () => {
     const messages = rawTurn(tablePayload(), "x", "get_chart_data");
     expect(tableViewsByMessage(messages).size).toBe(0);
-  });
-
-  it("keeps missing values as null", () => {
-    const view = only(
-      rawTurn(tablePayload({ rows: [["a", null]], row_count: 1 })),
-    );
-    expect(view.rows).toEqual([["a", null]]);
   });
 
   it("gives back the same view for the same message", () => {
@@ -188,7 +204,7 @@ describe("xdmodItemsByMessage", () => {
         name: "get_raw_data",
         tool_call_id: "raw",
         content: "",
-        artifact: { structured_content: { table: tablePayload() } },
+        artifact: { structured_content: { table_ref: asRef(tablePayload()) } },
       },
       { id: "answer", type: "ai", content: "a" },
     ] as unknown as Message[];
@@ -224,77 +240,126 @@ describe("xdmodItemsByMessage", () => {
 });
 
 describe("tableCsv", () => {
+  const csv = (rows: TableCell[][], over: Json = {}) =>
+    tableCsv(
+      only(rawTurn(tablePayload({ ...over, rows, row_count: rows.length }))),
+      rows,
+    );
+
   it("has a header row, then every row", () => {
-    const view = only(rawTurn(tablePayload()));
-    expect(tableCsv(view)).toBe(
+    expect(csv(tablePayload().rows as TableCell[][])).toBe(
       'User,CPU Hours: Total\n"Doe, Jane - State U",120.5\n"Roe, Rick - Tech",30',
     );
   });
 
   it("quotes commas, quotes and line breaks", () => {
-    const view = only(
-      rawTurn(
-        tablePayload({
-          rows: [
-            ['Say "hi"', 1],
-            ["two\nlines", 2],
-            ["cr\rhere", 3],
-          ],
-          row_count: 3,
-        }),
-      ),
-    );
-    expect(tableCsv(view).split("\n").slice(1, 2)).toEqual(['"Say ""hi""",1']);
-    expect(tableCsv(view)).toContain('"two\nlines",2');
-    expect(tableCsv(view)).toContain('"cr\rhere",3');
+    const text = csv([
+      ['Say "hi"', 1],
+      ["two\nlines", 2],
+      ["cr\rhere", 3],
+    ]);
+    expect(text.split("\n").slice(1, 2)).toEqual(['"Say ""hi""",1']);
+    expect(text).toContain('"two\nlines",2');
+    expect(text).toContain('"cr\rhere",3');
   });
 
   it.each(["=SUM(A1)", "+1", "-2", "@cmd", "\tx"])(
     "keeps %j from running as a formula",
     (name) => {
-      const view = only(
-        rawTurn(tablePayload({ rows: [[name, 1]], row_count: 1 })),
-      );
-      const cell = tableCsv(view).split("\n")[1].replace(/,1$/, "");
+      const cell = csv([[name, 1]])
+        .split("\n")[1]
+        .replace(/,1$/, "");
       expect(cell.replace(/^"|"$/g, "").startsWith(`'${name[0]}`)).toBe(true);
     },
   );
 
   it("escapes a formula in a column name too", () => {
-    const view = only(
-      rawTurn(
-        tablePayload({
-          columns: [
-            { name: "=User", kind: "label" },
-            { name: "CPU, Hours", kind: "number" },
-          ],
-        }),
-      ),
+    const columns = [
+      { name: "=User", kind: "label" },
+      { name: "CPU, Hours", kind: "number" },
+    ];
+    expect(csv([["a", 1]], { columns }).split("\n")[0]).toBe(
+      `'=User,"CPU, Hours"`,
     );
-    expect(tableCsv(view).split("\n")[0]).toBe(`'=User,"CPU, Hours"`);
   });
 
   it("writes negative numbers as numbers and missing values as empty cells", () => {
-    const view = only(
-      rawTurn(
-        tablePayload({
-          rows: [
-            ["a", -5],
-            ["b", null],
-          ],
-          row_count: 2,
-        }),
-      ),
-    );
-    expect(tableCsv(view).split("\n").slice(1)).toEqual(["a,-5", "b,"]);
+    expect(
+      csv([
+        ["a", -5],
+        ["b", null],
+      ])
+        .split("\n")
+        .slice(1),
+    ).toEqual(["a,-5", "b,"]);
   });
 
   it("writes all 50,000 rows", () => {
     const rows = Array.from({ length: 50_000 }, (_, i) => [`user ${i}`, i]);
-    const view = only(rawTurn(tablePayload({ rows, row_count: rows.length })));
-    const lines = tableCsv(view).split("\n");
+    const lines = csv(rows).split("\n");
     expect(lines).toHaveLength(50_001);
     expect(lines.at(-1)).toBe("user 49999,49999");
+  });
+});
+
+describe("fetchTableRows", () => {
+  const view = () => only(rawTurn(tablePayload()));
+  const answering = (status: number, body: unknown) => {
+    const paths: string[] = [];
+    const get = async (path: string) => {
+      paths.push(path);
+      return new Response(JSON.stringify(body), { status });
+    };
+    return { get, paths };
+  };
+
+  it("fetches the stored rows by the reference's id", async () => {
+    const { get, paths } = answering(200, tablePayload());
+    expect(await fetchTableRows(view(), get)).toEqual(tablePayload().rows);
+    expect(paths).toEqual([`attachments/${ID}`]);
+  });
+
+  it("rejects a refusal", async () => {
+    const { get } = answering(404, { detail: "Thread not found" });
+    await expect(fetchTableRows(view(), get)).rejects.toThrow("404");
+  });
+
+  it.each([
+    ["a row of the wrong length", [["only one cell"], ["b", 1]]],
+    [
+      "text where a number goes",
+      [
+        ["a", "12"],
+        ["b", 1],
+      ],
+    ],
+    [
+      "a number where a name goes",
+      [
+        [12, 1],
+        ["b", 1],
+      ],
+    ],
+    [
+      "more rows than the reference says",
+      [
+        ["a", 1],
+        ["b", 2],
+        ["c", 3],
+      ],
+    ],
+  ])("rejects %s", async (_, rows) => {
+    const { get } = answering(200, { ...tablePayload(), rows });
+    await expect(fetchTableRows(view(), get)).rejects.toThrow("match");
+  });
+
+  it("keeps missing values as null", async () => {
+    const rows = [
+      ["a", null],
+      ["b", 1],
+    ];
+    const { get } = answering(200, { rows });
+    expect(await fetchTableRows(view(), get)).toEqual(rows);
   });
 });
 
