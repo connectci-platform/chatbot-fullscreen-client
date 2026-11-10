@@ -4,7 +4,7 @@ import { Archivo } from "next/font/google";
 import React from "react";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { colorVariables, iconMetadata, program } from "@/config/program";
-import { SiteChromeTop, SiteFooter } from "@/components/SiteChrome";
+import { SiteChromeTop } from "@/components/SiteChrome";
 
 // The @access-ci/ui chrome's CSS asks for "Archivo". Its components render
 // in shadow DOM (style-isolated from the app), but fonts are not
@@ -42,7 +42,6 @@ export default function RootLayout({
             <NuqsAdapter>{children}</NuqsAdapter>
           </main>
         </div>
-        <SiteFooter />
       </body>
     </html>
   );

@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import dynamicImport from "next/dynamic";
-import { Header, UniversalMenus, Footer } from "@access-ci/ui/react";
+import { Header, UniversalMenus } from "@access-ci/ui/react";
 import { program } from "@/config/program";
 import { useAgentAuth } from "@/hooks/use-agent-auth";
 import { loginUrl, logoutUrl, openSignIn } from "@/lib/sign-in";
@@ -72,10 +72,6 @@ export function SiteChromeTopImpl() {
   );
 }
 
-function SiteFooterImpl() {
-  return <Footer />;
-}
-
 // The chrome renders shadow-DOM components that read window/document and
 // derives isLoggedIn client-side, so it's loaded ssr:false — no
 // server-rendered placeholder to flash or hydration-mismatch against.
@@ -85,6 +81,3 @@ export const SiteChromeTop = dynamicImport(
   () => Promise.resolve(SiteChromeTopImpl),
   { ssr: false },
 );
-export const SiteFooter = dynamicImport(() => Promise.resolve(SiteFooterImpl), {
-  ssr: false,
-});

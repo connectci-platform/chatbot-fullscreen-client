@@ -197,33 +197,38 @@ describe("Thread layout", () => {
     ["a conversation", "?threadId=t-1"],
     ["the empty screen", ""],
   ])(
-    "gives the top bar on %s a solid background, above the messages rather than over them",
+    "on a narrow screen, puts %s's top bar at the top of the scrolling content, with no background",
     (_, searchParams) => {
       if (!searchParams) stream.messages = [];
       renderThread(searchParams);
       const bar = screen.getByTestId("thread-top-bar");
+      const scroller = screen
+        .getByRole("textbox", { name: "Message" })
+        .closest(".overflow-y-scroll")!;
+      // Scrolls away with the messages instead of holding a row of its own.
+      expect(scroller.firstElementChild).toBe(bar);
+      expect(bar).toHaveClass("xl:hidden");
+      expect(bar.className).not.toMatch(/\bbg-/);
+      expect(bar.className).not.toMatch(/\b(sticky|absolute|fixed)\b/);
       expect(
         within(bar).getByRole("button", { name: "Show conversations" }),
       ).toBeInTheDocument();
-      expect(bar).toHaveClass("bg-white");
-      // Positioned over the scrolling messages, text would pass under it.
-      expect(bar.className).not.toMatch(/(^|\s|:)absolute(\s|$)/);
       expect(
-        bar.compareDocumentPosition(
-          screen.getByRole("textbox", { name: "Message" }),
-        ) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
+        within(bar).queryAllByRole("button", { name: "New conversation" }),
+      ).toHaveLength(searchParams ? 1 : 0);
     },
   );
 
-  it("keeps a swipe in the conversation from scrolling the page to the footer", () => {
-    renderThread();
-    const scroller = screen
-      .getByRole("textbox", { name: "Message" })
-      .closest(".overflow-y-scroll");
-    expect(scroller).toHaveClass("overscroll-contain");
-    // Containment needs something to scroll, so a short conversation is
-    // kept a pixel taller than the view.
-    expect(scroller).toHaveClass("after:absolute", "after:h-[calc(100%+1px)]");
+  it("pins the message box under a conversation, but not on the empty screen", () => {
+    const { unmount } = renderThread();
+    const footer = () =>
+      screen
+        .getByRole("textbox", { name: "Message" })
+        .closest(".bg-white.flex-col");
+    expect(footer()).toHaveClass("sticky");
+    unmount();
+    stream.messages = [];
+    renderThread("");
+    expect(footer()).not.toHaveClass("sticky");
   });
 });
