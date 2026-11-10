@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { Message } from "@langchain/langgraph-sdk";
 import {
   afterStop,
+  failedRunReason,
+  withFailedTurnMarked,
   cutOffNote,
   stopReason,
   isStoppedAnswer,
@@ -112,7 +114,7 @@ describe("unansweredQuestion", () => {
     ).toBe(question);
   });
 
-  it("is nothing while a run is going, interrupted, or failed", () => {
+  it("is nothing while a run is going, interrupted, or failed another way", () => {
     const messages = [question];
     expect(unansweredQuestion({ ...idle, messages, isLoading: true })).toBe(
       null,
@@ -120,10 +122,24 @@ describe("unansweredQuestion", () => {
     expect(unansweredQuestion({ ...idle, messages, interrupted: true })).toBe(
       null,
     );
-    const timeout = Object.assign(new Error(), { name: "timeout" });
-    expect(unansweredQuestion({ ...idle, messages, error: timeout })).toBe(
+    const offline = Object.assign(new Error(), { name: "TypeError" });
+    expect(unansweredQuestion({ ...idle, messages, error: offline })).toBe(
       null,
     );
+  });
+
+  it("is a cut-off answer when the agent's turn timed out or failed", () => {
+    const timeout = Object.assign(new Error(), { name: "timeout" });
+    const failed = Object.assign(new Error(), { name: "agent_error" });
+    const messages = [question];
+    expect(unansweredQuestion({ ...idle, messages, error: timeout })).toEqual({
+      question,
+      stoppedHere: true,
+      reason: "timeout",
+    });
+    expect(
+      unansweredQuestion({ ...idle, messages, error: failed })?.reason,
+    ).toBe("error");
   });
 
   it("counts an agent's cancelled error as a stop", () => {
@@ -226,5 +242,33 @@ describe("why an answer was cut off", () => {
         stopped: true,
       })?.reason,
     ).toBe("user");
+  });
+});
+
+describe("a run that failed on screen", () => {
+  const timeout = Object.assign(new Error(), { name: "timeout" });
+
+  it("is a timeout or an error only for the agent's own failures", () => {
+    expect(failedRunReason(timeout)).toBe("timeout");
+    expect(
+      failedRunReason(Object.assign(new Error(), { name: "agent_error" })),
+    ).toBe("error");
+    expect(
+      failedRunReason(Object.assign(new Error(), { name: "cancelled" })),
+    ).toBeNull();
+    expect(failedRunReason(undefined)).toBeNull();
+  });
+
+  it("marks the answer text that had streamed as cut off, as the agent saved it", () => {
+    const thread = [earlier, earlierReply, question, partial];
+    const marked = withFailedTurnMarked(thread, timeout);
+    expect(marked.slice(0, 3)).toEqual(thread.slice(0, 3));
+    expect(marked[3].response_metadata).toEqual({
+      stopped: true,
+      reason: "timeout",
+    });
+    expect((marked[3] as { tool_calls?: unknown[] }).tool_calls).toEqual([]);
+    expect(withFailedTurnMarked(thread, undefined)).toBe(thread);
+    expect(withFailedTurnMarked([], timeout)).toEqual([]);
   });
 });

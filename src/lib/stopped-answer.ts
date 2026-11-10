@@ -35,6 +35,39 @@ export function stopReason(message: Message | undefined): StopReason | null {
   return reason === "timeout" || reason === "error" ? reason : "user";
 }
 
+/**
+ * Why a run that just failed on screen ended, when it was the agent's turn
+ * timing out or failing, which the agent saves as a cut-off answer. Null for
+ * a stop, a Turnstile check, a missing thread and the like.
+ */
+export function failedRunReason(error: unknown): "timeout" | "error" | null {
+  const name = error instanceof Error ? error.name : "";
+  if (name === "timeout") return "timeout";
+  return name === "agent_error" ? "error" : null;
+}
+
+/**
+ * The thread as the agent saved it after a failed run: the answer text that
+ * had streamed is marked cut off, until the next read brings the saved copy.
+ */
+export function withFailedTurnMarked(
+  messages: Message[],
+  error: unknown,
+): Message[] {
+  const reason = failedRunReason(error);
+  const at = messages.findLastIndex((m) => m.type === "human");
+  if (!reason || at === -1) return messages;
+  return messages.map((m, i) =>
+    i > at && m.type === "ai" && !isStoppedAnswer(m)
+      ? {
+          ...m,
+          tool_calls: [],
+          response_metadata: { ...m.response_metadata, stopped: true, reason },
+        }
+      : m,
+  );
+}
+
 /** The note under a cut-off answer. */
 export function cutOffNote(reason: StopReason): string {
   return reason === "user"
@@ -131,17 +164,19 @@ export function unansweredQuestion({
 }): { question: Message; stoppedHere: boolean; reason: StopReason } | null {
   if (isLoading || interrupted) return null;
   // Other failures have their own message, and a Turnstile check its panel.
-  if (error && !isStopError(error)) return null;
+  const failed = failedRunReason(error);
+  if (error && !isStopError(error) && !failed) return null;
   const visible = shown(messages);
   const at = visible.findLastIndex((m) => m.type === "human");
   if (at === -1) return null;
   const question = visible[at];
   const savedStopped =
     unansweredFrom(visible) === at && at < visible.length - 1;
-  const stoppedHere = stopped || savedStopped || isStopError(error);
-  // A stop seen here is the person's; a saved one says why it ended.
+  const stoppedHere = stopped || savedStopped || isStopError(error) || !!failed;
+  // A stop seen here is the person's; a failure or a saved stop says why.
   const reason =
-    (savedStopped && !stopped && stopReason(visible.at(-1))) || "user";
+    failed ??
+    ((savedStopped && !stopped && stopReason(visible.at(-1))) || "user");
   if (at === visible.length - 1 || savedStopped) {
     return { question, stoppedHere, reason };
   }

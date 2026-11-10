@@ -193,9 +193,30 @@ describe("the Stopped note", () => {
   });
 
   it("leaves other failures to their own message", () => {
-    stream.error = Object.assign(new Error("x"), { name: "timeout" });
+    stream.error = Object.assign(new Error("x"), { name: "TypeError" });
     renderThread();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("says a turn that just timed out didn't finish, and hides its sources line", () => {
+    stream.error = Object.assign(new Error("x"), { name: "timeout" });
+    stream.messages = [
+      question,
+      { id: "a-1", type: "ai", content: "Anvil is a supercomputer at" },
+    ];
+    renderThread();
+    expect(screen.getByText("Anvil is a supercomputer at")).toBeTruthy();
+    expect(screen.getByText("This answer didn't finish.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.queryByText(/No documentation was retrieved/)).toBeNull();
+
+    // Retry replaces the cut-off turn.
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    const [, options] = stream.submit.mock.calls[0];
+    expect(options.context).toEqual({ replace_stopped_turn: true });
+    expect(
+      options.optimisticValues({ messages: stream.messages }).messages,
+    ).toHaveLength(1);
   });
 
   const savedStop: Message = {

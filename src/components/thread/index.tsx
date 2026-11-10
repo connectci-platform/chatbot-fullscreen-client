@@ -53,6 +53,7 @@ import {
 import {
   cutOffNote,
   stopReason,
+  withFailedTurnMarked,
   unansweredQuestion,
   withoutUnansweredTurn,
 } from "@/lib/stopped-answer";
@@ -149,7 +150,8 @@ export function Thread() {
   );
 
   const stream = useStreamContext();
-  const messages = stream.messages;
+  // A run that timed out or failed left its answer cut off, as the agent saved it.
+  const messages = withFailedTurnMarked(stream.messages, stream.error);
   // Once per update, not once per message: each answer only needs its key.
   const chartViews = useMemo(() => chartViewsByMessage(messages), [messages]);
   const [firstTokenReceived, setFirstTokenReceived] = useFirstTokenReceived(
@@ -222,7 +224,9 @@ export function Thread() {
     setFirstTokenReceived(false);
     replaceOnSend.current = false;
     const kept = (all: Message[]) =>
-      replacing ? withoutUnansweredTurn(all) : all;
+      replacing
+        ? withoutUnansweredTurn(withFailedTurnMarked(all, stream.error))
+        : all;
 
     const newHumanMessage: Message = {
       id: uuidv4(),
