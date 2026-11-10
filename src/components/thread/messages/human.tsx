@@ -1,23 +1,18 @@
 import { Message } from "@langchain/langgraph-sdk";
 import { getContentString } from "../utils";
-import { CommandBar } from "./shared";
 import { MultimodalPreview } from "@/components/thread/MultimodalPreview";
 import { isBase64ContentBlock } from "@/lib/multimodal-utils";
 
-export function HumanMessage({
-  message,
-  isLoading,
-}: {
-  message: Message;
-  isLoading: boolean;
-}) {
+// Questions have no copy button. It cluttered every question, and Up in the
+// message box brings an earlier question back (D8-3060).
+export function HumanMessage({ message }: { message: Message }) {
   const contentString = getContentString(message.content);
 
   return (
     <div
       // The thread scrolls a just-sent question to the top by this id.
       data-message-id={message.id}
-      className="group ml-auto flex items-center gap-2"
+      className="ml-auto flex items-center gap-2"
     >
       <div className="flex flex-col gap-2">
         <div className="flex flex-col gap-2">
@@ -44,13 +39,6 @@ export function HumanMessage({
               {contentString}
             </p>
           ) : null}
-        </div>
-
-        <div className="ml-auto flex items-center gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
-          <CommandBar
-            isLoading={isLoading}
-            content={contentString}
-          />
         </div>
       </div>
     </div>

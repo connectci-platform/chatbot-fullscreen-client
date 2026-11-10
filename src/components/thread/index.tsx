@@ -490,7 +490,6 @@ export function Thread() {
                       <HumanMessage
                         key={message.id || `${message.type}-${index}`}
                         message={message}
-                        isLoading={isLoading}
                       />
                     ) : (
                       <Fragment key={message.id || `${message.type}-${index}`}>
