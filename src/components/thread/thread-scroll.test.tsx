@@ -181,3 +181,43 @@ describe("Thread scrolling", () => {
     expect(list).toHaveClass("pb-6");
   });
 });
+
+describe("Message box recall", () => {
+  beforeEach(() => {
+    stream.messages = [
+      question,
+      { id: "a-1", type: "ai", content: "Anvil is a supercomputer." },
+      {
+        id: "q-2",
+        type: "human",
+        content: [{ type: "text", text: "And Delta?" }],
+      },
+      { id: "a-2", type: "ai", content: "Delta is at NCSA." },
+    ];
+    stream.isLoading = false;
+    stream.error = undefined;
+    stream.stopped = false;
+    stream.submit.mockClear();
+  });
+
+  it("Up and Down walk through this conversation's questions, and Enter sends one again", () => {
+    renderThread();
+    const box = screen.getByRole("textbox", { name: "Message" });
+    fireEvent.change(box, { target: { value: "draft" } });
+    (box as HTMLTextAreaElement).setSelectionRange(0, 0);
+
+    fireEvent.keyDown(box, { key: "ArrowUp" });
+    expect(box).toHaveValue("And Delta?");
+    fireEvent.keyDown(box, { key: "ArrowUp" });
+    expect(box).toHaveValue("What is Anvil?");
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    expect(box).toHaveValue("draft");
+
+    fireEvent.keyDown(box, { key: "ArrowUp" });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(stream.submit).toHaveBeenCalledOnce();
+    const sent = stream.submit.mock.calls[0][0].messages.at(-1);
+    expect(sent.content).toEqual([{ type: "text", text: "And Delta?" }]);
+  });
+});
