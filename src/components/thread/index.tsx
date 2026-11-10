@@ -249,7 +249,7 @@ export function Thread() {
       draft.trim() ? `${draft}\n${parts.text}` : parts.text,
     );
     setContentBlocks((blocks) => [...blocks, ...parts.blocks]);
-    focusComposer();
+    focusComposer({ atEnd: true });
   };
 
   const chatStarted = !!threadId || !!messages.length;
@@ -535,7 +535,7 @@ export function Thread() {
                         }}
                         aria-label="Message"
                         placeholder="Type your message..."
-                        className="field-sizing-content resize-none border-none bg-transparent p-3.5 pb-0 text-base text-black shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
+                        className="field-sizing-content max-h-[30dvh] resize-none overflow-y-auto border-none bg-transparent p-3.5 pb-0 text-base text-black shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
                       />
 
                       <div className="flex items-center gap-6 p-2 sm:pt-4">

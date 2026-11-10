@@ -167,6 +167,30 @@ describe("the Stopped note", () => {
     expect(box).toHaveFocus();
   });
 
+  it("Edit question leaves the caret after the text, scrolled into the box", async () => {
+    stream.stopped = true;
+    renderThread();
+    const box = screen.getByRole("textbox", {
+      name: "Message",
+    }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "x\n".repeat(40) } });
+    box.setSelectionRange(0, 0);
+    // jsdom has no layout: give the box a height to scroll through.
+    Object.defineProperty(box, "scrollHeight", {
+      configurable: true,
+      value: 900,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Edit question" }));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    expect(box.selectionStart).toBe(box.value.length);
+    expect(box.selectionEnd).toBe(box.value.length);
+    expect(box.scrollTop).toBe(900);
+    // A long question scrolls inside the box instead of growing the footer
+    // past the view.
+    expect(box).toHaveClass("max-h-[30dvh]", "overflow-y-auto");
+  });
+
   it("doesn't show under a completed answer", () => {
     stream.messages = [
       question,
