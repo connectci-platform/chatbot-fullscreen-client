@@ -52,6 +52,7 @@ import { RegistrationPanel } from "./registration-panel";
 import { SoftwareComparisonPanel } from "./software-comparison-panel";
 import { XdmodChartPanel } from "./xdmod-chart-panel";
 import { chartViewsByMessage } from "@/lib/xdmod-chart";
+import { comparisonsByMessage } from "@/lib/software-comparison";
 
 function StickyToBottomContent(props: {
   content: ReactNode;
@@ -129,6 +130,7 @@ export function Thread() {
   const messages = stream.messages;
   // Once per update, not once per message: each answer only needs its key.
   const chartViews = useMemo(() => chartViewsByMessage(messages), [messages]);
+  const comparisons = useMemo(() => comparisonsByMessage(messages), [messages]);
   const [firstTokenReceived, setFirstTokenReceived] = useFirstTokenReceived(
     messages,
     stream.runStatus,
@@ -402,6 +404,9 @@ export function Thread() {
                             message.id
                               ? chartViews.get(message.id)?.[0]?.key
                               : undefined
+                          }
+                          comparisonKey={
+                            message.id ? comparisons.get(message.id) : undefined
                           }
                         />
                       ),
