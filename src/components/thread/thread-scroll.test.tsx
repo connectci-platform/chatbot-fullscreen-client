@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "@langchain/langgraph-sdk";
@@ -225,5 +231,36 @@ describe("Thread layout", () => {
     // Containment needs something to scroll, so a short conversation is
     // kept a pixel taller than the view.
     expect(scroller).toHaveClass("after:absolute", "after:h-[calc(100%+1px)]");
+  });
+
+  it("puts a labeled New chat in a conversation's top bar, which starts a new one in the message box", async () => {
+    const onUrlUpdate = vi.fn();
+    render(
+      <NuqsTestingAdapter
+        searchParams="?threadId=t-1"
+        onUrlUpdate={onUrlUpdate}
+      >
+        <Thread />
+      </NuqsTestingAdapter>,
+    );
+    const bar = screen.getByTestId("thread-top-bar");
+    const newChat = within(bar).getByRole("button", { name: "New chat" });
+    expect(newChat).toHaveTextContent("New chat");
+    fireEvent.click(newChat);
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveFocus();
+    await waitFor(() => expect(onUrlUpdate).toHaveBeenCalled());
+    expect(
+      onUrlUpdate.mock.calls.at(-1)![0].searchParams.get("threadId"),
+    ).toBeNull();
+  });
+
+  it("leaves New chat out of the empty screen's top bar", () => {
+    stream.messages = [];
+    renderThread("");
+    expect(
+      within(screen.getByTestId("thread-top-bar")).queryByRole("button", {
+        name: "New chat",
+      }),
+    ).toBeNull();
   });
 });

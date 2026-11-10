@@ -1,12 +1,15 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthStatus } from "@/lib/agent-token";
 import ThreadHistory from ".";
+import { ConversationsToggle, NewChatButton } from "../conversation-controls";
 
 const auth: { status: AuthStatus } = { status: "unknown" };
 const threadsApi = {
   getThreads: (): Promise<unknown[]> => Promise.resolve([]),
+  threads: [] as unknown[],
 };
 
 vi.mock("@/hooks/use-agent-auth", () => ({
@@ -16,17 +19,26 @@ vi.mock("@/hooks/use-agent-auth", () => ({
 vi.mock("@/providers/Thread", () => ({
   useThreads: () => ({
     getThreads: () => threadsApi.getThreads(),
-    threads: [],
+    threads: threadsApi.threads,
     setThreads: vi.fn(),
     threadsLoading: false,
     setThreadsLoading: vi.fn(),
   }),
 }));
 
+const onNewChat = vi.fn();
+
 function renderHistory(searchParams = "") {
   return render(
-    <NuqsTestingAdapter searchParams={searchParams}>
-      <ThreadHistory />
+    <NuqsTestingAdapter
+      searchParams={searchParams}
+      hasMemory
+    >
+      <ThreadHistory onNewChat={onNewChat} />
+      <main>
+        <ConversationsToggle />
+        <NewChatButton onClick={onNewChat} />
+      </main>
     </NuqsTestingAdapter>,
   );
 }
@@ -35,13 +47,19 @@ describe("ThreadHistory", () => {
   beforeEach(() => {
     auth.status = "unknown";
     threadsApi.getThreads = () => Promise.resolve([]);
+    threadsApi.threads = [];
+    onNewChat.mockClear();
+    setLargeScreen(true);
+  });
+
+  function setLargeScreen(large: boolean) {
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-      matches: true,
+      matches: large,
       media: query,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     }));
-  });
+  }
 
   it("tells a signed-in person with no conversations there are none yet", () => {
     auth.status = "signed_in";
@@ -82,15 +100,219 @@ describe("ThreadHistory", () => {
     ).toBeNull();
   });
 
-  it("names the toggle for what it will do", () => {
+  it("names the toggle for what it will do, with the panel icons", () => {
     const { unmount } = renderHistory();
-    expect(
-      screen.getByRole("button", { name: "Show conversations" }),
-    ).toBeTruthy();
+    const show = screen.getByRole("button", { name: "Show conversations" });
+    expect(show).toHaveAttribute("aria-expanded", "false");
+    expect(show.querySelector(".lucide-panel-left-open")).not.toBeNull();
     unmount();
     renderHistory("?chatHistoryOpen=true");
+    const hide = screen.getByRole("button", { name: "Hide conversations" });
+    expect(hide).toHaveAttribute("aria-expanded", "true");
+    expect(hide).toHaveTextContent("Hide");
+    expect(hide.querySelector(".lucide-panel-left-close")).not.toBeNull();
+  });
+
+  it("points the toggle at the sidebar it opens", () => {
+    renderHistory();
+    const show = screen.getByRole("button", { name: "Show conversations" });
+    const sidebar = document.getElementById(
+      show.getAttribute("aria-controls")!,
+    );
+    expect(sidebar).not.toBeNull();
+    expect(sidebar).toHaveAttribute("aria-label", "Conversations");
+  });
+
+  it("keeps a closed sidebar's controls out of keyboard reach", () => {
+    renderHistory();
+    const sidebar = screen.getByRole("complementary", {
+      name: "Conversations",
+      hidden: true,
+    });
+    expect(sidebar).toHaveAttribute("inert");
+  });
+
+  it("makes an open sidebar's controls reachable", () => {
+    renderHistory("?chatHistoryOpen=true");
+    const sidebar = screen.getByRole("complementary", {
+      name: "Conversations",
+    });
+    expect(sidebar).not.toHaveAttribute("inert");
     expect(
-      screen.getByRole("button", { name: "Hide conversations" }),
-    ).toBeTruthy();
+      within(sidebar).getByRole("button", { name: "Hide conversations" }),
+    ).toBeInTheDocument();
+  });
+
+  it("hides the top bar's toggle while the sidebar is open on a wide screen", () => {
+    renderHistory("?chatHistoryOpen=true");
+    expect(
+      screen.queryByRole("button", { name: "Show conversations" }),
+    ).toBeNull();
+  });
+
+  it("offers a labeled New chat at the top of the open sidebar", async () => {
+    renderHistory("?chatHistoryOpen=true");
+    const sidebar = screen.getByRole("complementary", {
+      name: "Conversations",
+    });
+    const newChat = within(sidebar).getByRole("button", { name: "New chat" });
+    expect(newChat).toHaveTextContent("New chat");
+    expect(newChat).toHaveClass("bg-brand-dark", "text-white");
+    expect(newChat.querySelector(".lucide-message-square-plus")).not.toBeNull();
+    await userEvent.click(newChat);
+    expect(onNewChat).toHaveBeenCalledOnce();
+  });
+
+  it("gives every sidebar control at least a 44px touch target", () => {
+    renderHistory("?chatHistoryOpen=true");
+    const sidebar = screen.getByRole("complementary", {
+      name: "Conversations",
+    });
+    for (const button of within(sidebar).getAllByRole("button")) {
+      expect(button.className).toMatch(/\b(min-h-11|h-11|size-11)\b/);
+    }
+  });
+
+  it("moves focus into the sidebar when it opens, and back to the toggle when it closes", async () => {
+    const user = userEvent.setup();
+    renderHistory();
+    await user.click(
+      screen.getByRole("button", { name: "Show conversations" }),
+    );
+    const hide = screen.getByRole("button", { name: "Hide conversations" });
+    await waitFor(() => expect(hide).toHaveFocus());
+
+    await user.click(hide);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Show conversations" }),
+      ).toHaveFocus(),
+    );
+  });
+
+  it("closes the sidebar with Escape and returns focus to the toggle", async () => {
+    const user = userEvent.setup();
+    renderHistory();
+    await user.click(
+      screen.getByRole("button", { name: "Show conversations" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Hide conversations" }),
+      ).toHaveFocus(),
+    );
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Show conversations" }),
+      ).toHaveFocus(),
+    );
+    expect(
+      screen.getByRole("complementary", {
+        name: "Conversations",
+        hidden: true,
+      }),
+    ).toHaveAttribute("inert");
+  });
+
+  it("doesn't take focus when the page loads with the sidebar open", () => {
+    renderHistory("?chatHistoryOpen=true");
+    expect(document.body).toHaveFocus();
+  });
+
+  it("lists a signed-in person's conversations by their first question, marking the open one", async () => {
+    auth.status = "signed_in";
+    threadsApi.threads = [
+      {
+        thread_id: "t-1",
+        values: { messages: [{ type: "human", content: "What is Anvil?" }] },
+      },
+      {
+        thread_id: "t-2",
+        values: { messages: [{ type: "human", content: "GPU queues" }] },
+      },
+    ];
+    renderHistory("?chatHistoryOpen=true&threadId=t-2");
+    const nav = screen.getByRole("list", { name: "Conversations" });
+    const items = within(nav).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    const anvil = within(nav).getByRole("button", { name: "What is Anvil?" });
+    const gpu = within(nav).getByRole("button", { name: "GPU queues" });
+    expect(gpu).toHaveAttribute("aria-current", "page");
+    expect(anvil).not.toHaveAttribute("aria-current");
+    expect(anvil.className).toMatch(/\bmin-h-11\b/);
+
+    await userEvent.click(anvil);
+    expect(anvil).toHaveAttribute("aria-current", "page");
+  });
+
+  describe("on a phone", () => {
+    beforeEach(() => setLargeScreen(false));
+
+    it("keeps the toggle in the top bar while the list is open", () => {
+      renderHistory("?chatHistoryOpen=true");
+      expect(
+        screen.getByRole("button", { name: "Hide conversations" }),
+      ).toBeInTheDocument();
+    });
+
+    it("opens the list as a dialog with Hide and New chat, and no second close button", () => {
+      renderHistory("?chatHistoryOpen=true");
+      const dialog = screen.getByRole("dialog", { name: "Conversations" });
+      expect(
+        within(dialog).getByRole("button", { name: "Hide conversations" }),
+      ).toHaveTextContent("Hide");
+      expect(
+        within(dialog).getByRole("button", { name: "New chat" }),
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).queryByRole("button", { name: "Close" }),
+      ).toBeNull();
+    });
+
+    it("New chat starts a conversation and closes the list", async () => {
+      renderHistory("?chatHistoryOpen=true");
+      const dialog = screen.getByRole("dialog", { name: "Conversations" });
+      await userEvent.click(
+        within(dialog).getByRole("button", { name: "New chat" }),
+      );
+      expect(onNewChat).toHaveBeenCalledOnce();
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Conversations" }),
+        ).toBeNull(),
+      );
+    });
+
+    it.each(["Hide", "Escape"])(
+      "%s closes the list and returns focus to the toggle",
+      async (how) => {
+        const user = userEvent.setup();
+        renderHistory();
+        await user.click(
+          screen.getByRole("button", { name: "Show conversations" }),
+        );
+        const dialog = await screen.findByRole("dialog", {
+          name: "Conversations",
+        });
+        if (how === "Hide") {
+          await user.click(
+            within(dialog).getByRole("button", { name: "Hide conversations" }),
+          );
+        } else {
+          await user.keyboard("{Escape}");
+        }
+        await waitFor(() =>
+          expect(
+            screen.queryByRole("dialog", { name: "Conversations" }),
+          ).toBeNull(),
+        );
+        await waitFor(() =>
+          expect(
+            screen.getByRole("button", { name: "Show conversations" }),
+          ).toHaveFocus(),
+        );
+      },
+    );
   });
 });

@@ -19,16 +19,11 @@ import { StarterQuestions } from "./starter-questions";
 import { OfficeHours } from "./office-hours";
 import { useOfficeHours } from "@/hooks/useOfficeHours";
 import { getSupportUrl } from "@/lib/agent-token";
-import { TooltipIconButton } from "./tooltip-icon-button";
-import {
-  LoaderCircle,
-  PanelRightOpen,
-  PanelRightClose,
-  SquarePen,
-  Plus,
-} from "lucide-react";
-import { useQueryState, parseAsBoolean } from "nuqs";
+import { LoaderCircle, Plus } from "lucide-react";
+import { useQueryState } from "nuqs";
 import ThreadHistory from "./history";
+import { ConversationsToggle, NewChatButton } from "./conversation-controls";
+import { useConversationsOpen } from "@/hooks/use-conversations-open";
 import { toast } from "sonner";
 import {
   isTurnstileChallenge,
@@ -75,10 +70,7 @@ export function Thread() {
   const [artifactOpen, closeArtifact] = useArtifactOpen();
 
   const [threadId, _setThreadId] = useQueryState("threadId");
-  const [chatHistoryOpen, setChatHistoryOpen] = useQueryState(
-    "chatHistoryOpen",
-    parseAsBoolean.withDefault(false),
-  );
+  const [chatHistoryOpen] = useConversationsOpen();
   const [input, setInput] = useState("");
   const {
     contentBlocks,
@@ -149,6 +141,12 @@ export function Thread() {
     },
     [_setThreadId, closeArtifact, setArtifactContext],
   );
+
+  /** Starts an empty conversation, with focus in its message box. */
+  const startNewChat = () => {
+    setThreadId(null);
+    focusComposer();
+  };
 
   useEffect(() => {
     if (!stream.error) {
@@ -350,7 +348,7 @@ export function Thread() {
             className="relative h-full"
             style={{ width: 300 }}
           >
-            <ThreadHistory />
+            <ThreadHistory onNewChat={startNewChat} />
           </div>
         </motion.div>
       </div>
@@ -385,41 +383,15 @@ export function Thread() {
               text never scrolls under the buttons. */}
           <div
             data-testid="thread-top-bar"
-            className="relative z-10 flex min-h-13 shrink-0 items-center justify-between gap-3 bg-white p-2"
+            className="relative z-10 flex min-h-13 shrink-0 items-center justify-between gap-3 bg-white px-2 py-1"
           >
             <div>
-              {(!chatHistoryOpen || !isLargeScreen) && (
-                <Button
-                  className="hover:bg-gray-100"
-                  variant="ghost"
-                  aria-label={
-                    chatHistoryOpen
-                      ? "Hide conversations"
-                      : "Show conversations"
-                  }
-                  onClick={() => setChatHistoryOpen((p) => !p)}
-                >
-                  {chatHistoryOpen ? (
-                    <PanelRightOpen className="size-5" />
-                  ) : (
-                    <PanelRightClose className="size-5" />
-                  )}
-                </Button>
-              )}
+              <ConversationsToggle />
             </div>
 
-            {chatStarted && (
-              <div className="flex items-center gap-4">
-                <TooltipIconButton
-                  size="lg"
-                  className="p-4"
-                  tooltip="New conversation"
-                  variant="ghost"
-                  onClick={() => setThreadId(null)}
-                >
-                  <SquarePen className="size-5" />
-                </TooltipIconButton>
-              </div>
+            {/* The open sidebar has its own New chat on a wide screen. */}
+            {chatStarted && !(chatHistoryOpen && isLargeScreen) && (
+              <NewChatButton onClick={startNewChat} />
             )}
 
             {chatStarted && (
