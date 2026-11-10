@@ -1,3 +1,5 @@
+import type { Ref } from "react";
+import { cutOffNote, type StopReason } from "@/lib/stopped-answer";
 import { Button } from "../ui/button";
 
 /**
@@ -10,11 +12,14 @@ export function StoppedNote({
   turn,
   onRetry,
   onEdit,
+  retryRef,
 }: {
   /** Null while there's nothing to show. */
-  turn: { stoppedHere: boolean } | null;
+  turn: { stoppedHere: boolean; reason: StopReason; wrote: boolean } | null;
   onRetry: () => void;
   onEdit: () => void;
+  /** Retry, so focus can move to it when Cancel goes away. */
+  retryRef?: Ref<HTMLButtonElement>;
 }) {
   return (
     <div
@@ -25,18 +30,22 @@ export function StoppedNote({
         <div className="flex flex-col items-start gap-2 text-sm">
           <p className="text-muted-foreground">
             {turn.stoppedHere
-              ? "You stopped this answer."
+              ? cutOffNote(turn.reason, turn.wrote)
               : "This question didn't get an answer."}
           </p>
           <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onRetry}
-            >
-              Retry
-            </Button>
+            {/* Asking again could make the change a second time. */}
+            {!turn.wrote && (
+              <Button
+                ref={retryRef}
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onRetry}
+              >
+                Retry
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"

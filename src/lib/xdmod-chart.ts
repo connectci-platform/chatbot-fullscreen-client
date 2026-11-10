@@ -1,4 +1,5 @@
 import type { Message } from "@langchain/langgraph-sdk";
+import { formatDay } from "./chart-export";
 
 const CHART_TOOL = "get_chart_data";
 /** The palette's size and the server's default limit: more lines can't be told apart. */
@@ -34,9 +35,21 @@ interface ChartPayload {
   series?: {
     name: string;
     points: { start: string; value: number | null }[];
+    /** Set only when this series' data stops before the chart's. */
+    data_through?: string;
+    data_through_precision?: "day" | "period";
+    data_through_source?: "resource" | "series";
   }[];
-  categories?: { name: string; value: number | null }[];
+  /** A bar's data_through is its last day, set only when before the chart's end. */
+  categories?: {
+    name: string;
+    value: number | null;
+    data_through?: string;
+    data_through_source?: "resource" | "series";
+  }[];
   has_more: boolean;
+  /** How many top-ranked ones XDMoD skipped before these; absent from older payloads. */
+  offset?: number;
   /** How many XDMoD left out past the limit; null when it didn't say. */
   others_count?: number | null;
   /** Where XDMoD's data stops; absent from older payloads. */
@@ -54,6 +67,19 @@ interface ChartPayload {
 
 export type CaptionWarning =
   "waiting-not-counted" | "not-comparable-across-resources" | "mean-of-jobs";
+
+/** A series or bar whose data stops before the rest of the chart's. */
+export type EarlyEnd = {
+  name: string;
+  through: string;
+  /** "day": the last day with data. "period": the start of the last period with data. */
+  precision: "day" | "period";
+  /**
+   * "resource": XDMoD has no data from that resource after it. "series":
+   * only nothing recorded for this series, for reasons unknown.
+   */
+  source: "resource" | "series";
+};
 
 export type CaptionFacts = {
   measure: string;
@@ -76,6 +102,10 @@ export type CaptionFacts = {
   hasMore: boolean;
   /** How many there are in all, when known. */
   total?: number;
+  /** How many top-ranked ones come before the first shown. */
+  offset?: number;
+  /** Shown series or bars whose data stops before the chart's. */
+  earlyEnds?: EarlyEnd[];
   /** What they are, plural: "resources", "fields of science", "groups". */
   groupNoun?: string;
   /** The dimension is ordered buckets (job size), not a ranking. */
@@ -122,10 +152,26 @@ function isList<T>(v: unknown, check: (item: unknown) => item is T): v is T[] {
 
 const isPoint = (p: unknown): p is { start: string; value: Value } =>
   isRecord(p) && isString(p.start) && isValue(p.value);
+const isOptionalString = (v: unknown) => v === undefined || isString(v);
+const isSource = (v: unknown) =>
+  v === undefined || v === "resource" || v === "series";
 const isSeries = (s: unknown): s is NonNullable<ChartPayload["series"]>[0] =>
-  isRecord(s) && isString(s.name) && isList(s.points, isPoint);
-const isCategory = (c: unknown): c is { name: string; value: Value } =>
-  isRecord(c) && isString(c.name) && isValue(c.value);
+  isRecord(s) &&
+  isString(s.name) &&
+  isList(s.points, isPoint) &&
+  isOptionalString(s.data_through) &&
+  (s.data_through_precision === undefined ||
+    s.data_through_precision === "day" ||
+    s.data_through_precision === "period") &&
+  isSource(s.data_through_source);
+const isCategory = (
+  c: unknown,
+): c is NonNullable<ChartPayload["categories"]>[0] =>
+  isRecord(c) &&
+  isString(c.name) &&
+  isValue(c.value) &&
+  isOptionalString(c.data_through) &&
+  isSource(c.data_through_source);
 const isCount = (v: unknown) =>
   v === undefined ||
   v === null ||
@@ -184,7 +230,7 @@ function parsePayload(raw: unknown): ChartPayload | null {
   ) {
     return null;
   }
-  if (!isCount(raw.others_count)) return null;
+  if (!isCount(raw.others_count) || !isCount(raw.offset)) return null;
   if (
     raw.last_data_period_partial !== undefined &&
     typeof raw.last_data_period_partial !== "boolean"
@@ -278,20 +324,45 @@ function dimensionLabel(name: string): string {
     .join(" ");
 }
 
+const CPU_HOUR_STATISTICS: ReadonlySet<string> = new Set([
+  "total_cpu_hours",
+  "avg_cpu_hours",
+]);
+
 function warningsFor(chart: ChartPayload): CaptionWarning[] {
   const warnings: CaptionWarning[] = [];
   const { statistic, realm } = chart;
   if (realm.toLowerCase() === "jobs" && chart.last_period_incomplete) {
     warnings.push("waiting-not-counted");
   }
+  // XDMoD's definitions: XD SUs "have been normalized ... Therefore they are
+  // comparable across resources", and ACEs allow comparison between resources
+  // with different compute power per core, which CPU hours don't.
   if (
     (chart.group_by === "resource" || chart.dimension.name === "resource") &&
-    (statistic === "total_cpu_hours" || statistic === "total_su")
+    CPU_HOUR_STATISTICS.has(statistic)
   ) {
     warnings.push("not-comparable-across-resources");
   }
   if (statistic.startsWith("avg_")) warnings.push("mean-of-jobs");
   return warnings;
+}
+
+function earlyEnd(
+  name: string,
+  through: string | undefined,
+  precision: "day" | "period" | undefined,
+  source: "resource" | "series" | undefined,
+): EarlyEnd | undefined {
+  // Without a source, nothing is known about why: say the least.
+  return through
+    ? {
+        name,
+        through,
+        precision: precision ?? "day",
+        source: source ?? "series",
+      }
+    : undefined;
 }
 
 function toView(
@@ -311,6 +382,7 @@ function toView(
   let series: ChartView["series"] = [];
   let bars: ChartView["bars"] = [];
   let arrived: number;
+  let earlyEnds: EarlyEnd[];
   if (chart.dataset_type === "timeseries") {
     kind = "line";
     // A series that stops before the others stops there too: its own last
@@ -325,11 +397,29 @@ function toView(
             start: p.start,
             value: i > last ? p.value : fillPoint(p),
           })),
+          end: earlyEnd(
+            s.name,
+            s.data_through,
+            s.data_through_precision,
+            s.data_through_source,
+          ),
         },
       ];
     });
     arrived = filled.length;
-    series = filled.slice(0, MAX_SERIES);
+    // A trailing period no series has any value for draws nothing, so the
+    // axis stops at the last period with data.
+    let periodsWithData = 0;
+    for (const s of filled) {
+      s.points.forEach((p, i) => {
+        if (p.value !== null)
+          periodsWithData = Math.max(periodsWithData, i + 1);
+      });
+    }
+    for (const s of filled) s.points = s.points.slice(0, periodsWithData);
+    const drawn = filled.slice(0, MAX_SERIES);
+    series = drawn.map(({ name, points }) => ({ name, points }));
+    earlyEnds = drawn.flatMap((s) => (s.end ? [s.end] : []));
   } else {
     bars = (chart.categories ?? []).map((c) => ({
       name: c.name,
@@ -354,12 +444,19 @@ function toView(
         .map(({ b }) => b);
     }
     arrived = bars.length;
+    earlyEnds = (chart.categories ?? []).flatMap(
+      (c) =>
+        earlyEnd(c.name, c.data_through, "day", c.data_through_source) ?? [],
+    );
   }
 
   const shown = kind === "line" ? series.length : bars.length;
+  const offset = chart.offset ?? 0;
   const others = chart.has_more ? chart.others_count : 0;
   const total =
-    others === null || others === undefined ? undefined : arrived + others;
+    others === null || others === undefined
+      ? undefined
+      : offset + arrived + others;
   const precision =
     chart.data_through_precision ??
     (chart.dataset_type === "aggregate" || chart.unit === "Day"
@@ -398,6 +495,8 @@ function toView(
       filters: [...chart.filters.notes],
       hasMore: chart.has_more || shown < arrived,
       ...(total !== undefined ? { total } : {}),
+      ...(offset > 0 ? { offset } : {}),
+      ...(earlyEnds.length > 0 ? { earlyEnds } : {}),
       groupNoun:
         DIMENSION_NOUNS[chart.dimension.name.toLowerCase()] ?? "groups",
       ordered: chart.dimension.ordered,
@@ -488,6 +587,81 @@ export function chartViewsByMessage(
   }
   flush();
   return views;
+}
+
+/**
+ * Whether the newest answer (the messages after the last human message) drew
+ * a chart. A reloaded thread whose newest answer has none shouldn't reopen an
+ * older answer's chart.
+ */
+export function latestAnswerHasChart(messages: Message[]): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.type === "human") return false;
+    if (chartOf(m)) return true;
+  }
+  return false;
+}
+
+/** A filter note's value, short: 'resource "Delta" included …' is "Delta". */
+function filterValue(note: string): string {
+  const rest = note.replace(/^\S+\s+/, "");
+  const quoted = /^"([^"]+)"/.exec(rest);
+  return (quoted ? quoted[1] : rest).replace(
+    / \(not checked against XDMoD's names\)$/,
+    "",
+  );
+}
+
+/**
+ * A name for each of one answer's charts that tells them apart: the measure,
+ * then whatever differs between charts of the same measure (filter, grouping,
+ * range, period): "Wait Hours: Per Job · Delta".
+ */
+export function chartLabels(views: ChartView[]): Map<string, string> {
+  const facets: ((v: ChartView) => string)[] = [
+    (v) => v.caption.filters.map(filterValue).join(", ") || "all of ACCESS",
+    // A group_by none chart has no grouping to name.
+    (v) =>
+      v.dimension === DIMENSION_LABELS.none
+        ? "total"
+        : `by ${v.dimension.toLowerCase()}`,
+    (v) =>
+      `${formatDay(v.caption.counted.start)} to ${formatDay(v.caption.counted.end)}`,
+    (v) => (v.caption.unit ? `by ${v.caption.unit.toLowerCase()}` : "total"),
+  ];
+  const labels = new Map<string, string>();
+  for (const v of views) {
+    const same = views.filter((o) => o.title === v.title);
+    const parts = facets
+      .filter((f) => new Set(same.map(f)).size > 1)
+      .map((f) => f(v));
+    labels.set(v.key, [v.title, ...parts].join(" · "));
+  }
+  // Charts that still share a name (the same Delta chart twice) are numbered.
+  const names = [...labels.values()];
+  const seen = new Map<string, number>();
+  for (const [key, name] of labels) {
+    if (names.filter((n) => n === name).length < 2) continue;
+    const n = (seen.get(name) ?? 0) + 1;
+    seen.set(name, n);
+    labels.set(key, `${name} · chart ${n}`);
+  }
+  return labels;
+}
+
+/**
+ * What a screen reader hears for the drawing, in place of its tick labels.
+ * The Table view holds the values themselves.
+ */
+export function chartSummary(view: ChartView): string {
+  const { start, end } = view.caption.counted;
+  const range = `${formatDay(start)} to ${formatDay(end)}`;
+  const what =
+    view.kind === "line"
+      ? `Line chart of ${view.title}, ${view.series.length} series`
+      : `Bar chart of ${view.title} by ${view.dimension.toLowerCase()}, ${view.bars.length} ${view.bars.length === 1 ? "bar" : "bars"}`;
+  return `${what}, ${range}. The Table view lists the values.`;
 }
 
 /** The charts from the newest turn that has any, in tool-call order. */

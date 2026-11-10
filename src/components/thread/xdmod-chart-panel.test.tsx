@@ -274,6 +274,145 @@ describe("XdmodChartPanel", () => {
     ).toEqual(["false", "true"]);
   });
 
+  it("names charts of the same measure by what tells them apart", () => {
+    const wait = (notes: string[]) =>
+      payload({
+        statistic: "avg_waitduration_hours",
+        measure: {
+          label: "Wait Hours: Per Job",
+          description: "Average wait.",
+          kind: "average",
+          missing: "gap",
+        },
+        filters: { notes },
+        link: null,
+      });
+    const messages = [
+      { id: "h-w", type: "human", content: "Delta vs Anvil?" },
+      {
+        id: "ai-pre-w",
+        type: "ai",
+        content: "",
+        tool_calls: [
+          { id: "delta", name: "get_chart_data", args: {} },
+          { id: "anvil", name: "get_chart_data", args: {} },
+        ],
+      },
+      ...[
+        ["delta", ['resource "Delta" included NCSA DELTA CPU, NCSA DELTA GPU']],
+        ["anvil", ["resource Purdue Anvil CPU"]],
+      ].map(([key, notes]) => ({
+        id: `tool-${key}`,
+        type: "tool",
+        name: "get_chart_data",
+        tool_call_id: key,
+        content: "text",
+        artifact: {
+          structured_content: { chart: wait(notes as string[]) },
+        },
+      })),
+      { id: "ai-w", type: "ai", content: "Here." },
+    ] as unknown as Message[];
+    useMessages(messages);
+    render(tree());
+    const switcher = screen.getByRole("group", {
+      name: "Charts in this answer",
+    });
+    expect(
+      within(switcher)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual([
+      "Wait Hours: Per Job · Delta",
+      "Wait Hours: Per Job · Purdue Anvil CPU",
+    ]);
+    // The panel's title and caption say which one is showing.
+    expect(screen.getAllByText("Wait Hours: Per Job · Delta").length).toBe(2);
+    expect(
+      screen.getByText(
+        'Filtered to resource "Delta" included NCSA DELTA CPU, NCSA DELTA GPU',
+      ),
+    ).toBeTruthy();
+    fireEvent.click(within(switcher).getAllByRole("button")[1]);
+    expect(
+      screen.getByText("Filtered to resource Purdue Anvil CPU"),
+    ).toBeTruthy();
+  });
+
+  it("gives focus back to the chip that opened it when it closes", () => {
+    const older = turn(bars(), "old");
+    useMessages([...older, ...turn(payload(), "new")]);
+    render(
+      <>
+        <button
+          type="button"
+          data-chart-key="old"
+          onClick={() => showChart("old")}
+        >
+          Show chart old
+        </button>
+        <button
+          type="button"
+          data-chart-key="new"
+        >
+          Show chart new
+        </button>
+        {tree()}
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
+    const chip = screen.getByRole("button", { name: "Show chart old" });
+    chip.focus();
+    act(() => chip.click());
+    expect(screen.getByText("panel open")).toBeTruthy();
+    screen.getByRole("button", { name: "close" }).focus();
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
+    expect(document.activeElement).toBe(chip);
+  });
+
+  it("gives focus to the answer's chip when it opened on its own", () => {
+    useMessages(turn(payload(), "only"));
+    render(
+      <>
+        <button
+          type="button"
+          data-chart-key="only"
+        >
+          Show chart
+        </button>
+        {tree()}
+      </>,
+    );
+    expect(screen.getByText("panel open")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Show chart" }),
+    );
+  });
+
+  it("on reload, stays closed when the newest answer drew no chart", () => {
+    useMessages([
+      ...turn(payload(), "old"),
+      { id: "h-late", type: "human", content: "thanks" },
+      { id: "ai-late", type: "ai", content: "You're welcome." },
+    ] as Message[]);
+    render(tree());
+    expect(screen.getByText("panel closed")).toBeTruthy();
+    // The older chart still opens when asked.
+    act(() => showChart("old"));
+    expect(screen.getByText("panel open")).toBeTruthy();
+  });
+
+  it("reads the chart as one summarized image, not a tab stop", () => {
+    useMessages(turn(payload()));
+    const { container } = render(tree());
+    const image = screen.getByRole("img", {
+      name: "Line chart of CPU Hours: Total, 1 series, Jun 1, 2026 to Oct 31, 2026. The Table view lists the values.",
+    });
+    expect(image.querySelector("svg.recharts-surface")).toBeTruthy();
+    expect(container.querySelector("svg[tabindex]")).toBeNull();
+  });
+
   it("has no switcher for a single chart", () => {
     useMessages(turn(payload()));
     render(tree());
@@ -877,7 +1016,7 @@ describe("XdmodChartPanel", () => {
     render(tree());
     expect(
       screen.getByText(
-        "CPU hours and SUs aren't comparable across resources. ACE measures are.",
+        "CPU hours don't allow for each resource's compute power per core, so they aren't comparable across resources. ACE measures are.",
       ),
     ).toBeTruthy();
   });
@@ -912,6 +1051,15 @@ describe("XdmodChartPanel", () => {
       ["Aug 2026", "1,234.5", "3"],
       ["Sep 2026", "—", "4"],
     ]);
+  });
+
+  it("keeps the table from shrinking in the scrolling panel", () => {
+    useMessages(turn(bars()));
+    render(tree());
+    fireEvent.click(screen.getByRole("button", { name: "Table" }));
+    expect(
+      screen.getByRole("region", { name: "Chart data" }).className,
+    ).toContain("shrink-0");
   });
 
   it("shows bars as a table, one row per bar", () => {

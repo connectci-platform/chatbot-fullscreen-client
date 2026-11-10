@@ -11,9 +11,14 @@ import {
 import { newestPanelStep } from "@/lib/software-comparison";
 import { getSuggestedQuestions } from "@/lib/suggested-questions";
 import { cn } from "@/lib/utils";
-import { chartViewsByMessage, type ChartView } from "@/lib/xdmod-chart";
+import {
+  chartLabels,
+  chartViewsByMessage,
+  latestAnswerHasChart,
+  type ChartView,
+} from "@/lib/xdmod-chart";
 import { useStreamContext } from "@/providers/Stream";
-import { useArtifact } from "./artifact";
+import { useArtifact, useArtifactOpen } from "./artifact";
 import { SuggestedQuestions } from "./suggested-questions";
 import {
   ChartCaption,
@@ -35,12 +40,15 @@ const BUTTON =
 function ChartBody({
   view,
   questions,
+  label,
   busy,
   onAsk,
 }: {
   view: ChartView;
   /** What the answer that drew the chart suggests asking next. */
   questions: string[];
+  /** The chart's name, told apart from the answer's other charts. */
+  label: string;
   busy: boolean;
   onAsk: (text: string) => void;
 }) {
@@ -57,6 +65,7 @@ function ChartBody({
       await downloadChartPng(svg, view.caption, chartFileName(view), {
         legend: chartLegend(view),
         shown,
+        title: label,
       });
     } catch {
       toast.error("Couldn't save the chart image. Try the CSV instead.");
@@ -131,13 +140,15 @@ function ChartBody({
   );
 }
 
-/** Picks between the charts one answer drew, by measure. */
+/** Picks between the charts one answer drew, by what tells them apart. */
 function ChartSwitcher({
   views,
+  labels,
   selected,
   onSelect,
 }: {
   views: ChartView[];
+  labels: Map<string, string>;
   selected: string;
   onSelect: (key: string) => void;
 }) {
@@ -159,7 +170,7 @@ function ChartSwitcher({
               "bg-foreground hover:text-background text-white",
           )}
         >
-          {v.title}
+          {labels.get(v.key) ?? v.title}
         </button>
       ))}
     </div>
@@ -203,14 +214,19 @@ export function XdmodChartPanel({
   const view = turn?.find((v) => v.key === selected) ?? turn?.[0] ?? null;
 
   const answerId = view?.messageId;
-  const questions = useMemo(
-    () => getSuggestedQuestions(stream.messages.find((m) => m.id === answerId)),
-    [stream.messages, answerId],
+  const questions = getSuggestedQuestions(
+    stream.messages.find((m) => m.id === answerId),
   );
+  const labels = chartLabels(turn ?? []);
 
   const [Artifact, { open, setOpen }] = useArtifact();
+  const [anyOpen] = useArtifactOpen();
+  // Opens only for the newest answer's own chart: a reloaded thread whose
+  // newest answer drew none keeps an older chart closed.
   const owns = useMemo(
-    () => newestPanelStep(stream.messages) === "chart",
+    () =>
+      newestPanelStep(stream.messages) === "chart" &&
+      latestAnswerHasChart(stream.messages),
     [stream.messages],
   );
   const shownKey = useRef<string | null>(null);
@@ -224,9 +240,39 @@ export function XdmodChartPanel({
     }
   }, [latestKey, owns, open, setOpen]);
 
+  // Closing hands focus back to what opened the panel: the Show chart chip
+  // that was used, else the chip under the chart's answer.
+  const opener = useRef<HTMLElement | null>(null);
+  const wasOpen = useRef(false);
+  const turnKey = turn?.[0].key ?? null;
+  useEffect(() => {
+    if (open) {
+      wasOpen.current = true;
+      return;
+    }
+    if (!wasOpen.current) return;
+    wasOpen.current = false;
+    // Another panel took over, so focus stays where it went.
+    if (anyOpen) return;
+    const chip =
+      turnKey !== null
+        ? document.querySelector<HTMLElement>(
+            `[data-chart-key="${CSS.escape(turnKey)}"]`,
+          )
+        : null;
+    const target = opener.current?.isConnected ? opener.current : chip;
+    opener.current = null;
+    target?.focus();
+  }, [open, anyOpen, turnKey]);
+
   useEffect(() => {
     const onShow = (event: Event) => {
       const key = (event as CustomEvent<string>).detail;
+      opener.current =
+        document.activeElement instanceof HTMLElement &&
+        document.activeElement !== document.body
+          ? document.activeElement
+          : null;
       setPicked({ key, latestKey });
       setSelected(key);
       setOpen(true);
@@ -237,13 +283,14 @@ export function XdmodChartPanel({
 
   if (!turn || !view) return null;
   return (
-    <Artifact title={view.title}>
+    <Artifact title={labels.get(view.key) ?? view.title}>
       <div className="flex h-full flex-col">
         {/* Outside the keyed body, so switching keeps focus on the button. */}
         {turn.length > 1 && (
           <div className="px-4 pt-4 sm:px-6 sm:pt-6">
             <ChartSwitcher
               views={turn}
+              labels={labels}
               selected={view.key}
               onSelect={setSelected}
             />
@@ -255,6 +302,7 @@ export function XdmodChartPanel({
           key={view.key}
           view={view}
           questions={questions}
+          label={labels.get(view.key) ?? view.title}
           busy={stream.isLoading || awaitingCheck}
           onAsk={onAsk}
         />

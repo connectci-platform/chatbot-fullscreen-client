@@ -29,6 +29,7 @@ import {
   isToolCallNarration,
   narrationParagraphs,
 } from "@/lib/tool-narration";
+import { isStoppedAnswer } from "@/lib/stopped-answer";
 
 function CustomComponent({
   message,
@@ -107,6 +108,8 @@ export function AssistantMessage({
 }) {
   const content = message?.content ?? [];
   const contentString = getContentString(content);
+  // Cut off, so there's no turn report to rate.
+  const stopped = isStoppedAnswer(message);
   const suggestions = getCapabilitySuggestions(message);
 
   const thread = useStreamContext();
@@ -140,7 +143,11 @@ export function AssistantMessage({
     !!message && continuedAfter(thread.messages, message),
   );
 
-  if (message?.type === "tool") {
+  // A stop before any text leaves an empty answer; the Stopped note says so.
+  if (
+    message?.type === "tool" ||
+    (stopped && contentString.trim().length === 0)
+  ) {
     return null;
   }
 
@@ -160,13 +167,17 @@ export function AssistantMessage({
             </div>
           )
         )}
-        <AnswerSources
-          message={message}
-          streaming={streaming}
-        />
+        {/* Cut off before it could cite anything, so no sources line. */}
+        {!stopped && (
+          <AnswerSources
+            message={message}
+            streaming={streaming}
+          />
+        )}
         {chartKey && (
           <button
             type="button"
+            data-chart-key={chartKey}
             onClick={() => showChart(chartKey)}
             className="hover:text-brand hover:border-brand focus-visible:ring-brand mr-auto flex cursor-pointer items-center gap-2 border px-3 py-1.5 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
           >
@@ -219,7 +230,7 @@ export function AssistantMessage({
             shift it. */}
         {contentString.length > 0 && !narration && (
           <div className="mr-auto flex flex-wrap items-start gap-1">
-            {message && (
+            {message && !stopped && (
               <AnswerRating
                 message={message}
                 isLoading={isLoading}
