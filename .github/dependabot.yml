@@ -12,9 +12,14 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      # TypeScript majors get a PR of their own, so one that the toolchain
+      # can't take yet (typescript-eslint lags each TS major) stays open and
+      # red until a typescript-eslint bump lands, then goes green on rebase.
       major:
         patterns:
           - "*"
+        exclude-patterns:
+          - "typescript"
         update-types:
           - "major"
 
