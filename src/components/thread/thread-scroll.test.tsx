@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -241,7 +247,7 @@ describe("Thread layout", () => {
         within(bar).getByRole("button", { name: "Show conversations" }),
       ).toBeInTheDocument();
       expect(
-        within(bar).queryAllByRole("button", { name: "New conversation" }),
+        within(bar).queryAllByRole("button", { name: "New chat" }),
       ).toHaveLength(searchParams ? 1 : 0);
     },
   );
@@ -257,5 +263,51 @@ describe("Thread layout", () => {
     stream.messages = [];
     renderThread("");
     expect(footer()).not.toHaveClass("sticky");
+  });
+
+  it("puts a labeled New chat in a conversation's top bar, which starts a new one in the message box", async () => {
+    const onUrlUpdate = vi.fn();
+    render(
+      <NuqsTestingAdapter
+        searchParams="?threadId=t-1"
+        onUrlUpdate={onUrlUpdate}
+      >
+        <Thread />
+      </NuqsTestingAdapter>,
+    );
+    const bar = screen.getByTestId("thread-top-bar");
+    const newChat = within(bar).getByRole("button", { name: "New chat" });
+    expect(newChat).toHaveTextContent("New chat");
+    fireEvent.click(newChat);
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveFocus();
+    await waitFor(() => expect(onUrlUpdate).toHaveBeenCalled());
+    expect(
+      onUrlUpdate.mock.calls.at(-1)![0].searchParams.get("threadId"),
+    ).toBeNull();
+  });
+
+  it("leaves New chat out of the empty screen's top bar", () => {
+    stream.messages = [];
+    renderThread("");
+    expect(
+      within(screen.getByTestId("thread-top-bar")).queryByRole("button", {
+        name: "New chat",
+      }),
+    ).toBeNull();
+  });
+
+  it("labels the wide screens' toggle and leaves the narrow screens' an icon", () => {
+    renderThread();
+    const narrow = within(screen.getByTestId("thread-top-bar")).getByRole(
+      "button",
+      { name: "Show conversations" },
+    );
+    expect(narrow).toHaveTextContent(/^$/);
+    const toggles = screen.getAllByRole("button", {
+      name: "Show conversations",
+    });
+    const wide = toggles.find((t) => t !== narrow)!;
+    expect(wide).toHaveTextContent("Conversations");
+    expect(wide.closest(".xl\\:flex")).not.toBeNull();
   });
 });

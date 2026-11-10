@@ -19,17 +19,11 @@ import { StarterQuestions } from "./starter-questions";
 import { OfficeHours } from "./office-hours";
 import { useOfficeHours } from "@/hooks/useOfficeHours";
 import { getSupportUrl } from "@/lib/agent-token";
-import { TooltipIconButton } from "./tooltip-icon-button";
-import {
-  ArrowUp,
-  LoaderCircle,
-  PanelRightOpen,
-  PanelRightClose,
-  SquarePen,
-  Plus,
-} from "lucide-react";
-import { useQueryState, parseAsBoolean } from "nuqs";
+import { ArrowUp, LoaderCircle, Plus } from "lucide-react";
+import { useQueryState } from "nuqs";
 import ThreadHistory from "./history";
+import { ConversationsToggle, NewChatButton } from "./conversation-controls";
+import { useConversationsOpen } from "@/hooks/use-conversations-open";
 import { toast } from "sonner";
 import {
   isTurnstileChallenge,
@@ -76,10 +70,7 @@ export function Thread() {
   const [artifactOpen, closeArtifact] = useArtifactOpen();
 
   const [threadId, _setThreadId] = useQueryState("threadId");
-  const [chatHistoryOpen, setChatHistoryOpen] = useQueryState(
-    "chatHistoryOpen",
-    parseAsBoolean.withDefault(false),
-  );
+  const [chatHistoryOpen] = useConversationsOpen();
   const [input, setInput] = useState("");
   const {
     contentBlocks,
@@ -150,6 +141,12 @@ export function Thread() {
     },
     [_setThreadId, closeArtifact, setArtifactContext],
   );
+
+  /** Starts an empty conversation, with focus in its message box. */
+  const startNewChat = () => {
+    setThreadId(null);
+    focusComposer();
+  };
 
   useEffect(() => {
     if (!stream.error) {
@@ -325,30 +322,9 @@ export function Thread() {
 
   const chatStarted = !!threadId || !!messages.length;
 
-  const historyToggle = (!chatHistoryOpen || !isLargeScreen) && (
-    <Button
-      className="hover:bg-gray-100"
-      variant="ghost"
-      aria-label={chatHistoryOpen ? "Hide conversations" : "Show conversations"}
-      onClick={() => setChatHistoryOpen((p) => !p)}
-    >
-      {chatHistoryOpen ? (
-        <PanelRightOpen className="size-5" />
-      ) : (
-        <PanelRightClose className="size-5" />
-      )}
-    </Button>
-  );
-  const newConversation = (
-    <TooltipIconButton
-      size="lg"
-      className="p-4"
-      tooltip="New conversation"
-      variant="ghost"
-      onClick={() => setThreadId(null)}
-    >
-      <SquarePen className="size-5" />
-    </TooltipIconButton>
+  // The open sidebar has its own New chat on a wide screen.
+  const newChat = !(chatHistoryOpen && isLargeScreen) && (
+    <NewChatButton onClick={startNewChat} />
   );
   const showOfficeHours = !chatStarted && !chatHistoryOpen;
   const hasNoAIOrToolMessages = !messages.find(
@@ -377,7 +353,7 @@ export function Thread() {
             className="relative h-full"
             style={{ width: 300 }}
           >
-            <ThreadHistory />
+            <ThreadHistory onNewChat={startNewChat} />
           </div>
         </motion.div>
       </div>
@@ -413,16 +389,20 @@ export function Thread() {
               conversation below and scrolls away with it. */}
           {!chatStarted && (
             <div className="absolute top-0 left-0 z-10 hidden w-full items-center justify-between gap-3 p-2 pl-4 xl:flex">
-              <div>{historyToggle}</div>
+              <div>
+                <ConversationsToggle labelled />
+              </div>
             </div>
           )}
           {chatStarted && (
             <div className="absolute inset-x-0 top-0 z-10 hidden items-center justify-between gap-3 p-2 xl:flex">
               <div className="relative flex items-center justify-start gap-2">
-                <div className="absolute left-0 z-10">{historyToggle}</div>
+                <div className="absolute left-0 z-10">
+                  <ConversationsToggle labelled />
+                </div>
               </div>
 
-              <div className="flex items-center gap-4">{newConversation}</div>
+              <div className="flex items-center gap-4">{newChat}</div>
             </div>
           )}
 
@@ -453,8 +433,10 @@ export function Thread() {
                 data-testid="thread-top-bar"
                 className="-mx-2 flex items-center justify-between gap-3 py-2 xl:hidden"
               >
-                <div>{historyToggle}</div>
-                {chatStarted && newConversation}
+                <div>
+                  <ConversationsToggle />
+                </div>
+                {chatStarted && newChat}
               </div>
               <div
                 ref={chatScroll.contentRef}
