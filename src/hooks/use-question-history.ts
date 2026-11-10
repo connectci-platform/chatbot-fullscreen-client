@@ -32,7 +32,8 @@ const afterNativeMoveDefault: AfterNativeMove = (then) => {
  * In a draft the caret has to be at the start (or end) already when the key
  * is pressed, so the press that only moves it there never replaces the
  * draft. A recalled question is walked straight through: reaching its start
- * or end is enough.
+ * or end is enough, and so is a press that leaves the caret where it was
+ * (Windows doesn't move it off the first or last line).
  *
  * Anything else that changes the box (typing, Edit question) ends the look
  * back, leaving the text as the person's own; so does another conversation.
@@ -97,11 +98,18 @@ export function useQuestionHistory({
       if (box.selectionStart !== box.selectionEnd) return;
       const caret = box.selectionStart;
       const current = browsing.current;
-      // Still where it was, or anywhere in a recalled question.
-      const settled = caret === before || current !== null;
+      const atEdge =
+        key === "ArrowUp" ? caret === 0 : caret === box.value.length;
+      // The caret couldn't go further. Chromium on Windows leaves it where
+      // it was on the first (or last) line instead of moving it to the edge.
+      const stuck = caret === before;
+      // A draft needs both: the caret already at its edge when the key was
+      // pressed. A recalled question needs either, so it's walked straight
+      // through.
+      const reached = current ? atEdge || stuck : atEdge && stuck;
 
       if (key === "ArrowUp") {
-        if (caret !== 0 || !settled) return;
+        if (!reached) return;
         let index = (current ? current.index : stops.length) - 1;
         // Already in the box (Edit question put it there): go past it.
         while (index >= 0 && stops[index] === box.value) index--;
@@ -114,7 +122,7 @@ export function useQuestionHistory({
         return;
       }
 
-      if (!current || caret !== box.value.length || !settled) return;
+      if (!current || !reached) return;
       const index = current.index + 1;
       if (index >= stops.length) {
         browsing.current = null;
