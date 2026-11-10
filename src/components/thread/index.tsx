@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { ReactNode, useCallback, useEffect, useRef } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useStreamContext } from "@/providers/Stream";
@@ -26,7 +26,6 @@ import {
   PanelRightOpen,
   PanelRightClose,
   SquarePen,
-  XIcon,
   Plus,
 } from "lucide-react";
 import { useQueryState, parseAsBoolean } from "nuqs";
@@ -42,19 +41,18 @@ import { useAuthStatus } from "@/hooks/use-agent-auth";
 import { useRestoreQuestion } from "@/hooks/use-restore-question";
 import { TurnstileChallengePanel } from "./turnstile-challenge";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { SidePanel } from "./side-panel";
 import { Label } from "../ui/label";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { useInitialQuestion } from "@/hooks/use-initial-question";
 import { useFirstTokenReceived } from "@/hooks/use-first-token-received";
 import { ContentBlocksPreview } from "./ContentBlocksPreview";
-import {
-  useArtifactOpen,
-  ArtifactContent,
-  ArtifactTitle,
-  useArtifactContext,
-} from "./artifact";
+import { useArtifactOpen, useArtifactContext } from "./artifact";
 import { RegistrationPanel } from "./registration-panel";
 import { SoftwareComparisonPanel } from "./software-comparison-panel";
+import { XdmodChartPanel } from "./xdmod-chart-panel";
+import { chartViewsByMessage } from "@/lib/xdmod-chart";
+import { comparisonsByMessage } from "@/lib/software-comparison";
 
 function StickyToBottomContent(props: {
   content: ReactNode;
@@ -130,6 +128,9 @@ export function Thread() {
 
   const stream = useStreamContext();
   const messages = stream.messages;
+  // Once per update, not once per message: each answer only needs its key.
+  const chartViews = useMemo(() => chartViewsByMessage(messages), [messages]);
+  const comparisons = useMemo(() => comparisonsByMessage(messages), [messages]);
   const [firstTokenReceived, setFirstTokenReceived] = useFirstTokenReceived(
     messages,
     stream.runStatus,
@@ -399,6 +400,14 @@ export function Thread() {
                           message={message}
                           isLoading={isLoading}
                           onAsk={(question) => submitMessage(question, [])}
+                          chartKey={
+                            message.id
+                              ? chartViews.get(message.id)?.[0]?.key
+                              : undefined
+                          }
+                          comparisonKey={
+                            message.id ? comparisons.get(message.id) : undefined
+                          }
                         />
                       ),
                     )}
@@ -545,29 +554,14 @@ export function Thread() {
             />
           </StickToBottom>
         </motion.div>
-        <div
-          className={cn(
-            "relative flex flex-col border-l",
-            !artifactOpen && "hidden",
-          )}
-        >
-          <div className="absolute inset-0 flex min-w-[30vw] flex-col">
-            <div className="grid grid-cols-[1fr_auto] border-b p-4">
-              <ArtifactTitle className="truncate overflow-hidden" />
-              <button
-                onClick={closeArtifact}
-                aria-label="Close panel"
-                className="cursor-pointer"
-              >
-                <XIcon className="size-5" />
-              </button>
-            </div>
-            <ArtifactContent className="relative min-h-0 flex-grow overflow-hidden" />
-          </div>
-        </div>
+        <SidePanel
+          open={artifactOpen}
+          onClose={closeArtifact}
+        />
       </div>
       <RegistrationPanel onConfirm={(text) => submitMessage(text, [])} />
       <SoftwareComparisonPanel />
+      <XdmodChartPanel onAsk={(text) => submitMessage(text, [])} />
     </div>
   );
 }

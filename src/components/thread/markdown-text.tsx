@@ -60,6 +60,16 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
   );
 };
 
+/**
+ * Web links open in a new tab, so following one doesn't leave the chat. In-page
+ * anchors and mailto: links stay as they are.
+ */
+function newTabProps(href: string | undefined) {
+  return href && /^https?:\/\//i.test(href)
+    ? { target: "_blank", rel: "noopener noreferrer" }
+    : {};
+}
+
 const defaultComponents: any = {
   h1: ({ className, ...props }: { className?: string }) => (
     <h1
@@ -118,10 +128,11 @@ const defaultComponents: any = {
       {...props}
     />
   ),
-  a: ({ className, ...props }: { className?: string }) => (
+  a: ({ className, ...props }: { className?: string; href?: string }) => (
     <a
       className={cn("font-medium", className)}
       {...props}
+      {...newTabProps(props.href)}
     />
   ),
   blockquote: ({ className, ...props }: { className?: string }) => (
