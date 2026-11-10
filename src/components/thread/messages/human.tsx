@@ -14,7 +14,11 @@ export function HumanMessage({
   const contentString = getContentString(message.content);
 
   return (
-    <div className="group ml-auto flex items-center gap-2">
+    <div
+      // The thread scrolls a just-sent question to the top by this id.
+      data-message-id={message.id}
+      className="group ml-auto flex items-center gap-2"
+    >
       <div className="flex flex-col gap-2">
         <div className="flex flex-col gap-2">
           {/* Render images and files if no text */}
