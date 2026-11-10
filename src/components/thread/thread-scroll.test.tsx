@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -309,5 +310,57 @@ describe("Thread layout", () => {
     const wide = toggles.find((t) => t !== narrow)!;
     expect(wide).toHaveTextContent("Conversations");
     expect(wide.closest(".xl\\:flex")).not.toBeNull();
+  });
+});
+
+describe("Message box recall", () => {
+  beforeEach(() => {
+    stream.messages = [
+      question,
+      { id: "a-1", type: "ai", content: "Anvil is a supercomputer." },
+      {
+        id: "q-2",
+        type: "human",
+        content: [{ type: "text", text: "And Delta?" }],
+      },
+      { id: "a-2", type: "ai", content: "Delta is at NCSA." },
+    ];
+    stream.isLoading = false;
+    stream.error = undefined;
+    stream.stopped = false;
+    stream.submit.mockClear();
+  });
+
+  it("Up and Down walk through this conversation's questions, and Enter sends one again", async () => {
+    renderThread();
+    const box = screen.getByRole<HTMLTextAreaElement>("textbox", {
+      name: "Message",
+    });
+    // The hook acts once the browser has moved the caret, a task later.
+    // jsdom doesn't move it, so this does, as for one-line text: Up to the
+    // start, Down to the end.
+    const press = async (key: string) => {
+      fireEvent.keyDown(box, { key });
+      const to = key === "ArrowUp" ? 0 : box.value.length;
+      box.setSelectionRange(to, to);
+      await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    };
+    fireEvent.change(box, { target: { value: "draft" } });
+    box.setSelectionRange(0, 0);
+
+    await press("ArrowUp");
+    expect(box).toHaveValue("And Delta?");
+    await press("ArrowUp");
+    expect(box).toHaveValue("What is Anvil?");
+    await press("ArrowDown");
+    await press("ArrowDown");
+    expect(box).toHaveValue("draft");
+
+    box.setSelectionRange(0, 0);
+    await press("ArrowUp");
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(stream.submit).toHaveBeenCalledOnce();
+    const sent = stream.submit.mock.calls[0][0].messages.at(-1);
+    expect(sent.content).toEqual([{ type: "text", text: "And Delta?" }]);
   });
 });
