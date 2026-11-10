@@ -125,6 +125,30 @@ describe("tableViewsByMessage", () => {
     expect(tableViewsByMessage(turn).size).toBe(0);
   });
 
+  it("keeps a table whose filters aren't all names, showing what it can", () => {
+    const view = only(
+      rawTurn(
+        tablePayload({
+          filters: {
+            resource: ["Delta", 2, null],
+            jobsize: 8,
+            queue: { nested: true },
+            pi: "Doe",
+          },
+        }),
+      ),
+    );
+    expect(view.filters).toEqual([
+      "resource: Delta, 2",
+      "jobsize: 8",
+      "pi: Doe",
+    ]);
+  });
+
+  it("keeps a table with no filters object", () => {
+    expect(only(rawTurn(tablePayload({ filters: null }))).filters).toEqual([]);
+  });
+
   it("ignores a full table left on the message", () => {
     const turn = rawTurn(tablePayload());
     (turn[2] as unknown as { artifact: Json }).artifact = {

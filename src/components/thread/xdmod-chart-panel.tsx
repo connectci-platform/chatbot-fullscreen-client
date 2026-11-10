@@ -162,19 +162,29 @@ function ChartBody({
 type Get = (path: string) => Promise<Response>;
 
 /**
- * Rows by stored table id, so switching away and back, or downloading after
- * viewing, doesn't fetch them again. A failed fetch is forgotten so Retry
- * asks again.
+ * Rows of the few tables shown most recently, by stored table id, so
+ * switching away and back, or downloading after viewing, doesn't fetch them
+ * again. Bounded, since each can be 50,000 rows; the oldest is dropped first.
+ * A failed fetch is forgotten so Retry asks again.
  */
 const loadedRows = new Map<string, Promise<TableCell[][]>>();
+const MAX_LOADED_TABLES = 3;
 
 function loadRows(view: TableView, get: Get | null): Promise<TableCell[][]> {
   if (!get) return Promise.reject(new Error("This conversation has no id yet"));
   let rows = loadedRows.get(view.id);
-  if (!rows) {
-    rows = fetchTableRows(view, get);
-    loadedRows.set(view.id, rows);
-    rows.catch(() => loadedRows.delete(view.id));
+  if (rows) {
+    loadedRows.delete(view.id); // to the newest end
+  } else {
+    const fetching = fetchTableRows(view, get);
+    fetching.catch(() => {
+      if (loadedRows.get(view.id) === fetching) loadedRows.delete(view.id);
+    });
+    rows = fetching;
+  }
+  loadedRows.set(view.id, rows);
+  while (loadedRows.size > MAX_LOADED_TABLES) {
+    loadedRows.delete(loadedRows.keys().next().value as string);
   }
   return rows;
 }

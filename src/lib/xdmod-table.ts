@@ -36,7 +36,8 @@ interface TableRef {
   dataset_type: string;
   aggregation_unit: string;
   requested: { start: string; end: string };
-  filters: Record<string, string[]>;
+  /** Names by dimension; read leniently (see filterLines). */
+  filters?: unknown;
   columns: TableColumn[];
   row_count: number;
   retrieved: string;
@@ -84,13 +85,21 @@ const isString = (v: unknown): v is string => typeof v === "string";
 const isColumn = (c: unknown): c is TableColumn =>
   isRecord(c) && isString(c.name) && isString(c.kind) && KINDS.has(c.kind);
 
-function isFilters(v: unknown): v is Record<string, string[]> {
-  return (
-    isRecord(v) &&
-    Object.values(v).every(
-      (names) => Array.isArray(names) && names.every(isString),
-    )
-  );
+/**
+ * One line per filtered dimension, from whatever values are names or
+ * numbers. The server passes on a filter it couldn't check as the model gave
+ * it, so a value of another shape is left out rather than hiding the table.
+ */
+function filterLines(filters: unknown): string[] {
+  if (!isRecord(filters)) return [];
+  return Object.entries(filters).flatMap(([dimension, value]) => {
+    const names = (Array.isArray(value) ? value : [value])
+      .filter(
+        (v) => isString(v) || (typeof v === "number" && Number.isFinite(v)),
+      )
+      .map(String);
+    return names.length ? [`${dimension}: ${names.join(", ")}`] : [];
+  });
 }
 
 /** Every row as long as the columns, each cell the type its column holds. */
@@ -133,8 +142,7 @@ function parseRef(raw: unknown): TableRef | null {
     !isString(raw.retrieved) ||
     !isRecord(requested) ||
     !isString(requested.start) ||
-    !isString(requested.end) ||
-    !isFilters(raw.filters)
+    !isString(requested.end)
   ) {
     return null;
   }
@@ -190,9 +198,7 @@ function toView(key: string, messageId: string, table: TableRef): TableView {
       ? { unit: table.aggregation_unit as Unit }
       : {}),
     requested: { ...table.requested },
-    filters: Object.entries(table.filters).map(
-      ([dimension, names]) => `${dimension}: ${names.join(", ")}`,
-    ),
+    filters: filterLines(table.filters),
     realm: table.realm,
     source: table.source,
     retrieved: table.retrieved,

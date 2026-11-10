@@ -1538,6 +1538,36 @@ describe("XdmodChartPanel data tables", () => {
     expect(bodyRows()).toHaveLength(100);
   });
 
+  it("keeps the rows of only the few tables shown most recently", async () => {
+    // Each 50,000-row table is megabytes; a long session mustn't keep them all.
+    const turns = Array.from({ length: 5 }, (_, i) =>
+      tableTurn(table(), `lru-${i}`),
+    );
+    const ids = [...storedTables.keys()].slice(-5);
+    useMessages(turns.flat());
+    const { rerender } = render(tree());
+    for (let i = 0; i < 5; i++) {
+      act(() => showChart(`lru-${i}`));
+      rerender(tree());
+      await tableShown();
+    }
+    const fetchesOf = (id: string) =>
+      fetched.filter((url) => url.endsWith(id)).length;
+    // The newest answer's table opened first, then fell out of memory as
+    // three others were shown, so it was fetched again.
+    expect(ids.map(fetchesOf)).toEqual([1, 1, 1, 1, 2]);
+
+    // The newest few come from memory; an older one is fetched again.
+    act(() => showChart("lru-3"));
+    rerender(tree());
+    await tableShown();
+    expect(fetchesOf(ids[3])).toBe(1);
+    act(() => showChart("lru-0"));
+    rerender(tree());
+    await tableShown();
+    expect(fetchesOf(ids[0])).toBe(2);
+  });
+
   it("on reload, stays closed when the newest answer has no table", () => {
     const before = fetched.length;
     useMessages([
