@@ -53,6 +53,10 @@ import {
   cutOffNote,
   stopReason,
   withFailedTurnMarked,
+  cutOffKey,
+  reloadCutOffs,
+  rememberReloadCutOff,
+  withReloadCutOffsMarked,
   unansweredQuestion,
   withoutUnansweredTurn,
 } from "@/lib/stopped-answer";
@@ -146,8 +150,19 @@ export function Thread() {
   );
 
   const stream = useStreamContext();
-  // A run that timed out or failed left its answer cut off, as the agent saved it.
-  const messages = withFailedTurnMarked(stream.messages, stream.error);
+  // Read once: a reload of this tab that cut off an answer, before this load.
+  const [cutOffs] = useState(reloadCutOffs);
+  // A run that timed out or failed left its answer cut off, as the agent saved
+  // it, and a reload's cut-off answer isn't the person's stop.
+  const messages = useMemo(
+    () =>
+      withReloadCutOffsMarked(
+        withFailedTurnMarked(stream.messages, stream.error),
+        threadId,
+        cutOffs,
+      ),
+    [stream.messages, stream.error, threadId, cutOffs],
+  );
   // Once per update, not once per message: each answer only needs its key.
   const chartViews = useMemo(() => chartViewsByMessage(messages), [messages]);
   const comparisons = useMemo(() => comparisonsByMessage(messages), [messages]);
@@ -340,6 +355,18 @@ export function Thread() {
     if (retryButton.current) retryButton.current.focus({ preventScroll: true });
     else focusComposer();
   });
+
+  // The agent saves an answer the page left mid-stream as a stop; remember
+  // it was a reload or a closed tab, not the Stop button.
+  const lastHuman = stream.messages.findLast((m) => m.type === "human");
+  const latestQuestion =
+    threadId && lastHuman ? cutOffKey(threadId, lastHuman) : null;
+  useEffect(() => {
+    if (!isLoading || !latestQuestion) return;
+    const onPageHide = () => rememberReloadCutOff(latestQuestion);
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, [isLoading, latestQuestion]);
 
   const chatStarted = !!threadId || !!messages.length;
   const showOfficeHours = !chatStarted && !chatHistoryOpen;

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { Message } from "@langchain/langgraph-sdk";
 import {
   afterStop,
@@ -10,6 +10,10 @@ import {
   stoppedTurn,
   unansweredQuestion,
   withoutUnansweredTurn,
+  cutOffKey,
+  reloadCutOffs,
+  rememberReloadCutOff,
+  withReloadCutOffsMarked,
 } from "./stopped-answer";
 
 const earlier: Message = { id: "h-0", type: "human", content: "Hi" };
@@ -343,5 +347,72 @@ describe("a cut-off turn that made a change", () => {
     expect(cutOffNote("timeout", true)).toBe(
       "This answer didn't finish. A change may already have been made, so check before asking again.",
     );
+  });
+});
+
+describe("answers a reload cut off", () => {
+  beforeEach(() => sessionStorage.clear());
+  const stoppedReply = (id: string): Message => ({
+    id,
+    type: "ai",
+    content: "Anvil is",
+    response_metadata: { stopped: true },
+  });
+
+  it("remembers the question by thread and text, across the agent's new id", () => {
+    rememberReloadCutOff(cutOffKey("t1", question));
+    const cutOffs = reloadCutOffs();
+    const marked = withReloadCutOffsMarked(
+      [earlier, earlierReply, savedQuestion, stoppedReply("a-1")],
+      "t1",
+      cutOffs,
+    );
+    expect(stopReason(marked[3])).toBe("interrupted");
+    expect(cutOffNote(stopReason(marked[3])!)).toBe(
+      "This answer didn't finish.",
+    );
+    // The latest turn's note reads the same.
+    expect(
+      unansweredQuestion({
+        messages: marked,
+        isLoading: false,
+        error: undefined,
+        interrupted: false,
+        stopped: false,
+      })?.reason,
+    ).toBe("interrupted");
+  });
+
+  it("leaves the person's own stops, other threads and later asks alone", () => {
+    rememberReloadCutOff(cutOffKey("t1", question));
+    const cutOffs = reloadCutOffs();
+    const thread = [savedQuestion, stoppedReply("a-1")];
+    expect(withReloadCutOffsMarked(thread, "t2", cutOffs)).toBe(thread);
+    expect(withReloadCutOffsMarked(thread, null, cutOffs)).toBe(thread);
+    // Asked again and stopped with the button: only the last ask counts.
+    const again = [...thread, { ...question, id: "h-9" }, stoppedReply("a-9")];
+    const marked = withReloadCutOffsMarked(again, "t1", cutOffs);
+    expect(stopReason(marked[1])).toBe("user");
+    expect(stopReason(marked[3])).toBe("interrupted");
+    // A timeout keeps its own reason.
+    const timedOut = {
+      ...stoppedReply("a-1"),
+      response_metadata: { stopped: true, reason: "timeout" },
+    };
+    expect(
+      stopReason(
+        withReloadCutOffsMarked([savedQuestion, timedOut], "t1", cutOffs)[1],
+      ),
+    ).toBe("timeout");
+  });
+
+  it("keeps the newest twenty and survives broken storage", () => {
+    for (let i = 0; i < 25; i++) rememberReloadCutOff(`t\nq${i}`);
+    const kept = reloadCutOffs();
+    expect(kept.size).toBe(20);
+    expect(kept.has("t\nq24")).toBe(true);
+    expect(kept.has("t\nq0")).toBe(false);
+    sessionStorage.setItem("chat:reload-cut-offs", "{not json");
+    expect(reloadCutOffs().size).toBe(0);
   });
 });
