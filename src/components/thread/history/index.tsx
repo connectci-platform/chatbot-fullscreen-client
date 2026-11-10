@@ -12,10 +12,10 @@ import { useAuthStatus } from "@/hooks/use-agent-auth";
 import {
   CONVERSATIONS_HIDE_ID,
   CONVERSATIONS_SIDEBAR_ID,
-  CONVERSATIONS_TOGGLE_ATTR,
   HideConversationsButton,
   NewChatButton,
 } from "../conversation-controls";
+import { focusConversationsToggle } from "../control-focus";
 import { useConversationsOpen } from "@/hooks/use-conversations-open";
 import { focusComposer } from "../composer";
 import { SiteLinks } from "../site-links";
@@ -100,20 +100,6 @@ function ThreadHistoryLoading() {
 }
 
 const SIDEBAR_HEADING_ID = "conversations-sidebar-heading";
-
-/**
- * The top bar's toggle that's showing (wide or narrow screens' bar). Below
- * 1280px the bar is the first row of the conversation's scroller, so focus
- * must not scroll it into view: that would jump the chat back to the top.
- */
-function focusConversationsToggle() {
-  const toggles = document.querySelectorAll<HTMLElement>(
-    `[${CONVERSATIONS_TOGGLE_ATTR}]`,
-  );
-  Array.from(toggles)
-    .find((el) => el.getClientRects().length > 0 || toggles.length === 1)
-    ?.focus({ preventScroll: true });
-}
 
 /** The sidebar's or the phone list's top: Hide, New chat, then the heading. */
 function SidebarHeader({

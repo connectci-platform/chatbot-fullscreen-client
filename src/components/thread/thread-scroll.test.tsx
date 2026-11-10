@@ -41,9 +41,10 @@ vi.mock("@/providers/Stream", () => ({
   }),
 }));
 vi.mock("./history", () => ({ default: () => null }));
+const artifact = vi.hoisted(() => ({ open: false }));
 vi.mock("./artifact", () => ({
   useArtifact: () => [null, vi.fn()],
-  useArtifactOpen: () => [false, vi.fn()],
+  useArtifactOpen: () => [artifact.open, vi.fn()],
   useArtifactContext: () => [{}, vi.fn()],
   ArtifactContent: () => null,
   ArtifactTitle: () => null,
@@ -75,7 +76,64 @@ vi.mock("@/hooks/use-chat-scroll", () => ({
     footerRef: { current: null },
   }),
 }));
-vi.mock("@/hooks/useMediaQuery", () => ({ useMediaQuery: () => true }));
+const media = vi.hoisted(() => ({ large: true }));
+vi.mock("@/hooks/useMediaQuery", () => ({
+  useMediaQuery: () => media.large,
+}));
+
+/** Stands in for the browser's IntersectionObserver, which jsdom lacks. */
+const observers = new Set<{
+  callback: IntersectionObserverCallback;
+  targets: Set<Element>;
+}>();
+class FakeIntersectionObserver {
+  private entry: {
+    callback: IntersectionObserverCallback;
+    targets: Set<Element>;
+  };
+  constructor(callback: IntersectionObserverCallback) {
+    this.entry = { callback, targets: new Set() };
+    observers.add(this.entry);
+  }
+  observe(target: Element) {
+    this.entry.targets.add(target);
+  }
+  unobserve(target: Element) {
+    this.entry.targets.delete(target);
+  }
+  disconnect() {
+    observers.delete(this.entry);
+  }
+  takeRecords() {
+    return [];
+  }
+}
+/** Some tests unstub globals, so each one that needs these stubs them. */
+function stubObservers() {
+  vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+  // For the tooltips, which size themselves with it.
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+}
+
+/** Reports whether `target` is on screen to whatever observes it. */
+function intersect(target: Element, isIntersecting: boolean) {
+  act(() => {
+    for (const { callback, targets } of observers) {
+      if (!targets.has(target)) continue;
+      callback(
+        [{ target, isIntersecting } as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      );
+    }
+  });
+}
 
 function renderThread(searchParams = "?threadId=t-1") {
   return render(
@@ -262,8 +320,8 @@ describe("Thread layout", () => {
         .getByRole("textbox", { name: "Message" })
         .closest(".overflow-y-scroll")!;
       // Scrolls away with the messages instead of holding a row of its own.
-      expect(scroller.firstElementChild).toBe(bar);
-      expect(bar).toHaveClass("xl:hidden");
+      expect(scroller.firstElementChild).toContainElement(bar);
+      expect(bar).toHaveClass("@min-[71rem]/pane:hidden");
       expect(bar.className).not.toMatch(/\bbg-/);
       expect(bar.className).not.toMatch(/\b(sticky|absolute|fixed)\b/);
       expect(
@@ -331,7 +389,244 @@ describe("Thread layout", () => {
     });
     const wide = toggles.find((t) => t !== narrow)!;
     expect(wide).toHaveTextContent("Conversations");
-    expect(wide.closest(".xl\\:flex")).not.toBeNull();
+    expect(screen.getByTestId("thread-top-bar-float")).toContainElement(wide);
+  });
+});
+
+describe("Top bar placement", () => {
+  beforeEach(() => {
+    stream.messages = [
+      question,
+      { id: "a-1", type: "ai", content: "Anvil is a supercomputer." },
+    ];
+    stream.isLoading = false;
+    stream.error = undefined;
+    stream.stopped = false;
+    artifact.open = false;
+    media.large = true;
+    stubObservers();
+  });
+
+  const pane = () =>
+    screen
+      .getByRole("textbox", { name: "Message" })
+      .closest(".\\@container\\/pane")!;
+
+  it.each([
+    ["nothing else open", "?threadId=t-1", false],
+    [
+      "the Conversations sidebar open",
+      "?threadId=t-1&chatHistoryOpen=true",
+      false,
+    ],
+    ["the chart panel open", "?threadId=t-1", true],
+    ["both open", "?threadId=t-1&chatHistoryOpen=true", true],
+  ])(
+    "floats the top bar by the conversation pane's own width, with %s",
+    (_, searchParams, chartOpen) => {
+      artifact.open = chartOpen;
+      renderThread(searchParams);
+      // The pane is the container: the sidebar and the chart panel narrow
+      // it, so a wide screen with either open can still be too narrow.
+      expect(pane()).toBeInTheDocument();
+      const float = screen.getByTestId("thread-top-bar-float");
+      const inline = screen.getByTestId("thread-top-bar");
+      expect(pane()).toContainElement(float);
+      expect(float).toHaveClass("hidden", "@min-[71rem]/pane:flex");
+      expect(inline).toHaveClass("@min-[71rem]/pane:hidden");
+      // Nothing about the top bar follows the screen's width any more.
+      for (const bar of [float, inline]) {
+        expect(bar.className).not.toMatch(/(^|\s)xl:/);
+      }
+    },
+  );
+
+  it("keeps the top bar's row in the scroller either way, so switching doesn't move the messages", () => {
+    renderThread();
+    const row = screen.getByTestId("thread-top-bar").parentElement!;
+    expect(row).toHaveClass("h-15");
+    expect(row.className).not.toMatch(/@/);
+    const messages = screen.getByText("Anvil is a supercomputer.");
+    const list = messages.closest(".max-w-3xl")!;
+    // No top padding that differs between the two placements.
+    expect(list.className).not.toMatch(/(xl|@[^ ]*):pt-/);
+  });
+
+  it("lets clicks through the floating bar except on its buttons", () => {
+    renderThread();
+    const float = screen.getByTestId("thread-top-bar-float");
+    expect(float).toHaveClass("pointer-events-none");
+    for (const button of within(float).getAllByRole("button")) {
+      expect(button.closest(".pointer-events-auto")).not.toBeNull();
+    }
+  });
+});
+
+describe("Conversation buttons under the message box", () => {
+  beforeEach(() => {
+    stream.messages = [
+      question,
+      { id: "a-1", type: "ai", content: "Anvil is a supercomputer." },
+    ];
+    stream.isLoading = false;
+    stream.error = undefined;
+    stream.stopped = false;
+    artifact.open = false;
+    media.large = true;
+    stubObservers();
+  });
+
+  const disclaimerLine = () =>
+    screen
+      .getByRole("link", { name: "Privacy Notice" })
+      .closest(".\\@container\\/disclaimer") as HTMLElement;
+  const shortcuts = () => screen.queryByTestId("conversation-shortcuts");
+
+  /** The top bar scrolled away: neither copy of it is on screen. */
+  function scrollTopBarAway() {
+    intersect(screen.getByTestId("thread-top-bar"), false);
+    intersect(screen.getByTestId("thread-top-bar-float"), false);
+  }
+
+  it("aren't there while the top bar is on screen", () => {
+    renderThread();
+    expect(shortcuts()).toBeNull();
+    intersect(screen.getByTestId("thread-top-bar"), true);
+    expect(shortcuts()).toBeNull();
+  });
+
+  it("appear at the left of the disclaimer once the top bar is out of view, and go when it's back", () => {
+    renderThread();
+    scrollTopBarAway();
+    const group = shortcuts()!;
+    expect(disclaimerLine()).toContainElement(group);
+    expect(
+      group.compareDocumentPosition(
+        screen.getByRole("link", { name: "Privacy Notice" }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      within(group).getByRole("button", { name: "Show conversations" }),
+    ).toBeInTheDocument();
+    expect(
+      within(group).getByRole("button", { name: "New chat" }),
+    ).toBeInTheDocument();
+
+    // Scrolled back up, or the pane widened so the bar floats.
+    intersect(screen.getByTestId("thread-top-bar-float"), true);
+    expect(shortcuts()).toBeNull();
+  });
+
+  it("are small icons with a tooltip, a visible focus ring and a 24px target that doesn't make the line taller", () => {
+    renderThread();
+    scrollTopBarAway();
+    for (const button of within(shortcuts()!).getAllByRole("button")) {
+      expect(button).toHaveTextContent(/^$/);
+      // 24px, pulled into the line's 16px with negative margins.
+      expect(button).toHaveClass("size-6", "-my-1", "focus-visible:ring-ring");
+      expect(button).toHaveAttribute("data-slot", "tooltip-trigger");
+    }
+  });
+
+  it("names its tooltips as the buttons are named", async () => {
+    renderThread();
+    scrollTopBarAway();
+    const newChat = within(shortcuts()!).getByRole("button", {
+      name: "New chat",
+    });
+    await userEvent.hover(newChat);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("New chat");
+  });
+
+  it("starts a new chat with focus in the message box, as the top bar's does", async () => {
+    const onUrlUpdate = vi.fn();
+    render(
+      <NuqsTestingAdapter
+        searchParams="?threadId=t-1"
+        onUrlUpdate={onUrlUpdate}
+      >
+        <Thread />
+      </NuqsTestingAdapter>,
+    );
+    scrollTopBarAway();
+    fireEvent.click(
+      within(shortcuts()!).getByRole("button", { name: "New chat" }),
+    );
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveFocus();
+    await waitFor(() => expect(onUrlUpdate).toHaveBeenCalled());
+    expect(
+      onUrlUpdate.mock.calls.at(-1)![0].searchParams.get("threadId"),
+    ).toBeNull();
+  });
+
+  it("opens the sidebar on a wide screen, and steps aside for the sidebar's own buttons", async () => {
+    render(
+      <NuqsTestingAdapter
+        searchParams="?threadId=t-1"
+        hasMemory
+      >
+        <Thread />
+      </NuqsTestingAdapter>,
+    );
+    scrollTopBarAway();
+    const toggle = within(shortcuts()!).getByRole("button", {
+      name: "Show conversations",
+    });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveAttribute("aria-controls", "conversations-sidebar");
+    expect(toggle).toHaveAttribute("data-conversations-toggle");
+    fireEvent.click(toggle);
+    // The open sidebar has Hide and New chat, like the top bar's buttons.
+    await waitFor(() => expect(shortcuts()).toBeNull());
+  });
+
+  it("opens the list as a dialog on a phone, and says it's open", async () => {
+    media.large = false;
+    renderThread();
+    scrollTopBarAway();
+    const toggle = within(shortcuts()!).getByRole("button", {
+      name: "Show conversations",
+    });
+    expect(toggle).toHaveAttribute("aria-haspopup", "dialog");
+    expect(toggle).not.toHaveAttribute("aria-controls");
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(
+        within(shortcuts()!).getByRole("button", {
+          name: "Hide conversations",
+        }),
+      ).toHaveAttribute("aria-expanded", "true"),
+    );
+  });
+
+  it("leaves New chat out on the empty screen, as its top bar does", () => {
+    stream.messages = [];
+    renderThread("");
+    scrollTopBarAway();
+    const group = shortcuts()!;
+    expect(
+      within(group).getByRole("button", { name: "Show conversations" }),
+    ).toBeInTheDocument();
+    expect(
+      within(group).queryByRole("button", { name: "New chat" }),
+    ).toBeNull();
+  });
+
+  it("hands focus to the top bar's button when they go away under it", () => {
+    renderThread();
+    // jsdom lays nothing out; the narrow bar is the one showing here.
+    const topNewChat = within(screen.getByTestId("thread-top-bar")).getByRole(
+      "button",
+      { name: "New chat" },
+    );
+    vi.spyOn(topNewChat, "getClientRects").mockReturnValue([
+      new DOMRect(0, 0, 116, 44),
+    ] as unknown as DOMRectList);
+    scrollTopBarAway();
+    within(shortcuts()!).getByRole("button", { name: "New chat" }).focus();
+    intersect(screen.getByTestId("thread-top-bar"), true);
+    expect(shortcuts()).toBeNull();
+    expect(topNewChat).toHaveFocus();
   });
 });
 

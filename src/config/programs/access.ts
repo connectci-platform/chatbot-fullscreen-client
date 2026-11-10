@@ -19,7 +19,10 @@ export const access: ProgramConfig = {
   accountName: "ACCESS account",
   supportUrl: "https://support.access-ci.org",
   privacyUrl: "https://support.access-ci.org/tools/access-qa-tool/privacy",
-  disclaimer: "AI can make mistakes. Don't share passwords or secrets.",
+  disclaimer: {
+    droppable: "AI can make mistakes.",
+    text: "Don't share passwords or secrets.",
+  },
   features: { fileUploads: false, siteHeader: false },
   starterQuestions: [
     "Sign me up for an upcoming GPU training",

@@ -22,7 +22,13 @@ import { getSupportUrl } from "@/lib/agent-token";
 import { ArrowUp, LoaderCircle, Plus } from "lucide-react";
 import { useQueryState } from "nuqs";
 import ThreadHistory from "./history";
-import { ConversationsToggle, NewChatButton } from "./conversation-controls";
+import {
+  ConversationShortcuts,
+  ConversationsToggle,
+  NewChatButton,
+} from "./conversation-controls";
+import { TOP_BAR_ATTR } from "./control-focus";
+import { useAnyInView } from "@/hooks/use-any-in-view";
 import { useConversationsOpen } from "@/hooks/use-conversations-open";
 import { toast } from "sonner";
 import {
@@ -343,10 +349,21 @@ export function Thread() {
 
   const chatStarted = !!threadId || !!messages.length;
 
-  // The open sidebar has its own New chat on a wide screen.
-  const newChat = !(chatHistoryOpen && isLargeScreen) && (
-    <NewChatButton onClick={startNewChat} />
+  // The open sidebar has its own New chat on a wide screen, and the empty
+  // screen is already a new one.
+  const hasNewChat = chatStarted && !(chatHistoryOpen && isLargeScreen);
+  const newChat = hasNewChat && (
+    <NewChatButton
+      className="pointer-events-auto"
+      onClick={startNewChat}
+    />
   );
+
+  // Whether the top bar is on screen, floating or as the scroller's first
+  // row. While it isn't, its buttons are under the message box instead.
+  const floatingBar = useRef<HTMLDivElement>(null);
+  const inlineBar = useRef<HTMLDivElement>(null);
+  const topBarInView = useAnyInView([floatingBar, inlineBar]);
   const showOfficeHours = !chatStarted && !chatHistoryOpen;
   const hasNoAIOrToolMessages = !messages.find(
     (m) => m.type === "ai" || m.type === "tool",
@@ -387,7 +404,7 @@ export function Thread() {
       >
         <motion.div
           className={cn(
-            "relative flex min-w-0 flex-1 flex-col overflow-hidden",
+            "@container/pane relative flex min-w-0 flex-1 flex-col overflow-hidden",
             !chatStarted && "grid-rows-[1fr]",
           )}
           layout={isLargeScreen}
@@ -405,27 +422,24 @@ export function Thread() {
               : { duration: 0 }
           }
         >
-          {/* On a wide screen the bar floats over the corners, clear of
-              the centered conversation. Narrower, it's at the top of the
-              conversation below and scrolls away with it. */}
-          {!chatStarted && (
-            <div className="absolute top-0 left-0 z-10 hidden w-full items-center justify-between gap-3 p-2 pl-4 xl:flex">
-              <div>
-                <ConversationsToggle labelled />
-              </div>
+          {/* Where this pane is wide enough, the bar floats over its top
+              corners, beside the centered 768px conversation. That takes
+              71rem (1136px): the labeled Conversations toggle (148px, 16px
+              in) and New chat (116px) each with 16px to spare beside it.
+              The pane's width decides, not the screen's, since the sidebar
+              and the chart panel narrow it. Narrower, the bar is the first
+              row of the conversation and scrolls away with it. */}
+          <div
+            ref={floatingBar}
+            {...{ [TOP_BAR_ATTR]: "" }}
+            data-testid="thread-top-bar-float"
+            className="pointer-events-none absolute inset-x-0 top-0 z-10 hidden items-center justify-between gap-3 p-2 pl-4 @min-[71rem]/pane:flex"
+          >
+            <div className="pointer-events-auto">
+              <ConversationsToggle labelled />
             </div>
-          )}
-          {chatStarted && (
-            <div className="absolute inset-x-0 top-0 z-10 hidden items-center justify-between gap-3 p-2 xl:flex">
-              <div className="relative flex items-center justify-start gap-2">
-                <div className="absolute left-0 z-10">
-                  <ConversationsToggle labelled />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-4">{newChat}</div>
-            </div>
-          )}
+            {newChat}
+          </div>
 
           {showOfficeHours && isXlScreen && (
             <OfficeHours
@@ -441,35 +455,41 @@ export function Thread() {
               style={{ width: "100%", height: "100%" }}
               className={cn(
                 "absolute inset-0 overflow-y-scroll px-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent",
-                !chatStarted && "flex flex-col items-stretch xl:pt-[16vh]",
+                !chatStarted && "flex flex-col items-stretch",
                 // minmax(0,1fr): without it the grid column grows to fit
                 // the widest unbreakable text (a long path or URL) and the
                 // whole chat scrolls sideways on a phone.
-                // The first row is the narrow screens' top bar.
+                // The first row is the top bar's.
                 chatStarted &&
-                  "grid grid-cols-[minmax(0,1fr)] grid-rows-[auto_1fr_auto] xl:grid-rows-[1fr_auto]",
+                  "grid grid-cols-[minmax(0,1fr)] grid-rows-[auto_1fr_auto]",
               )}
             >
-              <div
-                data-testid="thread-top-bar"
-                className="-mx-2 flex items-center justify-between gap-3 py-2 xl:hidden"
-              >
-                <div>
-                  <ConversationsToggle />
+              {/* The top bar's row, as tall when the bar floats as when it's
+                  here, so the switch doesn't move the conversation. */}
+              <div className="h-15 shrink-0">
+                <div
+                  ref={inlineBar}
+                  {...{ [TOP_BAR_ATTR]: "" }}
+                  data-testid="thread-top-bar"
+                  className="-mx-2 flex items-center justify-between gap-3 py-2 @min-[71rem]/pane:hidden"
+                >
+                  <div>
+                    <ConversationsToggle />
+                  </div>
+                  {newChat}
                 </div>
-                {chatStarted && newChat}
               </div>
               <div
                 ref={chatScroll.contentRef}
                 className={cn(
-                  "mx-auto flex w-full max-w-3xl flex-col gap-4 xl:pt-8",
+                  "mx-auto flex w-full max-w-3xl flex-col gap-4",
                   // At least the fade above the scroll-to-bottom band, so
                   // the last line of an answer is clear of it at the end.
                   // The empty screen keeps its space above the logo, less
-                  // the top bar's row on a narrow screen.
+                  // the top bar's row.
                   chatStarted
                     ? "pb-6"
-                    : "pt-[max(0px,calc(4vh-20px))] pb-16 sm:pt-[calc(16vh-20px)] xl:pt-8",
+                    : "pt-[max(0px,calc(4vh-20px))] pb-16 sm:pt-[calc(16vh-20px)]",
                 )}
               >
                 {chatStarted && (
@@ -688,7 +708,15 @@ export function Thread() {
                       </div>
                     </form>
                   </div>
-                  <ChatDisclaimer />
+                  <ChatDisclaimer
+                    controls={
+                      !topBarInView && (
+                        <ConversationShortcuts
+                          onNewChat={hasNewChat ? startNewChat : undefined}
+                        />
+                      )
+                    }
+                  />
                   {!chatStarted && (
                     <StarterQuestions
                       onAsk={(question) => submitMessage(question, [])}
