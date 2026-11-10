@@ -5,7 +5,7 @@ export function ChatDisclaimer(): ReactNode {
   const site = program.siteLinks;
   return (
     <>
-      <p className="text-muted-foreground mt-2 text-center text-xs">
+      <p className="text-muted-foreground mt-1.5 text-center text-[11px] leading-4">
         {program.disclaimer}{" "}
         <a
           href={program.privacyUrl}

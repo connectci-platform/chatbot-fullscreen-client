@@ -8,7 +8,7 @@ describe("ChatDisclaimer", () => {
 
     expect(
       screen.getByText(
-        "AI-powered responses may not always be accurate. Don't share passwords or secrets.",
+        "AI can make mistakes. Don't share passwords or secrets.",
       ),
     ).toBeTruthy();
     const link = screen.getByRole("link", { name: "Privacy Notice" });
