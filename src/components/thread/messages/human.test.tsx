@@ -11,11 +11,7 @@ const humanMessage: Message = {
 
 describe("HumanMessage", () => {
   it("has no Copy or Edit button", () => {
-    render(
-      <HumanMessage
-        message={humanMessage}
-      />,
-    );
+    render(<HumanMessage message={humanMessage} />);
     expect(screen.getByText("What is ACCESS?")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Copy content" })).toBeNull();
