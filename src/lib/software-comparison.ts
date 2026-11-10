@@ -277,6 +277,50 @@ export function latestComparison(
   return null;
 }
 
+/** The software comparison from the tool result with this key, or null. */
+export function comparisonFor(
+  messages: Message[],
+  key: string,
+): SoftwareComparisonView | null {
+  const message = messages.find(
+    (m) =>
+      m.type === "tool" && m.name === COMPARE_TOOL && m.tool_call_id === key,
+  );
+  const result = message && toolResult(message);
+  return result ? toView(key, result, messages) : null;
+}
+
+/**
+ * The newest good comparison of each answer (the messages after a human
+ * message up to the next one), by the turn's last AI message, so the answer
+ * can offer to reopen it once the panel is closed.
+ */
+export function comparisonsByMessage(messages: Message[]): Map<string, string> {
+  const out = new Map<string, string>();
+  let key: string | null = null;
+  let answer: string | null = null;
+  const flush = () => {
+    if (key && answer) out.set(answer, key);
+    key = null;
+    answer = null;
+  };
+  for (const m of messages) {
+    if (m.type === "human") {
+      flush();
+      continue;
+    }
+    if (m.type === "ai" && m.id) answer = m.id;
+    if (m.type === "tool" && m.name === COMPARE_TOOL) {
+      const result = toolResult(m);
+      if (result && toView(m.tool_call_id, result, messages)) {
+        key = m.tool_call_id;
+      }
+    }
+  }
+  flush();
+  return out;
+}
+
 function toolIndex(messages: Message[], toolCallId: string): number {
   return messages.findIndex(
     (m) => m.type === "tool" && m.tool_call_id === toolCallId,

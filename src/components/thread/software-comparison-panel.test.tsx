@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { Message } from "@langchain/langgraph-sdk";
 import { describe, expect, it, vi } from "vitest";
 import {
+  comparisonsByMessage,
   latestComparison,
   type SoftwareComparisonView,
 } from "@/lib/software-comparison";
@@ -16,6 +17,7 @@ import { RegistrationPanel } from "./registration-panel";
 import {
   SoftwareComparisonGrid,
   SoftwareComparisonPanel,
+  showComparison,
 } from "./software-comparison-panel";
 
 vi.mock("@/providers/Stream", () => ({ useStreamContext: vi.fn() }));
@@ -339,6 +341,27 @@ describe("SoftwareComparisonPanel", () => {
     expect(screen.getByText("panel closed")).toBeTruthy();
   });
 
+  it("reopens a closed comparison, and an earlier one, when asked", () => {
+    const older = {
+      ...COMPARE,
+      requested_software: ["gromacs"],
+      comparison: [COMPARE.comparison[1]],
+    };
+    useMessages([...comparison("c1", older), ...comparison("c2")]);
+    render(tree());
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
+    expect(screen.getByText("panel closed")).toBeTruthy();
+
+    act(() => showComparison("c1"));
+    expect(screen.getByText("panel open")).toBeTruthy();
+    const grid = screen.getByRole("table");
+    expect(within(grid).queryByText("pytorch")).toBeNull();
+    expect(within(grid).getByText("gromacs")).toBeTruthy();
+
+    act(() => showComparison("c2"));
+    expect(within(screen.getByRole("table")).getByText("pytorch")).toBeTruthy();
+  });
+
   it("stays closed after the person closes it, until the next comparison", () => {
     useMessages(comparison("c1"));
     const { rerender } = render(tree());
@@ -424,5 +447,22 @@ describe("SoftwareComparisonPanel", () => {
     rerender(tree());
     expect(screen.getByText("Not registered yet")).toBeTruthy();
     expect(screen.queryByText("Software availability")).toBeNull();
+  });
+});
+
+describe("comparisonsByMessage", () => {
+  it("keys each answer's newest good comparison by its last AI message", () => {
+    const messages = [
+      { id: "h1", type: "human", content: "q" },
+      ...comparison("c1"),
+      { id: "a1", type: "ai", content: "Here." },
+      { id: "h2", type: "human", content: "q2" },
+      ...comparison("bad", { status: "error", executed: false }),
+      { id: "a2", type: "ai", content: "Sorry." },
+      { id: "h3", type: "human", content: "q3" },
+      { id: "a3", type: "ai", content: "No tools." },
+    ] as Message[];
+    const map = comparisonsByMessage(messages);
+    expect([...map.entries()]).toEqual([["a1", "c1"]]);
   });
 });
