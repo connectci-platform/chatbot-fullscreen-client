@@ -11,7 +11,11 @@ import {
 import type { Components } from "react-markdown";
 import type { Message } from "@langchain/langgraph-sdk";
 import { ExternalLink, FileText } from "lucide-react";
-import { answerSources, type AnswerSource } from "@/lib/answer-sources";
+import {
+  answerWithSources,
+  readablePassage,
+  type AnswerSource,
+} from "@/lib/answer-sources";
 import { useStreamContext } from "@/providers/Stream";
 import { useArtifact } from "./artifact";
 import { MarkdownText } from "./markdown-text";
@@ -72,11 +76,6 @@ const PASSAGE_COMPONENTS: Components = {
   },
 };
 
-const NO_SOURCE = {
-  unlinked: "This answer doesn't link any of the documentation it retrieved.",
-  "not-retrieved": "No documentation was retrieved for this answer.",
-} as const;
-
 export function SourceDetails({
   source,
   id,
@@ -99,8 +98,18 @@ export function SourceDetails({
           tabIndex={-1}
           className="text-lg font-bold break-words outline-none"
         >
-          {source.title}
+          {source.chipLabel}
         </h2>
+        {/* The chip's label, so the panel reads as the chip that opened
+            it; the fuller name it was shortened from, when it was. */}
+        {source.title !== source.chipLabel && (
+          <p className="text-muted-foreground text-sm break-words">
+            {source.title}
+          </p>
+        )}
+        <p className="text-muted-foreground text-sm break-words">
+          {source.host}
+        </p>
         {source.linkText && (
           <p className="text-muted-foreground text-sm">
             Linked as: {source.linkText}
@@ -128,7 +137,7 @@ export function SourceDetails({
               components={PASSAGE_COMPONENTS}
               math={false}
             >
-              {passage}
+              {readablePassage(passage)}
             </MarkdownText>
           </blockquote>
         ))}
@@ -162,8 +171,8 @@ export function AnswerSources({
   streaming: boolean;
 }) {
   const { messages } = useStreamContext();
-  const result = useMemo(
-    () => (message ? answerSources(messages, message) : null),
+  const sources = useMemo(
+    () => (message ? answerWithSources(messages, message)?.sources : null),
     [messages, message],
   );
   const [Artifact, { open, setOpen }] = useArtifact();
@@ -171,7 +180,7 @@ export function AnswerSources({
   const panelId = `source-panel-${useId()}`;
   const chips = useRef(new Map<string, HTMLButtonElement>());
   const selected =
-    result?.sources.find((source) => source.key === selectedKey) ?? null;
+    sources?.find((source) => source.key === selectedKey) ?? null;
 
   // The answer was edited or regenerated and no longer cites the open source:
   // close the panel rather than leave it empty.
@@ -207,15 +216,9 @@ export function AnswerSources({
     wasOpen.current = open;
   }, [open, selectedKey, panelId]);
 
-  if (!result || streaming) return null;
-
-  if (!result.sources.length) {
-    return result.noSource ? (
-      <p className="text-muted-foreground text-sm">
-        {NO_SOURCE[result.noSource]}
-      </p>
-    ) : null;
-  }
+  // Nothing at all when the answer links no retrieved page: a note about
+  // missing sources read like a debug message.
+  if (!sources?.length || streaming) return null;
 
   return (
     <div className="flex flex-col gap-2">
@@ -229,33 +232,68 @@ export function AnswerSources({
         aria-labelledby={`sources-${message?.id}`}
         className="flex flex-wrap gap-2"
       >
-        {result.sources.map((source) => (
-          <li key={source.key}>
-            <button
-              type="button"
-              ref={(el) => {
-                if (el) chips.current.set(source.key, el);
-                else chips.current.delete(source.key);
-              }}
-              aria-expanded={open && selectedKey === source.key}
-              aria-controls={panelId}
-              onClick={() => {
-                setSelectedKey(source.key);
-                setOpen(true);
-              }}
-              className="hover:bg-muted flex max-w-xs cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-left text-sm"
-            >
-              <FileText
-                aria-hidden
-                className="size-4 shrink-0"
-              />
+        {sources.map((source) => {
+          const label = (
+            <>
+              {source.passages.length ? (
+                <FileText
+                  aria-hidden
+                  className="size-4 shrink-0"
+                />
+              ) : (
+                <ExternalLink
+                  aria-hidden
+                  className="size-4 shrink-0"
+                />
+              )}
               <span className="truncate font-medium">{source.chipLabel}</span>
               <span className="text-muted-foreground shrink-0">
                 {source.host}
               </span>
-            </button>
-          </li>
-        ))}
+            </>
+          );
+          const chipClass =
+            "hover:bg-muted flex max-w-full cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-left text-sm sm:max-w-md";
+          return (
+            <li
+              key={source.key}
+              className="max-w-full"
+            >
+              {source.passages.length ? (
+                <button
+                  type="button"
+                  title={source.title}
+                  ref={(el) => {
+                    if (el) chips.current.set(source.key, el);
+                    else chips.current.delete(source.key);
+                  }}
+                  aria-expanded={open && selectedKey === source.key}
+                  aria-controls={panelId}
+                  onClick={() => {
+                    setSelectedKey(source.key);
+                    setOpen(true);
+                  }}
+                  className={chipClass}
+                >
+                  {label}
+                </button>
+              ) : (
+                // Linked only by the model's own sources list: no passage
+                // to show, so the chip opens the page.
+                <a
+                  href={source.url}
+                  title={source.title}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={chipClass}
+                >
+                  {label}
+                  <span className="sr-only">(opens in a new tab)</span>
+                </a>
+              )}
+            </li>
+          );
+        })}
       </ul>
       {selected && (
         <Artifact title="Source">

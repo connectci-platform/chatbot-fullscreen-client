@@ -98,8 +98,8 @@ function show(answerText: string, streaming = false) {
 const source = (passages: string[]): AnswerSource => ({
   key: "psc.edu/resources/bridges-2/user-guide",
   url: GUIDE,
-  title: "www.psc.edu › resources › bridges-2 › user-guide",
-  chipLabel: "bridges-2 › user-guide",
+  title: "Resources › Bridges 2 › User guide",
+  chipLabel: "Bridges 2 › User guide",
   host: "www.psc.edu",
   linkText: null,
   passages,
@@ -117,8 +117,11 @@ describe("AnswerSources", () => {
     const list = screen.getByRole("list", { name: "Sources" });
     const items = within(list).getAllByRole("button");
     expect(items).toHaveLength(1);
-    expect(items[0].textContent).toContain("bridges-2 › user-guide");
+    expect(items[0].textContent).toContain("Bridges 2 › User guide");
     expect(items[0].textContent).toContain("www.psc.edu");
+    expect(items[0].getAttribute("title")).toBe(
+      "Resources › Bridges 2 › User guide",
+    );
     expect(items[0].textContent).not.toContain("Bridges-2 user guide");
     expect(screen.queryByText(/NCSA Delta/)).toBeNull();
     expect(screen.getByText("panel closed")).toBeTruthy();
@@ -141,12 +144,20 @@ describe("AnswerSources", () => {
     fireEvent.click(chip());
 
     expect(screen.getByText("panel open")).toBeTruthy();
+    // Named as the chip is, with the fuller name it was shortened from.
+    expect(chip().textContent).toContain("Bridges 2 › User guide");
     expect(
       screen.getByRole("heading", {
         level: 2,
-        name: "www.psc.edu › resources › bridges-2 › user-guide",
+        name: "Bridges 2 › User guide",
       }),
     ).toBeTruthy();
+    expect(
+      screen.getByText("Resources › Bridges 2 › User guide", {
+        selector: "p",
+      }),
+    ).toBeTruthy();
+    expect(screen.getAllByText("www.psc.edu").length).toBeGreaterThan(0);
     expect(screen.getByText("Linked as: Bridges-2 user guide")).toBeTruthy();
     expect(
       screen.queryByRole("heading", { name: /Bridges-2 user guide/ }),
@@ -200,18 +211,14 @@ describe("AnswerSources", () => {
     expect(screen.queryByText("Use Globus to move large files.")).toBeNull();
   });
 
-  it("says when an answer that searched the documentation cites none of it", () => {
+  it("shows nothing when the answer links none of the documentation", () => {
     show("Globus is a file transfer service.");
 
     expect(screen.queryByRole("list", { name: "Sources" })).toBeNull();
-    expect(
-      screen.getByText(
-        "This answer doesn't link any of the documentation it retrieved.",
-      ),
-    ).toBeTruthy();
+    expect(screen.queryByText(/documentation/i)).toBeNull();
   });
 
-  it("says no documentation was retrieved for a long answer from memory, even one with links", () => {
+  it("shows nothing for an answer from memory", () => {
     const answer: Message = {
       id: "a9",
       type: "ai",
@@ -220,7 +227,7 @@ describe("AnswerSources", () => {
     vi.mocked(useStreamContext).mockReturnValue({
       messages: [{ id: "h9", type: "human", content: "Tell me more" }, answer],
     } as never);
-    render(
+    const { container } = render(
       <ArtifactProvider>
         <AnswerSources
           message={answer}
@@ -228,10 +235,7 @@ describe("AnswerSources", () => {
         />
       </ArtifactProvider>,
     );
-    expect(
-      screen.getByText("No documentation was retrieved for this answer."),
-    ).toBeTruthy();
-    expect(screen.queryByText(/doesn't link/)).toBeNull();
+    expect(container.textContent).toBe("");
   });
 
   it("renders a passage's markdown under the panel's own headings", () => {
@@ -277,6 +281,5 @@ describe("AnswerSources", () => {
     show(`See the [guide](${GUIDE}).`, true);
 
     expect(screen.queryByRole("list", { name: "Sources" })).toBeNull();
-    expect(screen.queryByText(/doesn't link|No documentation/)).toBeNull();
   });
 });
