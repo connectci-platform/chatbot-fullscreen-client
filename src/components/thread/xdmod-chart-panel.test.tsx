@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { Message } from "@langchain/langgraph-sdk";
 import { describe, expect, it, vi } from "vitest";
+import { threadGet } from "@/lib/thread-attachments";
 import { useStreamContext } from "@/providers/Stream";
 import {
   ArtifactContent,
@@ -14,6 +15,7 @@ import { XdmodChartPanel, showChart } from "./xdmod-chart-panel";
 import { ChartTable, XdmodChart } from "./xdmod-chart";
 
 vi.mock("@/providers/Stream", () => ({ useStreamContext: vi.fn() }));
+vi.mock("@/lib/thread-attachments", () => ({ threadGet: vi.fn() }));
 
 type Json = Record<string, unknown>;
 
@@ -174,7 +176,12 @@ function Slots() {
 
 const stream = vi.mocked(useStreamContext);
 const useMessages = (messages: Message[], isLoading = false) =>
-  stream.mockReturnValue({ messages, isLoading } as never);
+  stream.mockReturnValue({
+    messages,
+    isLoading,
+    apiUrl: "http://agent.test",
+    threadId: "thread-1",
+  } as never);
 
 function tree(onAsk: (text: string) => void = () => {}, awaitingCheck = false) {
   return (
@@ -1263,5 +1270,314 @@ describe("XdmodChartPanel", () => {
     useMessages([...turn(payload()), ...comparison]);
     render(tree());
     expect(screen.getByText("Software availability")).toBeTruthy();
+  });
+});
+
+/** Stored tables the fake agent serves, by id, and the requests it got. */
+const storedTables = new Map<string, Json>();
+const fetched: string[] = [];
+let failures = 0;
+vi.mocked(threadGet).mockImplementation((apiUrl, threadId) => async (path) => {
+  fetched.push(`${apiUrl}/threads/${threadId}/${path}`);
+  const body = storedTables.get(path.replace("attachments/", ""));
+  if (failures > 0 || !body) {
+    failures = Math.max(0, failures - 1);
+    return new Response('{"detail":"Thread not found"}', { status: 404 });
+  }
+  return new Response(JSON.stringify(body), { status: 200 });
+});
+
+function table(over: Json = {}): Json {
+  return {
+    version: 1,
+    source: "XDMoD",
+    realm: "Jobs",
+    metric: "total_cpu_hours",
+    dimension: "person",
+    dataset_type: "aggregate",
+    aggregation_unit: "Auto",
+    requested: { start: "2025-01-01", end: "2025-12-31" },
+    filters: {},
+    columns: [
+      { name: "User", kind: "label" },
+      { name: "CPU Hours: Total", kind: "number" },
+    ],
+    rows: Array.from({ length: 250 }, (_, i) => [`user ${i}`, 1000 - i]),
+    row_count: 250,
+    retrieved: "2026-11-10T12:00:00+00:00",
+    ...over,
+  };
+}
+
+let tableIds = 0;
+/** Stores the table with the fake agent and returns the reference the message keeps. */
+function stored(p: Json): Json {
+  const id = (++tableIds).toString(16).padStart(32, "0");
+  storedTables.set(id, p);
+  const { rows: _rows, ...ref } = p;
+  return { ...ref, id, kind: "table" };
+}
+
+/** One question whose answer fetched the full table with get_raw_data. */
+function tableTurn(p: Json, key = "raw-1"): Message[] {
+  return [
+    { id: `h-${key}`, type: "human", content: "q" },
+    {
+      id: `ai-pre-${key}`,
+      type: "ai",
+      content: "",
+      tool_calls: [{ id: key, name: "get_raw_data", args: {} }],
+    },
+    {
+      id: `tool-${key}`,
+      type: "tool",
+      name: "get_raw_data",
+      tool_call_id: key,
+      content: "summary",
+      artifact: { structured_content: { table_ref: stored(p) } },
+    },
+    { id: `ai-${key}`, type: "ai", content: "Here it is." },
+  ] as unknown as Message[];
+}
+
+const bodyRows = () =>
+  within(screen.getByRole("region", { name: "Data table" }))
+    .getAllByRole("row")
+    .slice(1);
+const tableShown = () => screen.findByRole("region", { name: "Data table" });
+
+function captureDownloads() {
+  const blobs: Blob[] = [];
+  const names: string[] = [];
+  URL.createObjectURL = vi.fn((b: Blob) => {
+    blobs.push(b);
+    return "blob:csv";
+  }) as never;
+  URL.revokeObjectURL = vi.fn();
+  const click = vi
+    .spyOn(HTMLAnchorElement.prototype, "click")
+    .mockImplementation(function (this: HTMLAnchorElement) {
+      names.push(this.download);
+    });
+  return { blobs, names, restore: () => click.mockRestore() };
+}
+
+describe("XdmodChartPanel data tables", () => {
+  it("fetches the rows when it opens, then shows a page at a time", async () => {
+    useMessages(tableTurn(table()));
+    render(tree());
+    expect(screen.getByText("panel open")).toBeTruthy();
+    expect(
+      screen.getAllByText("CPU Hours: Total by User").length,
+    ).toBeGreaterThan(0);
+    // The caption comes from the reference, before any rows arrive.
+    expect(
+      screen.getByText("250 rows, one per user. The CSV has every row."),
+    ).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe("Loading the table…");
+
+    await tableShown();
+    expect(fetched.at(-1)).toBe(
+      `http://agent.test/threads/thread-1/attachments/${tableIds
+        .toString(16)
+        .padStart(32, "0")}`,
+    );
+    // No chart to switch to.
+    expect(screen.queryByRole("group", { name: "Show as" })).toBeNull();
+    expect(bodyRows()).toHaveLength(100);
+    expect(bodyRows()[0].textContent).toBe("user 01,000");
+    expect(screen.getByText("Rows 1 to 100 of 250")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(bodyRows()[0].textContent).toBe("user 100900");
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(bodyRows()).toHaveLength(50);
+    expect(screen.getByText("Rows 201 to 250 of 250")).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "Next" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("downloads every row as CSV, not just the page", async () => {
+    useMessages(tableTurn(table()));
+    render(tree());
+    await tableShown();
+    const downloads = captureDownloads();
+    fireEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+    downloads.restore();
+    expect(downloads.names).toEqual([
+      "xdmod-cpu-hours-total-by-user-2025-01-01-to-2025-12-31.csv",
+    ]);
+    const lines = (await downloads.blobs[0].text()).split("\n");
+    expect(lines[0]).toBe("User,CPU Hours: Total");
+    expect(lines).toHaveLength(251);
+    expect(lines.at(-1)).toBe("user 249,751");
+  });
+
+  it("says when the rows couldn't be loaded and tries again on Retry", async () => {
+    failures = 1;
+    useMessages(tableTurn(table()));
+    render(tree());
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("The table failed to load.");
+    expect(screen.queryByRole("region", { name: "Data table" })).toBeNull();
+
+    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    await tableShown();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(bodyRows()).toHaveLength(100);
+  });
+
+  it("fetches the rows for Download CSV after a failed load", async () => {
+    failures = 1;
+    useMessages(tableTurn(table()));
+    render(tree());
+    await screen.findByRole("alert");
+    const downloads = captureDownloads();
+    fireEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+    await tableShown();
+    downloads.restore();
+    expect(downloads.names).toHaveLength(1);
+    expect((await downloads.blobs[0].text()).split("\n")).toHaveLength(251);
+  });
+
+  it("refuses rows that don't match the reference", async () => {
+    const turn = tableTurn(table());
+    const id = [...storedTables.keys()].at(-1) as string;
+    storedTables.set(id, { rows: [["only one cell"]] });
+    useMessages(turn);
+    render(tree());
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "failed to load",
+    );
+  });
+
+  it("shows periods at the table's unit", async () => {
+    useMessages(
+      tableTurn(
+        table({
+          dataset_type: "timeseries",
+          aggregation_unit: "Month",
+          dimension: "resource",
+          columns: [
+            { name: "Period", kind: "period" },
+            { name: "Resource", kind: "label" },
+            { name: "CPU Hours: Total", kind: "number" },
+          ],
+          rows: [
+            ["2025-01-01", "Delta", 1.5],
+            ["2025-01-01", "Anvil", null],
+          ],
+          row_count: 2,
+        }),
+      ),
+    );
+    render(tree());
+    await tableShown();
+    expect(bodyRows().map((r) => r.textContent)).toEqual([
+      "Jan 2025Delta1.5",
+      "Jan 2025Anvil—",
+    ]);
+    expect(screen.queryByText(/Rows 1 to/)).toBeNull();
+  });
+
+  it("lists an answer's chart and table together in its switcher", async () => {
+    const messages = [
+      { id: "h", type: "human", content: "q" },
+      {
+        id: "pre",
+        type: "ai",
+        content: "",
+        tool_calls: [
+          { id: "chart", name: "get_chart_data", args: {} },
+          { id: "raw", name: "get_raw_data", args: {} },
+        ],
+      },
+      {
+        id: "t-chart",
+        type: "tool",
+        name: "get_chart_data",
+        tool_call_id: "chart",
+        content: "",
+        artifact: { structured_content: { chart: payload() } },
+      },
+      {
+        id: "t-raw",
+        type: "tool",
+        name: "get_raw_data",
+        tool_call_id: "raw",
+        content: "",
+        artifact: { structured_content: { table_ref: stored(table()) } },
+      },
+      { id: "answer", type: "ai", content: "a" },
+    ] as unknown as Message[];
+    useMessages(messages);
+    render(tree());
+    const switcher = screen.getByRole("group", {
+      name: "Charts and tables in this answer",
+    });
+    const buttons = within(switcher).getAllByRole("button");
+    expect(buttons.map((b) => b.textContent)).toEqual([
+      "CPU Hours: Total",
+      "CPU Hours: Total by User · table",
+    ]);
+    expect(screen.getByRole("group", { name: "Show as" })).toBeTruthy();
+    fireEvent.click(buttons[1]);
+    expect(screen.queryByRole("group", { name: "Show as" })).toBeNull();
+    await tableShown();
+    expect(bodyRows()).toHaveLength(100);
+  });
+
+  it("brings an earlier answer's table back when asked", async () => {
+    useMessages([...tableTurn(table(), "old"), ...turn(payload(), "c-new")]);
+    render(tree());
+    expect(screen.queryByRole("region", { name: "Data table" })).toBeNull();
+    act(() => showChart("old"));
+    await tableShown();
+    expect(bodyRows()).toHaveLength(100);
+  });
+
+  it("keeps the rows of only the few tables shown most recently", async () => {
+    // Each 50,000-row table is megabytes; a long session mustn't keep them all.
+    const turns = Array.from({ length: 5 }, (_, i) =>
+      tableTurn(table(), `lru-${i}`),
+    );
+    const ids = [...storedTables.keys()].slice(-5);
+    useMessages(turns.flat());
+    const { rerender } = render(tree());
+    for (let i = 0; i < 5; i++) {
+      act(() => showChart(`lru-${i}`));
+      rerender(tree());
+      await tableShown();
+    }
+    const fetchesOf = (id: string) =>
+      fetched.filter((url) => url.endsWith(id)).length;
+    // The newest answer's table opened first, then fell out of memory as
+    // three others were shown, so it was fetched again.
+    expect(ids.map(fetchesOf)).toEqual([1, 1, 1, 1, 2]);
+
+    // The newest few come from memory; an older one is fetched again.
+    act(() => showChart("lru-3"));
+    rerender(tree());
+    await tableShown();
+    expect(fetchesOf(ids[3])).toBe(1);
+    act(() => showChart("lru-0"));
+    rerender(tree());
+    await tableShown();
+    expect(fetchesOf(ids[0])).toBe(2);
+  });
+
+  it("on reload, stays closed when the newest answer has no table", () => {
+    const before = fetched.length;
+    useMessages([
+      ...tableTurn(table()),
+      { id: "h-later", type: "human", content: "thanks" },
+      { id: "ai-later", type: "ai", content: "welcome" },
+    ] as Message[]);
+    render(tree());
+    expect(screen.getByText("panel closed")).toBeTruthy();
+    // A closed panel fetches nothing.
+    expect(fetched.length).toBe(before);
   });
 });

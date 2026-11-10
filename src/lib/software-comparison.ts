@@ -1,6 +1,6 @@
 import type { Message } from "@langchain/langgraph-sdk";
 import { latestRegistration } from "./registration";
-import { latestChartViews } from "./xdmod-chart";
+import { latestXdmodItems } from "./xdmod-table";
 
 const COMPARE_TOOL = "compare_software_availability";
 const VERSION_TOOLS = new Set(["get_software_details", "search_software"]);
@@ -340,10 +340,11 @@ export function newestPanelStep(messages: Message[]): PanelStep | null {
   const steps: [PanelStep, number][] = [
     ["registration", at(latestRegistration(messages)?.key)],
     ["comparison", at(latestComparison(messages)?.key)],
-    // A turn can hold several charts; its newest result counts.
+    // The XDMoD panel's step: a turn can hold several charts and data
+    // tables; its newest result counts.
     [
       "chart",
-      Math.max(-Infinity, ...latestChartViews(messages).map((v) => at(v.key))),
+      Math.max(-Infinity, ...latestXdmodItems(messages).map((v) => at(v.key))),
     ],
   ];
   let newest: PanelStep | null = null;

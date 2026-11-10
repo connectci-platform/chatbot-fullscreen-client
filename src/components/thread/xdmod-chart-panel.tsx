@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { toast } from "sonner";
 import {
   chartFileName,
@@ -11,15 +18,23 @@ import {
 import { newestPanelStep } from "@/lib/software-comparison";
 import { getSuggestedQuestions } from "@/lib/suggested-questions";
 import { cn } from "@/lib/utils";
+import type { ChartView } from "@/lib/xdmod-chart";
+import { threadGet } from "@/lib/thread-attachments";
 import {
-  chartLabels,
-  chartViewsByMessage,
-  latestAnswerHasChart,
-  type ChartView,
-} from "@/lib/xdmod-chart";
+  downloadTableCsv,
+  fetchTableRows,
+  itemLabels,
+  latestAnswerHasXdmodItem,
+  tableCaptionLines,
+  xdmodItemsByMessage,
+  type TableCell,
+  type TableView,
+  type XdmodItem,
+} from "@/lib/xdmod-table";
 import { useStreamContext } from "@/providers/Stream";
 import { useArtifact, useArtifactOpen } from "./artifact";
 import { SuggestedQuestions } from "./suggested-questions";
+import { XdmodDataTable } from "./xdmod-data-table";
 import {
   ChartCaption,
   ChartTable,
@@ -140,14 +155,171 @@ function ChartBody({
   );
 }
 
-/** Picks between the charts one answer drew, by what tells them apart. */
+/**
+ * Every row of a get_raw_data result, a page at a time, with a CSV of all of
+ * them. A table has no chart to switch to.
+ */
+type Get = (path: string) => Promise<Response>;
+
+/**
+ * Rows of the few tables shown most recently, by stored table id, so
+ * switching away and back, or downloading after viewing, doesn't fetch them
+ * again. Bounded, since each can be 50,000 rows; the oldest is dropped first.
+ * A failed fetch is forgotten so Retry asks again.
+ */
+const loadedRows = new Map<string, Promise<TableCell[][]>>();
+const MAX_LOADED_TABLES = 3;
+
+function loadRows(view: TableView, get: Get | null): Promise<TableCell[][]> {
+  if (!get) return Promise.reject(new Error("This conversation has no id yet"));
+  let rows = loadedRows.get(view.id);
+  if (rows) {
+    loadedRows.delete(view.id); // to the newest end
+  } else {
+    const fetching = fetchTableRows(view, get);
+    fetching.catch(() => {
+      if (loadedRows.get(view.id) === fetching) loadedRows.delete(view.id);
+    });
+    rows = fetching;
+  }
+  loadedRows.set(view.id, rows);
+  while (loadedRows.size > MAX_LOADED_TABLES) {
+    loadedRows.delete(loadedRows.keys().next().value as string);
+  }
+  return rows;
+}
+
+type RowsState =
+  | { status: "loading" }
+  | { status: "ready"; rows: TableCell[][] }
+  | { status: "error" };
+
+/** A stored table's rows, fetched when the table is first shown. */
+function useTableRows(view: TableView, get: Get | null) {
+  const [state, setState] = useState<RowsState>({ status: "loading" });
+  const load = useCallback(() => {
+    setState({ status: "loading" });
+    const rows = loadRows(view, get);
+    rows.then(
+      (r) => setState({ status: "ready", rows: r }),
+      () => setState({ status: "error" }),
+    );
+    return rows;
+  }, [view, get]);
+  useEffect(() => {
+    let live = true;
+    loadRows(view, get).then(
+      (rows) => live && setState({ status: "ready", rows }),
+      () => live && setState({ status: "error" }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [view, get]);
+  return { state, load };
+}
+
+function TableBody({
+  view,
+  get,
+  questions,
+  busy,
+  onAsk,
+}: {
+  view: TableView;
+  /** Reads under this conversation on the agent. */
+  get: Get | null;
+  questions: string[];
+  busy: boolean;
+  onAsk: (text: string) => void;
+}) {
+  const lines = tableCaptionLines(view);
+  const { state, load } = useTableRows(view, get);
+  const download = () => {
+    if (state.status === "ready") {
+      downloadTableCsv(view, state.rows);
+      return;
+    }
+    load()
+      .then((rows) => downloadTableCsv(view, rows))
+      .catch(() => {});
+  };
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-6">
+      {state.status === "ready" && (
+        <XdmodDataTable
+          view={view}
+          rows={state.rows}
+        />
+      )}
+      {state.status === "loading" && (
+        <p
+          role="status"
+          className="text-muted-foreground text-sm"
+        >
+          Loading the table…
+        </p>
+      )}
+      {state.status === "error" && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-2 text-sm"
+        >
+          <p>The table failed to load.</p>
+          <button
+            type="button"
+            className={BUTTON}
+            onClick={() => {
+              load().catch(() => {});
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1 text-sm">
+        {lines.map((line) => (
+          <p
+            key={line}
+            className="text-muted-foreground"
+          >
+            {line}
+          </p>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className={BUTTON}
+          onClick={download}
+          disabled={state.status === "loading"}
+        >
+          Download CSV
+        </button>
+      </div>
+
+      <SuggestedQuestions
+        heading="Ask next"
+        questions={questions}
+        onAsk={onAsk}
+        disabled={busy}
+        compact
+        className="ml-4"
+      />
+    </div>
+  );
+}
+
+/** Picks between the charts and tables one answer has, by what tells them apart. */
 function ChartSwitcher({
   views,
   labels,
   selected,
   onSelect,
 }: {
-  views: ChartView[];
+  views: XdmodItem[];
   labels: Map<string, string>;
   selected: string;
   onSelect: (key: string) => void;
@@ -155,7 +327,11 @@ function ChartSwitcher({
   return (
     <div
       role="group"
-      aria-label="Charts in this answer"
+      aria-label={
+        views.some((v) => v.kind === "table")
+          ? "Charts and tables in this answer"
+          : "Charts in this answer"
+      }
       className="flex flex-wrap gap-2"
     >
       {views.map((v) => (
@@ -178,10 +354,10 @@ function ChartSwitcher({
 }
 
 /**
- * Opens the side panel on the newest answer's charts, or on an earlier
- * answer's picked with `showChart`. An answer that drew several charts shows
- * its first (the model's first call, the answer to the question) with a
- * switcher for the rest.
+ * Opens the side panel on the newest answer's charts and data tables, or on
+ * an earlier answer's picked with `showChart`. An answer that has several
+ * shows its first (the model's first call, the answer to the question) with
+ * a switcher for the rest.
  */
 export function XdmodChartPanel({
   onAsk,
@@ -193,7 +369,7 @@ export function XdmodChartPanel({
 }) {
   const stream = useStreamContext();
   const turns = useMemo(
-    () => [...chartViewsByMessage(stream.messages).values()],
+    () => [...xdmodItemsByMessage(stream.messages).values()],
     [stream.messages],
   );
   const latestTurn = turns.at(-1) ?? null;
@@ -214,10 +390,15 @@ export function XdmodChartPanel({
   const view = turn?.find((v) => v.key === selected) ?? turn?.[0] ?? null;
 
   const answerId = view?.messageId;
+  const { apiUrl, threadId } = stream;
+  const get = useMemo(
+    () => (apiUrl && threadId ? threadGet(apiUrl, threadId) : null),
+    [apiUrl, threadId],
+  );
   const questions = getSuggestedQuestions(
     stream.messages.find((m) => m.id === answerId),
   );
-  const labels = chartLabels(turn ?? []);
+  const labels = itemLabels(turn ?? []);
 
   const [Artifact, { open, setOpen }] = useArtifact();
   const [anyOpen] = useArtifactOpen();
@@ -226,7 +407,7 @@ export function XdmodChartPanel({
   const owns = useMemo(
     () =>
       newestPanelStep(stream.messages) === "chart" &&
-      latestAnswerHasChart(stream.messages),
+      latestAnswerHasXdmodItem(stream.messages),
     [stream.messages],
   );
   const shownKey = useRef<string | null>(null);
@@ -298,14 +479,25 @@ export function XdmodChartPanel({
         )}
         {/* Keyed by the tool call, which stays put while the answer streams,
             so the chart and the Chart/Table choice survive it. */}
-        <ChartBody
-          key={view.key}
-          view={view}
-          questions={questions}
-          label={labels.get(view.key) ?? view.title}
-          busy={stream.isLoading || awaitingCheck}
-          onAsk={onAsk}
-        />
+        {view.kind === "table" ? (
+          <TableBody
+            key={view.key}
+            view={view}
+            get={get}
+            questions={questions}
+            busy={stream.isLoading || awaitingCheck}
+            onAsk={onAsk}
+          />
+        ) : (
+          <ChartBody
+            key={view.key}
+            view={view}
+            questions={questions}
+            label={labels.get(view.key) ?? view.title}
+            busy={stream.isLoading || awaitingCheck}
+            onAsk={onAsk}
+          />
+        )}
       </div>
     </Artifact>
   );
