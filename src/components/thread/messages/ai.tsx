@@ -19,7 +19,7 @@ import { GenericInterruptView } from "./generic-interrupt";
 import { useArtifact } from "../artifact";
 import { AnswerSources } from "../answer-sources";
 import { AnswerRating } from "./answer-rating";
-import { BarChart3 } from "lucide-react";
+import { BarChart3, Table2 } from "lucide-react";
 import { showChart } from "../xdmod-chart-panel";
 import { focusComposer } from "../composer";
 import { useMemo } from "react";
@@ -30,6 +30,7 @@ import {
   narrationParagraphs,
 } from "@/lib/tool-narration";
 import { isStoppedAnswer } from "@/lib/stopped-answer";
+import { showComparison } from "../software-comparison-panel";
 
 function CustomComponent({
   message,
@@ -96,6 +97,7 @@ export function AssistantMessage({
   onAsk,
   chartKey,
   awaitingCheck = false,
+  comparisonKey,
 }: {
   message: Message | undefined;
   isLoading: boolean;
@@ -103,6 +105,8 @@ export function AssistantMessage({
   awaitingCheck?: boolean;
   /** The chart under this answer (its tool_call_id), if it has one. */
   chartKey?: string;
+  /** The software comparison under this answer (its tool_call_id), if any. */
+  comparisonKey?: string;
   /** Sends a suggested question as if typed. */
   onAsk?: (question: string) => void;
 }) {
@@ -186,6 +190,20 @@ export function AssistantMessage({
               className="size-4"
             />
             Show chart
+          </button>
+        )}
+        {comparisonKey && (
+          <button
+            type="button"
+            data-comparison-key={comparisonKey}
+            onClick={() => showComparison(comparisonKey)}
+            className="hover:text-brand hover:border-brand focus-visible:ring-brand mr-auto flex cursor-pointer items-center gap-2 border px-3 py-1.5 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
+          >
+            <Table2
+              aria-hidden
+              className="size-4"
+            />
+            Show software availability
           </button>
         )}
 

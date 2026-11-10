@@ -5,6 +5,7 @@ import type { Message } from "@langchain/langgraph-sdk";
 import { chartViewsByMessage } from "@/lib/xdmod-chart";
 import { showChart } from "../xdmod-chart-panel";
 import { COMPOSER_ID } from "../composer";
+import { showComparison } from "../software-comparison-panel";
 import { AssistantMessage, AssistantMessageLoading } from "./ai";
 
 const toolMessage: Message = {
@@ -36,6 +37,7 @@ vi.mock("@/providers/Stream", () => ({
 vi.mock("../artifact", () => ({ useArtifact: () => [null, vi.fn()] }));
 
 vi.mock("../xdmod-chart-panel", () => ({ showChart: vi.fn() }));
+vi.mock("../software-comparison-panel", () => ({ showComparison: vi.fn() }));
 
 vi.mock("./answer-rating", () => ({
   AnswerRating: ({ message }: { message: Message }) => (
@@ -593,6 +595,29 @@ describe("AssistantMessage", () => {
         screen.queryByRole("button", { name: "What is Delta?" }),
       ).toBeNull();
     });
+  });
+
+  it("offers a chip that reopens the answer's software comparison", () => {
+    render(
+      <NuqsTestingAdapter>
+        <AssistantMessage
+          message={aiMessage}
+          isLoading={false}
+          comparisonKey="cmp-1"
+        />
+      </NuqsTestingAdapter>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show software availability" }),
+    );
+    expect(showComparison).toHaveBeenCalledWith("cmp-1");
+  });
+
+  it("has no comparison chip without a comparison", () => {
+    renderMessage(aiMessage);
+    expect(
+      screen.queryByRole("button", { name: "Show software availability" }),
+    ).toBeNull();
   });
 
   it("shows the agent's status while it works", () => {
