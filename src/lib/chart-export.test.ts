@@ -108,15 +108,134 @@ describe("captionLines", () => {
       ),
     ).toEqual([
       "CPU Hours: Total: Total CPU hours used by jobs.",
-      "Aug 1, 2026 to Oct 31, 2026",
       "Filtered to Resource is Delta; Field of science is Physics",
+      "Aug 1, 2026 to Oct 31, 2026",
       "Showing the top 10; XDMoD has more.",
       "The range runs to today, so it's still in progress.",
       "Jobs still waiting aren't counted, and the last few days may be incomplete.",
-      "CPU hours and SUs aren't comparable across resources. ACE measures are.",
+      "CPU hours don't allow for each resource's compute power per core, so they aren't comparable across resources. ACE measures are.",
       "This is an average per job, so a few long jobs can pull it up.",
       "Source: XDMoD, retrieved Nov 9, 2026",
     ]);
+  });
+});
+
+describe("captionLines past the top", () => {
+  it("says which ranks a chart with an offset shows", () => {
+    const paged = { ...CAPTION, offset: 3, groupNoun: "fields of science" };
+    expect(captionLines({ ...paged, hasMore: true, total: 79 }, 5)).toContain(
+      "Showing ranks 4 to 8 of 79 fields of science, not the top 3.",
+    );
+    expect(captionLines({ ...paged, hasMore: true }, 5)).toContain(
+      "Showing ranks 4 to 8, not the top 3; XDMoD has more.",
+    );
+    // The last page: nothing more, but still not the top.
+    expect(captionLines(paged, 5)).toContain(
+      "Showing ranks 4 to 8, not the top 3.",
+    );
+    // XDMoD pages buckets in their order, so the first ones are skipped.
+    expect(
+      captionLines({ ...paged, ordered: true, hasMore: true, total: 11 }, 4),
+    ).toContain("Showing buckets 4 to 7 of 11, leaving out the first 3.");
+    expect(captionLines({ ...paged, ordered: true }, 5)).toContain(
+      "Showing buckets 4 to 8, leaving out the first 3.",
+    );
+    expect(captionLines({ ...paged, ordered: true }, 5).join("\n")).not.toMatch(
+      /largest|by value|top/,
+    );
+    expect(captionLines(paged, 5).join("\n")).not.toContain("the top 5");
+  });
+});
+
+describe("captionLines with early ends", () => {
+  it("names each series that stops before the rest", () => {
+    expect(
+      captionLines(
+        {
+          ...CAPTION,
+          earlyEnds: [
+            {
+              name: "Purdue Anvil CPU",
+              through: "2026-10-19",
+              precision: "day",
+              source: "resource",
+            },
+            {
+              name: "IACS Ookami",
+              through: "2026-09-01",
+              precision: "period",
+              source: "series",
+            },
+          ],
+        },
+        2,
+      ),
+    ).toContain(
+      "XDMoD has no data from Purdue Anvil CPU after Oct 19, 2026; nothing is recorded for IACS Ookami after Sep 2026.",
+    );
+  });
+});
+
+describe("captionLines with a partial, still-running period", () => {
+  it("says it once, not also that the last period is in progress", () => {
+    const lines = captionLines(
+      {
+        ...CAPTION,
+        counted: { start: "2026-08-01", end: "2026-11-30" },
+        dataThrough: "2026-11-08",
+        partialPeriod: "2026-11-08",
+        incomplete: true,
+      },
+      1,
+    );
+    expect(lines).toContain(
+      "XDMoD has data through Nov 8, 2026, so Nov 2026 may be partial.",
+    );
+    expect(lines.join("\n")).not.toContain("still in progress");
+    expect(captionLines({ ...CAPTION, incomplete: true }, 1)).toContain(
+      "The last period is still in progress.",
+    );
+  });
+});
+
+describe("captionLines with early ends on the same date", () => {
+  it("names them together", () => {
+    const end = (name: string, through: string) => ({
+      name,
+      through,
+      precision: "day" as const,
+      source: "resource" as const,
+    });
+    expect(
+      captionLines(
+        {
+          ...CAPTION,
+          earlyEnds: [
+            end("A", "2026-11-07"),
+            end("B", "2026-11-07"),
+            end("C", "2026-10-19"),
+            end("D", "2026-11-07"),
+          ],
+        },
+        4,
+      ),
+    ).toContain(
+      "XDMoD has no data from A, B and D after Nov 7, 2026; XDMoD has no data from C after Oct 19, 2026.",
+    );
+  });
+});
+
+describe("captionLines with many early ends", () => {
+  it("lists at most six names per date", () => {
+    const earlyEnds = Array.from({ length: 8 }, (_, i) => ({
+      name: `q${i}`,
+      through: "2026-11-07",
+      precision: "day" as const,
+      source: "series" as const,
+    }));
+    expect(captionLines({ ...CAPTION, earlyEnds }, 8)).toContain(
+      "Nothing is recorded for q0, q1, q2, q3, q4, q5 and 2 more after Nov 7, 2026.",
+    );
   });
 });
 
@@ -319,6 +438,44 @@ describe("chartCsv", () => {
   });
 });
 
+describe("chartCsv with the newer facts", () => {
+  it("adds early ends and the ranks shown to the header", () => {
+    const view = lineView({
+      caption: {
+        ...lineView().caption,
+        offset: 3,
+        earlyEnds: [
+          {
+            name: "Anvil, Purdue",
+            through: "2026-10-19",
+            precision: "day",
+            source: "resource",
+          },
+          {
+            name: "Delta",
+            through: "2026-09-01",
+            precision: "period",
+            source: "series",
+          },
+        ],
+      },
+    });
+    expect(chartCsv(view).split("\n").slice(2, 6)).toEqual([
+      '"No data after (Anvil, Purdue)",2026-10-19',
+      "Nothing recorded after (Delta),Sep 2026",
+      "Filters,Resource is Delta or Anvil",
+      "Ranks,4 to 5 by value",
+    ]);
+    const ordered = chartCsv(
+      lineView({
+        caption: { ...view.caption, ordered: true, earlyEnds: [] },
+      }),
+    );
+    expect(ordered).toContain("Buckets,4 to 5");
+    expect(ordered).not.toContain("by value");
+  });
+});
+
 describe("chartCsv with a partial period", () => {
   it("adds the partial period after the data-through row", () => {
     const view = lineView({
@@ -416,9 +573,12 @@ describe("downloadChartPng", () => {
         },
       ],
       shown: 2,
+      title: "CPU Hours: Total · Delta",
     });
 
     expect(ctx.drawImage).toHaveBeenCalledOnce();
+    // The title comes first, so a pasted image says what it is.
+    expect(drawn[0]).toBe("CPU Hours: Total · Delta");
     expect(drawn).toContain("Delta");
     // A long series name wraps instead of running off the image.
     expect(drawn).toContain("Expanse GPU at");
