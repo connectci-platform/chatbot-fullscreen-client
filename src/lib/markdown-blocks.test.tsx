@@ -69,8 +69,58 @@ describe("markdownBlocks", () => {
       "See [the guide][g].\n\n[g]: https://example.org",
       "A claim.[^1]\n\n[^1]: The note.",
       "<!-- a\n\nb -->\n\nText.",
+      "Text\n\n<?php\n\necho 1;\n?>\n\nAfter",
+      "<!DOCTYPE html>\n\n<html>",
+      "<![CDATA[\n\nx\n\n]]>\n\nafter",
+      "Use [docs].\n\n> [docs]: https://x.org\n\nEnd",
+      "Use [docs].\n\n- [docs]: https://x.org\n\nEnd",
     ])
       expect(markdownBlocks(text)).toEqual([text]);
+  });
+
+  it("closes a fence only on a bare fence of its own kind, at least as long", () => {
+    for (const text of [
+      "```\n```text\nx\n\ny\n```\n\nafter",
+      "````md\n```py\nx\n\ny\n```\n````\n\nend",
+      "```\n~~~\n\nz\n```\n\nok",
+    ])
+      expect(markdownBlocks(text)[0]).toContain("\n\n");
+    expect(markdownBlocks("````\nx\n\ny\n````\n\nend")).toEqual([
+      "````\nx\n\ny\n````\n",
+      "end",
+    ]);
+  });
+
+  it("doesn't take inline code with triple backticks for a fence", () => {
+    expect(markdownBlocks("```npm i``` first.\n\nThen this.")).toEqual([
+      "```npm i``` first.\n",
+      "Then this.",
+    ]);
+  });
+
+  it("keeps $$ math opened with content on its line whole", () => {
+    const math = "$$ \\begin{aligned}\na &= b\n\nc &= d\n\\end{aligned} $$";
+    expect(markdownBlocks(`Text\n\n${math}\n\nAfter`)).toEqual([
+      "Text\n",
+      `${math}\n\nAfter`,
+    ]);
+    // On one line it's inline math, which ends there.
+    expect(markdownBlocks("$$x$$\n\nAfter")).toEqual(["$$x$$\n", "After"]);
+  });
+
+  it("splits around footnote markers that aren't definitions", () => {
+    expect(markdownBlocks("Use `[^a-z]` here.\n\nNext.")).toEqual([
+      "Use `[^a-z]` here.\n",
+      "Next.",
+    ]);
+    expect(markdownBlocks("```\n[^1]: in code\n```\n\nNext.")).toHaveLength(2);
+  });
+
+  it("reads CRLF text the same way", () => {
+    expect(markdownBlocks("```\r\na\r\n\r\nb\r\n```\r\n\r\nc")).toEqual([
+      "```\r\na\r\n\r\nb\r\n```\r\n\r",
+      "c",
+    ]);
   });
 
   it("renders the same block by block as parsed whole", () => {
@@ -79,6 +129,11 @@ describe("markdownBlocks", () => {
       "Text\n\n$$\na = b\n\nc\n$$\n\nafter",
       "Para\n\n    indented code\n\n    more code\n\nnext",
       "* a\n\n* b\n\n***\n\nSetext\n===\n\nlast",
+      "```\n```text\nx\n\ny\n```\n\nafter",
+      "```npm i``` first.\n\n```py\na = 1\n\nb = 2\n```\n\ndone",
+      "Text\n\n$$ \\begin{aligned}\na &= b\n\nc &= d\n\\end{aligned} $$\n\nAfter",
+      "Use `[^a-z]` here.\n\nNext.",
+      "a\r\n\r\n````ts\r\nx\n\ny\r\n````\r\n\r\nb",
     ]) {
       expect(markdownBlocks(md).length).toBeGreaterThan(1);
       expect(html(markdownBlocks(md))).toBe(html([md]));
