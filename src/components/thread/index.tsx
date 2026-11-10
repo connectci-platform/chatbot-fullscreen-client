@@ -60,7 +60,7 @@ import { RegistrationPanel } from "./registration-panel";
 import { SoftwareComparisonPanel } from "./software-comparison-panel";
 import { XdmodChartPanel } from "./xdmod-chart-panel";
 import { COMPOSER_ID, focusComposer } from "./composer";
-import { chartViewsByMessage } from "@/lib/xdmod-chart";
+import { xdmodItemsByMessage } from "@/lib/xdmod-table";
 import { useChatScroll } from "@/hooks/use-chat-scroll";
 import { ScrollToBottomButton } from "./scroll-to-bottom";
 import { comparisonsByMessage } from "@/lib/software-comparison";
@@ -108,7 +108,7 @@ export function Thread() {
     [stream.messages, stream.error, threadId, cutOffs],
   );
   // Once per update, not once per message: each answer only needs its key.
-  const chartViews = useMemo(() => chartViewsByMessage(messages), [messages]);
+  const xdmodItems = useMemo(() => xdmodItemsByMessage(messages), [messages]);
   const comparisons = useMemo(() => comparisonsByMessage(messages), [messages]);
   const [firstTokenReceived, setFirstTokenReceived] = useFirstTokenReceived(
     messages,
@@ -473,8 +473,14 @@ export function Thread() {
                           awaitingCheck={awaitingCheck}
                           chartKey={
                             message.id
-                              ? chartViews.get(message.id)?.[0]?.key
+                              ? xdmodItems.get(message.id)?.[0]?.key
                               : undefined
+                          }
+                          dataOnly={
+                            !!message.id &&
+                            !!xdmodItems
+                              .get(message.id)
+                              ?.every((v) => v.kind === "table")
                           }
                           comparisonKey={
                             message.id ? comparisons.get(message.id) : undefined

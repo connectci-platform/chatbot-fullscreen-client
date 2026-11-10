@@ -203,7 +203,8 @@ export function shownCount(view: ChartView): number {
   return view.kind === "line" ? view.series.length : view.bars.length;
 }
 
-function csvCell(value: string | number | null): string {
+/** One CSV cell: quoted when it holds a comma, quote or line break. */
+export function csvCell(value: string | number | null): string {
   if (value === null) return "";
   // A spreadsheet runs a text cell that starts like a formula; names come
   // from XDMoD, so they're kept as text. Numbers stay numbers.
@@ -214,7 +215,7 @@ function csvCell(value: string | number | null): string {
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-const csvRow = (cells: (string | number | null)[]) =>
+export const csvRow = (cells: (string | number | null)[]) =>
   cells.map(csvCell).join(",");
 
 /**
@@ -322,7 +323,7 @@ export function chartFileName(view: ChartView): string {
   return `xdmod-${slug}-${start}-to-${end}`;
 }
 
-function saveBlob(blob: Blob, fileName: string) {
+export function saveBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

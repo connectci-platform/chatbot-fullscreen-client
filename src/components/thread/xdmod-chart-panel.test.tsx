@@ -1265,3 +1265,199 @@ describe("XdmodChartPanel", () => {
     expect(screen.getByText("Software availability")).toBeTruthy();
   });
 });
+
+function table(over: Json = {}): Json {
+  return {
+    version: 1,
+    source: "XDMoD",
+    realm: "Jobs",
+    metric: "total_cpu_hours",
+    dimension: "person",
+    dataset_type: "aggregate",
+    aggregation_unit: "Auto",
+    requested: { start: "2025-01-01", end: "2025-12-31" },
+    filters: {},
+    columns: [
+      { name: "User", kind: "label" },
+      { name: "CPU Hours: Total", kind: "number" },
+    ],
+    rows: Array.from({ length: 250 }, (_, i) => [`user ${i}`, 1000 - i]),
+    row_count: 250,
+    retrieved: "2026-11-10T12:00:00+00:00",
+    ...over,
+  };
+}
+
+/** One question whose answer fetched the full table with get_raw_data. */
+function tableTurn(p: Json, key = "raw-1"): Message[] {
+  return [
+    { id: `h-${key}`, type: "human", content: "q" },
+    {
+      id: `ai-pre-${key}`,
+      type: "ai",
+      content: "",
+      tool_calls: [{ id: key, name: "get_raw_data", args: {} }],
+    },
+    {
+      id: `tool-${key}`,
+      type: "tool",
+      name: "get_raw_data",
+      tool_call_id: key,
+      content: "summary",
+      artifact: { structured_content: { table: p } },
+    },
+    { id: `ai-${key}`, type: "ai", content: "Here it is." },
+  ] as unknown as Message[];
+}
+
+const bodyRows = () =>
+  within(screen.getByRole("region", { name: "Data table" }))
+    .getAllByRole("row")
+    .slice(1);
+
+describe("XdmodChartPanel data tables", () => {
+  it("opens on the newest answer's table, a page of rows at a time", () => {
+    useMessages(tableTurn(table()));
+    render(tree());
+    expect(screen.getByText("panel open")).toBeTruthy();
+    expect(
+      screen.getAllByText("CPU Hours: Total by User").length,
+    ).toBeGreaterThan(0);
+    // No chart to switch to.
+    expect(screen.queryByRole("group", { name: "Show as" })).toBeNull();
+    expect(bodyRows()).toHaveLength(100);
+    expect(bodyRows()[0].textContent).toBe("user 01,000");
+    expect(screen.getByText("Rows 1 to 100 of 250")).toBeTruthy();
+    expect(
+      screen.getByText("250 rows, one per user. The CSV has every row."),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(bodyRows()[0].textContent).toBe("user 100900");
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(bodyRows()).toHaveLength(50);
+    expect(screen.getByText("Rows 201 to 250 of 250")).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "Next" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("downloads every row as CSV, not just the page", async () => {
+    useMessages(tableTurn(table()));
+    render(tree());
+    const blobs: Blob[] = [];
+    URL.createObjectURL = vi.fn((b: Blob) => {
+      blobs.push(b);
+      return "blob:csv";
+    }) as never;
+    URL.revokeObjectURL = vi.fn();
+    const downloads: string[] = [];
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        downloads.push(this.download);
+      });
+    fireEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+    click.mockRestore();
+    expect(downloads).toEqual([
+      "xdmod-cpu-hours-total-by-user-2025-01-01-to-2025-12-31.csv",
+    ]);
+    const lines = (await blobs[0].text()).split("\n");
+    expect(lines[0]).toBe("User,CPU Hours: Total");
+    expect(lines).toHaveLength(251);
+    expect(lines.at(-1)).toBe("user 249,751");
+  });
+
+  it("shows periods at the table's unit", () => {
+    useMessages(
+      tableTurn(
+        table({
+          dataset_type: "timeseries",
+          aggregation_unit: "Month",
+          dimension: "resource",
+          columns: [
+            { name: "Period", kind: "period" },
+            { name: "Resource", kind: "label" },
+            { name: "CPU Hours: Total", kind: "number" },
+          ],
+          rows: [
+            ["2025-01-01", "Delta", 1.5],
+            ["2025-01-01", "Anvil", null],
+          ],
+          row_count: 2,
+        }),
+      ),
+    );
+    render(tree());
+    expect(bodyRows().map((r) => r.textContent)).toEqual([
+      "Jan 2025Delta1.5",
+      "Jan 2025Anvil—",
+    ]);
+    expect(screen.queryByText(/Rows 1 to/)).toBeNull();
+  });
+
+  it("lists an answer's chart and table together in its switcher", () => {
+    const messages = [
+      { id: "h", type: "human", content: "q" },
+      {
+        id: "pre",
+        type: "ai",
+        content: "",
+        tool_calls: [
+          { id: "chart", name: "get_chart_data", args: {} },
+          { id: "raw", name: "get_raw_data", args: {} },
+        ],
+      },
+      {
+        id: "t-chart",
+        type: "tool",
+        name: "get_chart_data",
+        tool_call_id: "chart",
+        content: "",
+        artifact: { structured_content: { chart: payload() } },
+      },
+      {
+        id: "t-raw",
+        type: "tool",
+        name: "get_raw_data",
+        tool_call_id: "raw",
+        content: "",
+        artifact: { structured_content: { table: table() } },
+      },
+      { id: "answer", type: "ai", content: "a" },
+    ] as unknown as Message[];
+    useMessages(messages);
+    render(tree());
+    const switcher = screen.getByRole("group", {
+      name: "Charts and tables in this answer",
+    });
+    const buttons = within(switcher).getAllByRole("button");
+    expect(buttons.map((b) => b.textContent)).toEqual([
+      "CPU Hours: Total",
+      "CPU Hours: Total by User · table",
+    ]);
+    expect(screen.getByRole("group", { name: "Show as" })).toBeTruthy();
+    fireEvent.click(buttons[1]);
+    expect(screen.queryByRole("group", { name: "Show as" })).toBeNull();
+    expect(bodyRows()).toHaveLength(100);
+  });
+
+  it("brings an earlier answer's table back when asked", () => {
+    useMessages([...tableTurn(table(), "old"), ...turn(payload(), "c-new")]);
+    render(tree());
+    expect(screen.queryByRole("region", { name: "Data table" })).toBeNull();
+    act(() => showChart("old"));
+    expect(bodyRows()).toHaveLength(100);
+  });
+
+  it("on reload, stays closed when the newest answer has no table", () => {
+    useMessages([
+      ...tableTurn(table()),
+      { id: "h-later", type: "human", content: "thanks" },
+      { id: "ai-later", type: "ai", content: "welcome" },
+    ] as Message[]);
+    render(tree());
+    expect(screen.getByText("panel closed")).toBeTruthy();
+  });
+});

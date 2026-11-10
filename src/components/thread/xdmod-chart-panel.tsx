@@ -11,15 +11,20 @@ import {
 import { newestPanelStep } from "@/lib/software-comparison";
 import { getSuggestedQuestions } from "@/lib/suggested-questions";
 import { cn } from "@/lib/utils";
+import type { ChartView } from "@/lib/xdmod-chart";
 import {
-  chartLabels,
-  chartViewsByMessage,
-  latestAnswerHasChart,
-  type ChartView,
-} from "@/lib/xdmod-chart";
+  downloadTableCsv,
+  itemLabels,
+  latestAnswerHasXdmodItem,
+  tableCaptionLines,
+  xdmodItemsByMessage,
+  type TableView,
+  type XdmodItem,
+} from "@/lib/xdmod-table";
 import { useStreamContext } from "@/providers/Stream";
 import { useArtifact, useArtifactOpen } from "./artifact";
 import { SuggestedQuestions } from "./suggested-questions";
+import { XdmodDataTable } from "./xdmod-data-table";
 import {
   ChartCaption,
   ChartTable,
@@ -140,14 +145,67 @@ function ChartBody({
   );
 }
 
-/** Picks between the charts one answer drew, by what tells them apart. */
+/**
+ * Every row of a get_raw_data result, a page at a time, with a CSV of all of
+ * them. A table has no chart to switch to.
+ */
+function TableBody({
+  view,
+  questions,
+  busy,
+  onAsk,
+}: {
+  view: TableView;
+  questions: string[];
+  busy: boolean;
+  onAsk: (text: string) => void;
+}) {
+  const lines = tableCaptionLines(view);
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-6">
+      <XdmodDataTable view={view} />
+
+      <div className="flex flex-col gap-1 text-sm">
+        {lines.map((line) => (
+          <p
+            key={line}
+            className="text-muted-foreground"
+          >
+            {line}
+          </p>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className={BUTTON}
+          onClick={() => downloadTableCsv(view)}
+        >
+          Download CSV
+        </button>
+      </div>
+
+      <SuggestedQuestions
+        heading="Ask next"
+        questions={questions}
+        onAsk={onAsk}
+        disabled={busy}
+        compact
+        className="ml-4"
+      />
+    </div>
+  );
+}
+
+/** Picks between the charts and tables one answer has, by what tells them apart. */
 function ChartSwitcher({
   views,
   labels,
   selected,
   onSelect,
 }: {
-  views: ChartView[];
+  views: XdmodItem[];
   labels: Map<string, string>;
   selected: string;
   onSelect: (key: string) => void;
@@ -155,7 +213,11 @@ function ChartSwitcher({
   return (
     <div
       role="group"
-      aria-label="Charts in this answer"
+      aria-label={
+        views.some((v) => v.kind === "table")
+          ? "Charts and tables in this answer"
+          : "Charts in this answer"
+      }
       className="flex flex-wrap gap-2"
     >
       {views.map((v) => (
@@ -178,10 +240,10 @@ function ChartSwitcher({
 }
 
 /**
- * Opens the side panel on the newest answer's charts, or on an earlier
- * answer's picked with `showChart`. An answer that drew several charts shows
- * its first (the model's first call, the answer to the question) with a
- * switcher for the rest.
+ * Opens the side panel on the newest answer's charts and data tables, or on
+ * an earlier answer's picked with `showChart`. An answer that has several
+ * shows its first (the model's first call, the answer to the question) with
+ * a switcher for the rest.
  */
 export function XdmodChartPanel({
   onAsk,
@@ -193,7 +255,7 @@ export function XdmodChartPanel({
 }) {
   const stream = useStreamContext();
   const turns = useMemo(
-    () => [...chartViewsByMessage(stream.messages).values()],
+    () => [...xdmodItemsByMessage(stream.messages).values()],
     [stream.messages],
   );
   const latestTurn = turns.at(-1) ?? null;
@@ -217,7 +279,7 @@ export function XdmodChartPanel({
   const questions = getSuggestedQuestions(
     stream.messages.find((m) => m.id === answerId),
   );
-  const labels = chartLabels(turn ?? []);
+  const labels = itemLabels(turn ?? []);
 
   const [Artifact, { open, setOpen }] = useArtifact();
   const [anyOpen] = useArtifactOpen();
@@ -226,7 +288,7 @@ export function XdmodChartPanel({
   const owns = useMemo(
     () =>
       newestPanelStep(stream.messages) === "chart" &&
-      latestAnswerHasChart(stream.messages),
+      latestAnswerHasXdmodItem(stream.messages),
     [stream.messages],
   );
   const shownKey = useRef<string | null>(null);
@@ -298,14 +360,24 @@ export function XdmodChartPanel({
         )}
         {/* Keyed by the tool call, which stays put while the answer streams,
             so the chart and the Chart/Table choice survive it. */}
-        <ChartBody
-          key={view.key}
-          view={view}
-          questions={questions}
-          label={labels.get(view.key) ?? view.title}
-          busy={stream.isLoading || awaitingCheck}
-          onAsk={onAsk}
-        />
+        {view.kind === "table" ? (
+          <TableBody
+            key={view.key}
+            view={view}
+            questions={questions}
+            busy={stream.isLoading || awaitingCheck}
+            onAsk={onAsk}
+          />
+        ) : (
+          <ChartBody
+            key={view.key}
+            view={view}
+            questions={questions}
+            label={labels.get(view.key) ?? view.title}
+            busy={stream.isLoading || awaitingCheck}
+            onAsk={onAsk}
+          />
+        )}
       </div>
     </Artifact>
   );

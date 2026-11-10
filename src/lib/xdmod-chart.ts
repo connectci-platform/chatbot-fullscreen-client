@@ -536,23 +536,26 @@ function cachedView(
 }
 
 /**
- * Every chart-worthy get_chart_data result of each assistant turn (the
- * messages after a human message up to the next one), in tool-call order, so
- * when the model charts the answer and some context in parallel the answer
- * comes first. Keyed by the turn's final AI message; a turn still streaming is
- * keyed by the last AI message so far. Read from tool results the
- * conversation already holds, so charts come back when a thread is reopened.
+ * What `pick` finds in each assistant turn's tool results (the messages after
+ * a human message up to the next one), in tool-call order, so when the model
+ * fetches the answer and some context in parallel the answer comes first.
+ * Keyed by the turn's final AI message; a turn still streaming is keyed by
+ * the last AI message so far.
  */
-export function chartViewsByMessage(
+export function resultsByTurn<T>(
   messages: Message[],
-): Map<string, ChartView[]> {
-  const views = new Map<string, ChartView[]>();
+  pick: (message: Message) => T | null,
+): Map<string, { source: Message; key: string; found: T }[]> {
+  const results = new Map<
+    string,
+    { source: Message; key: string; found: T }[]
+  >();
   let turn: Message[] = [];
 
   const flush = () => {
     let messageId: string | undefined;
     const callOrder = new Map<string, number>();
-    const found: { source: Message; key: string; chart: ChartPayload }[] = [];
+    const found: { source: Message; key: string; found: T }[] = [];
     for (const m of turn) {
       if (m.type === "ai") {
         if (m.id) messageId = m.id;
@@ -562,20 +565,19 @@ export function chartViewsByMessage(
           }
         }
       }
-      const chart = chartOf(m);
-      if (chart && m.type === "tool") {
-        found.push({ source: m, key: m.tool_call_id, chart });
-      }
+      if (m.type !== "tool") continue;
+      const hit = pick(m);
+      if (hit !== null)
+        found.push({ source: m, key: m.tool_call_id, found: hit });
     }
     if (found.length && messageId) {
       const order = (key: string) => callOrder.get(key) ?? Infinity;
-      const id = messageId;
-      views.set(
-        id,
+      results.set(
+        messageId,
         found
           .map((f, i) => ({ f, i }))
           .sort((a, b) => order(a.f.key) - order(b.f.key) || a.i - b.i)
-          .map(({ f }) => cachedView(f.source, f.key, id, f.chart)),
+          .map(({ f }) => f),
       );
     }
     turn = [];
@@ -586,7 +588,40 @@ export function chartViewsByMessage(
     else turn.push(m);
   }
   flush();
+  return results;
+}
+
+/**
+ * Every chart-worthy get_chart_data result of each assistant turn, in
+ * tool-call order (see resultsByTurn). Read from tool results the
+ * conversation already holds, so charts come back when a thread is reopened.
+ */
+export function chartViewsByMessage(
+  messages: Message[],
+): Map<string, ChartView[]> {
+  const views = new Map<string, ChartView[]>();
+  for (const [id, found] of resultsByTurn(messages, chartOf)) {
+    views.set(
+      id,
+      found.map((f) => cachedView(f.source, f.key, id, f.found)),
+    );
+  }
   return views;
+}
+
+/** Whether this is a get_chart_data result with a chart worth drawing. */
+export const isChartResult = (message: Message): boolean =>
+  chartOf(message) !== null;
+
+/** A get_chart_data result's view under the answer `messageId`, or null. */
+export function chartViewOf(
+  message: Message,
+  messageId: string,
+): ChartView | null {
+  const chart = chartOf(message);
+  return chart && message.type === "tool"
+    ? cachedView(message, message.tool_call_id, messageId, chart)
+    : null;
 }
 
 /**

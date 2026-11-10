@@ -427,6 +427,22 @@ describe("AssistantMessage", () => {
       expect(showChart).toHaveBeenLastCalledWith("first-call");
     });
 
+    it("says Show data for an answer with only a data table", () => {
+      render(
+        <NuqsTestingAdapter>
+          <AssistantMessage
+            message={history[2]}
+            isLoading={false}
+            chartKey="raw-call"
+            dataOnly
+          />
+        </NuqsTestingAdapter>,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Show data" }));
+      expect(showChart).toHaveBeenLastCalledWith("raw-call");
+      expect(screen.queryByRole("button", { name: "Show chart" })).toBeNull();
+    });
+
     it("has no chip on an answer without a chart", () => {
       stream.messages = [
         ...history,

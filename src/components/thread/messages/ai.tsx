@@ -96,6 +96,7 @@ export function AssistantMessage({
   isLoading,
   onAsk,
   chartKey,
+  dataOnly = false,
   awaitingCheck = false,
   comparisonKey,
 }: {
@@ -103,8 +104,10 @@ export function AssistantMessage({
   isLoading: boolean;
   /** The Turnstile check is showing: nothing can be sent until it passes. */
   awaitingCheck?: boolean;
-  /** The chart under this answer (its tool_call_id), if it has one. */
+  /** The chart or data table under this answer (its tool_call_id), if it has one. */
   chartKey?: string;
+  /** The answer has XDMoD data tables and no chart. */
+  dataOnly?: boolean;
   /** The software comparison under this answer (its tool_call_id), if any. */
   comparisonKey?: string;
   /** Sends a suggested question as if typed. */
@@ -185,11 +188,18 @@ export function AssistantMessage({
             onClick={() => showChart(chartKey)}
             className="hover:text-brand hover:border-brand focus-visible:ring-brand mr-auto flex cursor-pointer items-center gap-2 border px-3 py-1.5 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
           >
-            <BarChart3
-              aria-hidden
-              className="size-4"
-            />
-            Show chart
+            {dataOnly ? (
+              <Table2
+                aria-hidden
+                className="size-4"
+              />
+            ) : (
+              <BarChart3
+                aria-hidden
+                className="size-4"
+              />
+            )}
+            {dataOnly ? "Show data" : "Show chart"}
           </button>
         )}
         {comparisonKey && (
