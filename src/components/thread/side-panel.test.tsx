@@ -91,4 +91,73 @@ describe("SidePanel", () => {
       screen.getByRole("textbox", { name: "Message" }),
     );
   });
+
+  describe("Escape from anywhere", () => {
+    function Open({ children }: { children?: React.ReactNode }) {
+      const [open, setOpen] = useState(true);
+      return (
+        <ArtifactProvider>
+          {children}
+          <p>{open ? "open" : "closed"}</p>
+          <SidePanel
+            open={open}
+            onClose={() => setOpen(false)}
+          />
+        </ArtifactProvider>
+      );
+    }
+
+    it("closes the panel with focus outside it", () => {
+      render(<Open />);
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(screen.getByText("closed")).toBeTruthy();
+    });
+
+    it("closes from an empty text field but not one with text in it", () => {
+      render(
+        <Open>
+          <textarea aria-label="Message" />
+        </Open>,
+      );
+      const box = screen.getByRole("textbox", { name: "Message" });
+      fireEvent.change(box, { target: { value: "draft" } });
+      box.focus();
+      fireEvent.keyDown(box, { key: "Escape" });
+      expect(screen.getByText("open")).toBeTruthy();
+      fireEvent.change(box, { target: { value: "" } });
+      fireEvent.keyDown(box, { key: "Escape" });
+      expect(screen.getByText("closed")).toBeTruthy();
+    });
+
+    it("leaves Escape to an open dialog or menu", () => {
+      render(
+        <Open>
+          <div
+            role="dialog"
+            data-state="open"
+          />
+        </Open>,
+      );
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(screen.getByText("open")).toBeTruthy();
+    });
+
+    it("leaves Escape to a handler that already took it", () => {
+      render(
+        <Open>
+          <form
+            onKeyDown={(e) => {
+              if (e.key === "Escape") e.preventDefault();
+            }}
+          >
+            <button type="button">in a form</button>
+          </form>
+        </Open>,
+      );
+      fireEvent.keyDown(screen.getByRole("button", { name: "in a form" }), {
+        key: "Escape",
+      });
+      expect(screen.getByText("open")).toBeTruthy();
+    });
+  });
 });

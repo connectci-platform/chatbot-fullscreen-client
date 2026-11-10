@@ -24,15 +24,103 @@ export function isStoppedAnswer(message: Message | undefined): boolean {
 
 /**
  * Why an answer was cut off: the person stopped it ("user"), the turn ran out
- * of time, or the agent failed. An agent from before reasons were saved only
- * marked stops, so a stopped answer without one is a stop.
+ * of time, the agent failed, or this tab reloaded or left while the answer
+ * streamed ("interrupted"), which the agent saves as a stop because it can't
+ * tell the two apart. An agent from before reasons were saved only marked
+ * stops, so a stopped answer without one is a stop.
  */
-export type StopReason = "user" | "timeout" | "error";
+export type StopReason = "user" | "timeout" | "error" | "interrupted";
 
 export function stopReason(message: Message | undefined): StopReason | null {
   if (!isStoppedAnswer(message)) return null;
   const reason = message?.response_metadata?.reason;
-  return reason === "timeout" || reason === "error" ? reason : "user";
+  return reason === "timeout" || reason === "error" || reason === "interrupted"
+    ? reason
+    : "user";
+}
+
+const RELOAD_CUT_OFFS = "chat:reload-cut-offs";
+const MAX_RELOAD_CUT_OFFS = 20;
+
+const textOf = (message: Message): string =>
+  typeof message.content === "string"
+    ? message.content
+    : message.content.map((b) => (b.type === "text" ? b.text : "")).join("");
+
+/**
+ * A question as this tab remembers it across a reload: its thread and text,
+ * since the agent saves the question under a new id.
+ */
+export function cutOffKey(threadId: string, question: Message): string {
+  return `${threadId}\n${textOf(question).trim()}`;
+}
+
+/** The questions whose answers this tab's reloads cut off, by `cutOffKey`. */
+export function reloadCutOffs(): Set<string> {
+  try {
+    const saved: unknown = JSON.parse(
+      sessionStorage.getItem(RELOAD_CUT_OFFS) ?? "[]",
+    );
+    return new Set(
+      Array.isArray(saved)
+        ? saved.filter((key): key is string => typeof key === "string")
+        : [],
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Remembers, for this tab, that the page went away while the answer to this
+ * question was streaming, so after the reload its saved stop reads as cut
+ * off, not as the person's stop.
+ */
+export function rememberReloadCutOff(key: string): void {
+  try {
+    const keys = [...reloadCutOffs()].filter((k) => k !== key);
+    keys.push(key);
+    sessionStorage.setItem(
+      RELOAD_CUT_OFFS,
+      JSON.stringify(keys.slice(-MAX_RELOAD_CUT_OFFS)),
+    );
+  } catch {
+    // Storage can be unavailable; the answer then reads as stopped.
+  }
+}
+
+/**
+ * The thread with the answers a reload of this tab cut off marked
+ * "interrupted", in place of the "user" stop the agent saved. Only the last
+ * turn asking a remembered question counts, so asking it again and stopping
+ * that one still reads as a stop.
+ */
+export function withReloadCutOffsMarked(
+  messages: Message[],
+  threadId: string | null,
+  cutOffs: ReadonlySet<string>,
+): Message[] {
+  if (!threadId || cutOffs.size === 0) return messages;
+  const lastAsked = new Map<string, number>();
+  messages.forEach((m, i) => {
+    if (m.type === "human") lastAsked.set(cutOffKey(threadId, m), i);
+  });
+  let turnKey: string | null = null;
+  let changed = false;
+  const out = messages.map((m, i) => {
+    if (m.type === "human") {
+      const key = cutOffKey(threadId, m);
+      turnKey = cutOffs.has(key) && lastAsked.get(key) === i ? key : null;
+      return m;
+    }
+    if (turnKey === null || stopReason(m) !== "user") return m;
+    changed = true;
+    return {
+      ...m,
+      response_metadata: { ...m.response_metadata, reason: "interrupted" },
+    };
+  });
+  return changed ? out : messages;
 }
 
 /**

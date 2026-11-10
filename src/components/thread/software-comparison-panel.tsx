@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  comparisonFor,
   latestComparison,
   newestPanelStep,
   type ComparisonCell,
@@ -264,20 +265,52 @@ export function SoftwareComparisonGrid({
   );
 }
 
+const SHOW_COMPARISON = "software-comparison:show";
+
+/** Opens the panel on the comparison with this key (its tool_call_id). */
+export function showComparison(key: string): void {
+  window.dispatchEvent(
+    new CustomEvent<string>(SHOW_COMPARISON, { detail: key }),
+  );
+}
+
 /**
  * Opens the side panel when the conversation reaches a new software
- * comparison, unless a registration step is newer.
+ * comparison, unless a registration step is newer, and on an earlier one
+ * picked with `showComparison`.
  */
 export function SoftwareComparisonPanel() {
   const stream = useStreamContext();
-  const view = useMemo(
+  const latest = useMemo(
     () => latestComparison(stream.messages),
     [stream.messages],
   );
   const [Artifact, { open, setOpen }] = useArtifact();
   const shownKey = useRef<string | null>(null);
 
-  const key = view?.key ?? null;
+  const key = latest?.key ?? null;
+  // A picked comparison holds only until a newer one arrives.
+  const [picked, setPicked] = useState<{
+    key: string;
+    latestKey: string | null;
+  } | null>(null);
+  const pickedView = useMemo(
+    () =>
+      picked && picked.latestKey === key
+        ? comparisonFor(stream.messages, picked.key)
+        : null,
+    [picked, key, stream.messages],
+  );
+  const view = pickedView ?? latest;
+
+  useEffect(() => {
+    const onShow = (event: Event) => {
+      setPicked({ key: (event as CustomEvent<string>).detail, latestKey: key });
+      setOpen(true);
+    };
+    window.addEventListener(SHOW_COMPARISON, onShow);
+    return () => window.removeEventListener(SHOW_COMPARISON, onShow);
+  }, [key, setOpen]);
   const owns = useMemo(
     () => newestPanelStep(stream.messages) === "comparison",
     [stream.messages],
