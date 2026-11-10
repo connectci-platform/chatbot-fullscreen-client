@@ -10,15 +10,10 @@ const humanMessage: Message = {
 };
 
 describe("HumanMessage", () => {
-  it("offers Copy but not Edit", () => {
-    render(
-      <HumanMessage
-        message={humanMessage}
-        isLoading={false}
-      />,
-    );
+  it("has no Copy or Edit button", () => {
+    render(<HumanMessage message={humanMessage} />);
     expect(screen.getByText("What is ACCESS?")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Copy content" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Copy content" })).toBeNull();
   });
 });
