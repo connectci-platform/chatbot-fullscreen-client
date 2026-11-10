@@ -36,6 +36,17 @@ const browserMove: Move = (box, key) => {
   box.setSelectionRange(to, to);
 };
 
+/**
+ * Chromium on Windows: Up on the first line (and Down on the last) leaves
+ * the caret where it was instead of sending it to the start (or end).
+ */
+const windowsMove: Move = (box, key) => {
+  const { value, selectionStart: at } = box;
+  if (key === "ArrowUp" && !value.slice(0, at).includes("\n")) return;
+  if (key === "ArrowDown" && !value.slice(at).includes("\n")) return;
+  browserMove(box, key);
+};
+
 function Composer({
   questions,
   initial = "",
@@ -198,6 +209,66 @@ describe("useQuestionHistory", () => {
     expect(box()).toHaveValue("top\nbottom");
     press("ArrowUp");
     expect(box()).toHaveValue("Older?");
+  });
+
+  describe("where Up and Down don't move the caret off the first and last lines (Windows)", () => {
+    it("Up keeps going back through earlier questions", () => {
+      render(
+        <Composer
+          questions={["First?", "Second?", "Third?"]}
+          move={windowsMove}
+        />,
+      );
+      press("ArrowUp");
+      expect(box()).toHaveValue("Third?");
+      // The caret stays at the end of "Third?".
+      press("ArrowUp");
+      expect(box()).toHaveValue("Second?");
+      press("ArrowUp");
+      expect(box()).toHaveValue("First?");
+    });
+
+    it("Down goes forward from the last line of a recalled question", () => {
+      render(
+        <Composer
+          questions={["top\nbottom"]}
+          initial=""
+          move={windowsMove}
+        />,
+      );
+      press("ArrowUp");
+      expect(box()).toHaveValue("top\nbottom");
+      // Up to the first line, then Down back to the last, mid-line.
+      press("ArrowUp");
+      press("ArrowDown");
+      expect(box()).toHaveValue("top\nbottom");
+      expect(caret()).toBe("top\nbot".length);
+      press("ArrowDown");
+      expect(box()).toHaveValue("");
+    });
+
+    it("still walks a multi-line draft line by line and never replaces it", () => {
+      const draft = "line one\nline two\nline three";
+      render(
+        <Composer
+          questions={["Earlier?"]}
+          initial={draft}
+          move={windowsMove}
+        />,
+      );
+      caretAt(draft.length);
+      press("ArrowUp");
+      press("ArrowUp");
+      expect(box()).toHaveValue(draft);
+      // On the first line now, where Up doesn't move the caret.
+      press("ArrowUp");
+      press("ArrowUp");
+      expect(box()).toHaveValue(draft);
+      press("ArrowDown");
+      press("ArrowDown");
+      press("ArrowDown");
+      expect(box()).toHaveValue(draft);
+    });
   });
 
   it("leaves a selection alone", () => {
