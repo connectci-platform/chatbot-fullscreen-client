@@ -63,6 +63,7 @@ import { XdmodChartPanel } from "./xdmod-chart-panel";
 import { COMPOSER_ID, focusComposer } from "./composer";
 import { chartViewsByMessage } from "@/lib/xdmod-chart";
 import { useChatScroll } from "@/hooks/use-chat-scroll";
+import { useAutoGrow } from "@/hooks/use-auto-grow";
 import { ScrollToBottomButton } from "./scroll-to-bottom";
 import { comparisonsByMessage } from "@/lib/software-comparison";
 
@@ -73,6 +74,7 @@ export function Thread() {
   const [threadId, _setThreadId] = useQueryState("threadId");
   const [chatHistoryOpen] = useConversationsOpen();
   const [input, setInput] = useState("");
+  const composerRef = useAutoGrow<HTMLTextAreaElement>(input);
   const {
     contentBlocks,
     setContentBlocks,
@@ -616,6 +618,7 @@ export function Thread() {
                           </>
                         )}
                         <textarea
+                          ref={composerRef}
                           id={COMPOSER_ID}
                           value={input}
                           onChange={(e) => setInput(e.target.value)}
@@ -637,7 +640,8 @@ export function Thread() {
                           aria-label="Message"
                           placeholder="Type your message..."
                           rows={1}
-                          // One line to start, growing with the question.
+                          // One line to start, growing with the question
+                          // (useAutoGrow does it where field-sizing can't).
                           className="field-sizing-content max-h-[30dvh] min-h-11 min-w-0 flex-1 resize-none overflow-y-auto border-none bg-transparent px-3 py-2.5 text-base leading-6 text-black shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
                         />
                         {stream.isLoading ? (

@@ -199,6 +199,28 @@ describe("Thread scrolling", () => {
     expect(send.parentElement).toBe(box.parentElement);
   });
 
+  it("grows the message box with the question where CSS can't (Firefox), and shrinks it after send", () => {
+    vi.stubGlobal("CSS", { supports: () => false });
+    const height = vi
+      .spyOn(HTMLTextAreaElement.prototype, "scrollHeight", "get")
+      .mockImplementation(function (this: HTMLTextAreaElement) {
+        return this.value.split("\n").length * 24 + 20;
+      });
+    try {
+      renderThread();
+      const box = screen.getByRole("textbox", { name: "Message" });
+      expect(box.style.height).toBe("44px");
+      fireEvent.change(box, { target: { value: "One\nTwo\nThree" } });
+      expect(box.style.height).toBe("92px");
+      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+      expect(box).toHaveValue("");
+      expect(box.style.height).toBe("44px");
+    } finally {
+      height.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("puts Cancel where Send was while the answer comes", () => {
     stream.isLoading = true;
     renderThread();
