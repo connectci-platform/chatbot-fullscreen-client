@@ -1,5 +1,12 @@
 import { v4 as uuidv4 } from "uuid";
-import { ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  Fragment,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useStreamContext } from "@/providers/Stream";
@@ -38,7 +45,22 @@ import {
   runErrorToastOptions,
 } from "@/lib/run-errors";
 import { useAuthStatus } from "@/hooks/use-agent-auth";
-import { useRestoreQuestion } from "@/hooks/use-restore-question";
+import {
+  questionParts,
+  useRestoreQuestion,
+} from "@/hooks/use-restore-question";
+import {
+  cutOffNote,
+  stopReason,
+  withFailedTurnMarked,
+  cutOffKey,
+  reloadCutOffs,
+  rememberReloadCutOff,
+  withReloadCutOffsMarked,
+  unansweredQuestion,
+  withoutUnansweredTurn,
+} from "@/lib/stopped-answer";
+import { StoppedNote } from "./stopped-note";
 import { TurnstileChallengePanel } from "./turnstile-challenge";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { SidePanel } from "./side-panel";
@@ -51,6 +73,7 @@ import { useArtifactOpen, useArtifactContext } from "./artifact";
 import { RegistrationPanel } from "./registration-panel";
 import { SoftwareComparisonPanel } from "./software-comparison-panel";
 import { XdmodChartPanel } from "./xdmod-chart-panel";
+import { COMPOSER_ID, focusComposer } from "./composer";
 import { chartViewsByMessage } from "@/lib/xdmod-chart";
 import { comparisonsByMessage } from "@/lib/software-comparison";
 
@@ -127,7 +150,19 @@ export function Thread() {
   );
 
   const stream = useStreamContext();
-  const messages = stream.messages;
+  // Read once: a reload of this tab that cut off an answer, before this load.
+  const [cutOffs] = useState(reloadCutOffs);
+  // A run that timed out or failed left its answer cut off, as the agent saved
+  // it, and a reload's cut-off answer isn't the person's stop.
+  const messages = useMemo(
+    () =>
+      withReloadCutOffsMarked(
+        withFailedTurnMarked(stream.messages, stream.error),
+        threadId,
+        cutOffs,
+      ),
+    [stream.messages, stream.error, threadId, cutOffs],
+  );
   // Once per update, not once per message: each answer only needs its key.
   const chartViews = useMemo(() => chartViewsByMessage(messages), [messages]);
   const comparisons = useMemo(() => comparisonsByMessage(messages), [messages]);
@@ -182,8 +217,28 @@ export function Thread() {
     }
   }, [stream.error, authStatus, setThreadId]);
 
-  const submitMessage = (text: string, blocks: typeof contentBlocks) => {
+  // Set by Edit: sending the edited question replaces the unanswered one.
+  const replaceOnSend = useRef(false);
+  useEffect(() => {
+    replaceOnSend.current = false;
+  }, [threadId]);
+
+  /**
+   * Sends a question. `replacing` is for Retry and Edit on an unanswered
+   * question: the new one takes that turn's place, on screen and in the
+   * thread the agent keeps, instead of following it.
+   */
+  const submitMessage = (
+    text: string,
+    blocks: typeof contentBlocks,
+    { replacing = false }: { replacing?: boolean } = {},
+  ) => {
     setFirstTokenReceived(false);
+    replaceOnSend.current = false;
+    const kept = (all: Message[]) =>
+      replacing
+        ? withoutUnansweredTurn(withFailedTurnMarked(all, stream.error))
+        : all;
 
     const newHumanMessage: Message = {
       id: uuidv4(),
@@ -194,7 +249,7 @@ export function Thread() {
       ] as Message["content"],
     };
 
-    const toolMessages = ensureToolCallsHaveResponses(stream.messages);
+    const toolMessages = ensureToolCallsHaveResponses(kept(stream.messages));
 
     const context =
       Object.keys(artifactContext).length > 0 ? artifactContext : undefined;
@@ -205,11 +260,12 @@ export function Thread() {
         streamMode: ["values"],
         streamSubgraphs: true,
         streamResumable: true,
+        ...(replacing && { context: { replace_stopped_turn: true } }),
         optimisticValues: (prev) => ({
           ...prev,
           context,
           messages: [
-            ...(prev.messages ?? []),
+            ...kept(prev.messages ?? []),
             ...toolMessages,
             newHumanMessage,
           ],
@@ -226,12 +282,91 @@ export function Thread() {
       awaitingCheck
     )
       return;
-    submitMessage(input, contentBlocks);
+    submitMessage(input, contentBlocks, {
+      replacing: replaceOnSend.current && !!unanswered,
+    });
     setInput("");
     setContentBlocks([]);
   };
 
+  /** A one-click question; held back while the Turnstile check is showing. */
+  const askSuggested = (question: string) => {
+    if (awaitingCheck) return;
+    submitMessage(question, []);
+  };
+
   useInitialQuestion((question) => submitMessage(question, []));
+
+  const unanswered = unansweredQuestion({
+    messages,
+    isLoading,
+    error: stream.error,
+    interrupted: !!stream.interrupt,
+    stopped: stream.stopped,
+  });
+
+  // The blocks came from this box, so they're the kind it holds.
+  const unansweredParts = () => {
+    if (!unanswered) return null;
+    const { text, blocks } = questionParts(unanswered.question);
+    return { text, blocks: blocks as unknown as typeof contentBlocks };
+  };
+
+  // Held from a Retry click until its run starts, so a double click sends once.
+  const retrying = useRef(false);
+  useEffect(() => {
+    if (isLoading) retrying.current = false;
+  }, [isLoading]);
+
+  /** Asks the unanswered question again as a new run. */
+  const retryQuestion = () => {
+    const parts = unansweredParts();
+    if (!parts || unanswered?.wrote || awaitingCheck || retrying.current)
+      return;
+    retrying.current = true;
+    submitMessage(parts.text, parts.blocks, { replacing: true });
+  };
+
+  /**
+   * Puts the unanswered question in the message box, unsent. A draft already
+   * there is kept, with the question on a new line after it.
+   */
+  const editQuestion = () => {
+    const parts = unansweredParts();
+    if (!parts) return;
+    setInput((draft) =>
+      draft.trim() ? `${draft}\n${parts.text}` : parts.text,
+    );
+    setContentBlocks((blocks) => [...blocks, ...parts.blocks]);
+    // A turn that made a change stays, so the record of it isn't lost.
+    replaceOnSend.current = !unanswered?.wrote;
+    focusComposer();
+  };
+
+  // Cancel goes away when the run stops, which would drop focus to the page.
+  // It moves to the Stopped note's Retry, or to the message box without one.
+  const retryButton = useRef<HTMLButtonElement>(null);
+  const focusAfterStop = useRef(false);
+  useEffect(() => {
+    if (isLoading || !focusAfterStop.current) return;
+    focusAfterStop.current = false;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    if (retryButton.current) retryButton.current.focus({ preventScroll: true });
+    else focusComposer();
+  });
+
+  // The agent saves an answer the page left mid-stream as a stop; remember
+  // it was a reload or a closed tab, not the Stop button.
+  const lastHuman = stream.messages.findLast((m) => m.type === "human");
+  const latestQuestion =
+    threadId && lastHuman ? cutOffKey(threadId, lastHuman) : null;
+  useEffect(() => {
+    if (!isLoading || !latestQuestion) return;
+    const onPageHide = () => rememberReloadCutOff(latestQuestion);
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, [isLoading, latestQuestion]);
 
   const chatStarted = !!threadId || !!messages.length;
   const showOfficeHours = !chatStarted && !chatHistoryOpen;
@@ -387,7 +522,7 @@ export function Thread() {
                   )}
                   {messages
                     .filter((m) => !m.id?.startsWith(DO_NOT_RENDER_ID_PREFIX))
-                    .map((message, index) =>
+                    .map((message, index, shownMessages) =>
                       message.type === "human" ? (
                         <HumanMessage
                           key={message.id || `${message.type}-${index}`}
@@ -395,20 +530,34 @@ export function Thread() {
                           isLoading={isLoading}
                         />
                       ) : (
-                        <AssistantMessage
+                        <Fragment
                           key={message.id || `${message.type}-${index}`}
-                          message={message}
-                          isLoading={isLoading}
-                          onAsk={(question) => submitMessage(question, [])}
-                          chartKey={
-                            message.id
-                              ? chartViews.get(message.id)?.[0]?.key
-                              : undefined
-                          }
-                          comparisonKey={
-                            message.id ? comparisons.get(message.id) : undefined
-                          }
-                        />
+                        >
+                          <AssistantMessage
+                            message={message}
+                            isLoading={isLoading}
+                            onAsk={askSuggested}
+                            awaitingCheck={awaitingCheck}
+                            chartKey={
+                              message.id
+                                ? chartViews.get(message.id)?.[0]?.key
+                                : undefined
+                            }
+                            comparisonKey={
+                              message.id
+                                ? comparisons.get(message.id)
+                                : undefined
+                            }
+                          />
+                          {/* An earlier stopped turn keeps its note; the
+                            latest one's, with Retry and Edit, is below. */}
+                          {stopReason(message) &&
+                            shownMessages[index + 1]?.type === "human" && (
+                              <p className="text-muted-foreground text-sm">
+                                {cutOffNote(stopReason(message)!)}
+                              </p>
+                            )}
+                        </Fragment>
                       ),
                     )}
                   {/* Special rendering case where there are no AI/tool messages, but there is an interrupt.
@@ -420,6 +569,12 @@ export function Thread() {
                       isLoading={isLoading}
                     />
                   )}
+                  <StoppedNote
+                    turn={unanswered}
+                    retryRef={retryButton}
+                    onRetry={retryQuestion}
+                    onEdit={editQuestion}
+                  />
                   {isLoading && !firstTokenReceived && (
                     <AssistantMessageLoading
                       status={stream.runStatus?.message}
@@ -466,6 +621,7 @@ export function Thread() {
                           onRemove={removeBlock}
                         />
                         <textarea
+                          id={COMPOSER_ID}
                           value={input}
                           onChange={(e) => setInput(e.target.value)}
                           onPaste={handlePaste}
@@ -512,7 +668,10 @@ export function Thread() {
                           {stream.isLoading ? (
                             <Button
                               key="stop"
-                              onClick={() => stream.stop()}
+                              onClick={() => {
+                                focusAfterStop.current = true;
+                                stream.stop();
+                              }}
                               className="ml-auto"
                             >
                               <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -561,7 +720,10 @@ export function Thread() {
       </div>
       <RegistrationPanel onConfirm={(text) => submitMessage(text, [])} />
       <SoftwareComparisonPanel />
-      <XdmodChartPanel onAsk={(text) => submitMessage(text, [])} />
+      <XdmodChartPanel
+        onAsk={askSuggested}
+        awaitingCheck={awaitingCheck}
+      />
     </div>
   );
 }

@@ -51,7 +51,6 @@ function lineView(over: Partial<ChartView> = {}): ChartView {
     bars: [],
     caption: { ...CAPTION, filters: ["Resource is Delta or Anvil"] },
     link: "https://xdmod.access-ci.org/#chart",
-    followUps: [],
     ...over,
   };
 }

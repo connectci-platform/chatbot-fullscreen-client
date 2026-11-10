@@ -6,7 +6,11 @@ import { CommandBar } from "./shared";
 import { MarkdownText } from "../markdown-text";
 import { LoadExternalComponent } from "@langchain/langgraph-sdk/react-ui";
 import { cn } from "@/lib/utils";
-import { getCapabilitySuggestions } from "@/lib/capability-suggestions";
+import {
+  getCapabilitySuggestions,
+  isCapabilityOverview,
+} from "@/lib/capability-suggestions";
+import { getSuggestedQuestions } from "@/lib/suggested-questions";
 import { SuggestedQuestions } from "../suggested-questions";
 import { Fragment } from "react/jsx-runtime";
 import { isAgentInboxInterruptSchema } from "@/lib/agent-inbox-interrupt";
@@ -17,6 +21,8 @@ import { AnswerSources } from "../answer-sources";
 import { AnswerRating } from "./answer-rating";
 import { BarChart3, Table2 } from "lucide-react";
 import { showChart } from "../xdmod-chart-panel";
+import { focusComposer } from "../composer";
+import { isStoppedAnswer } from "@/lib/stopped-answer";
 import { showComparison } from "../software-comparison-panel";
 
 function CustomComponent({
@@ -83,10 +89,13 @@ export function AssistantMessage({
   isLoading,
   onAsk,
   chartKey,
+  awaitingCheck = false,
   comparisonKey,
 }: {
   message: Message | undefined;
   isLoading: boolean;
+  /** The Turnstile check is showing: nothing can be sent until it passes. */
+  awaitingCheck?: boolean;
   /** The chart under this answer (its tool_call_id), if it has one. */
   chartKey?: string;
   /** The software comparison under this answer (its tool_call_id), if any. */
@@ -96,6 +105,8 @@ export function AssistantMessage({
 }) {
   const content = message?.content ?? [];
   const contentString = getContentString(content);
+  // Cut off, so there's no turn report to rate.
+  const stopped = isStoppedAnswer(message);
   const suggestions = getCapabilitySuggestions(message);
 
   const thread = useStreamContext();
@@ -105,8 +116,21 @@ export function AssistantMessage({
     (m) => m.type === "ai" || m.type === "tool",
   );
   const threadInterrupt = thread.interrupt;
+  // Only the newest answer offers what to ask next: once a newer question is
+  // asked, an earlier answer's suggestions are stale.
+  const isLatestAnswer =
+    !!message?.id &&
+    thread.messages.findLast((m) => m.type !== "tool")?.id === message.id;
+  const nextQuestions =
+    isLatestAnswer && !isLoading && !isCapabilityOverview(message)
+      ? getSuggestedQuestions(message)
+      : [];
 
-  if (message?.type === "tool") {
+  // A stop before any text leaves an empty answer; the Stopped note says so.
+  if (
+    message?.type === "tool" ||
+    (stopped && contentString.trim().length === 0)
+  ) {
     return null;
   }
 
@@ -118,10 +142,13 @@ export function AssistantMessage({
             <MarkdownText>{contentString}</MarkdownText>
           </div>
         )}
-        <AnswerSources
-          message={message}
-          streaming={isLoading && isLastMessage}
-        />
+        {/* Cut off before it could cite anything, so no sources line. */}
+        {!stopped && (
+          <AnswerSources
+            message={message}
+            streaming={isLoading && isLastMessage}
+          />
+        )}
         {chartKey && (
           <button
             type="button"
@@ -156,7 +183,21 @@ export function AssistantMessage({
             heading="Try one of these"
             questions={suggestions}
             onAsk={onAsk}
-            disabled={isLoading}
+            disabled={isLoading || awaitingCheck}
+            compact
+          />
+        )}
+        {onAsk && nextQuestions.length > 0 && (
+          <SuggestedQuestions
+            heading="Ask next"
+            questions={nextQuestions}
+            onAsk={(question) => {
+              onAsk(question);
+              // Asking starts a run, which removes these buttons: keep the
+              // keyboard user's focus somewhere useful.
+              focusComposer();
+            }}
+            disabled={awaitingCheck}
             compact
           />
         )}
@@ -177,7 +218,7 @@ export function AssistantMessage({
             the copy button fading in on hover doesn't shift it. */}
         {contentString.length > 0 && (
           <div className="mr-auto flex flex-wrap items-start gap-1">
-            {message && (
+            {message && !stopped && (
               <AnswerRating
                 message={message}
                 isLoading={isLoading}

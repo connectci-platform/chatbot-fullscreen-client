@@ -9,6 +9,7 @@ import {
   shownCount,
 } from "@/lib/chart-export";
 import { newestPanelStep } from "@/lib/software-comparison";
+import { getSuggestedQuestions } from "@/lib/suggested-questions";
 import { cn } from "@/lib/utils";
 import {
   chartLabels,
@@ -38,11 +39,14 @@ const BUTTON =
 
 function ChartBody({
   view,
+  questions,
   label,
   busy,
   onAsk,
 }: {
   view: ChartView;
+  /** What the answer that drew the chart suggests asking next. */
+  questions: string[];
   /** The chart's name, told apart from the answer's other charts. */
   label: string;
   busy: boolean;
@@ -126,7 +130,7 @@ function ChartBody({
 
       <SuggestedQuestions
         heading="Ask next"
-        questions={view.followUps}
+        questions={questions}
         onAsk={onAsk}
         disabled={busy}
         compact
@@ -179,7 +183,14 @@ function ChartSwitcher({
  * its first (the model's first call, the answer to the question) with a
  * switcher for the rest.
  */
-export function XdmodChartPanel({ onAsk }: { onAsk: (text: string) => void }) {
+export function XdmodChartPanel({
+  onAsk,
+  awaitingCheck = false,
+}: {
+  onAsk: (text: string) => void;
+  /** The Turnstile check is showing: nothing can be sent until it passes. */
+  awaitingCheck?: boolean;
+}) {
   const stream = useStreamContext();
   const turns = useMemo(
     () => [...chartViewsByMessage(stream.messages).values()],
@@ -202,6 +213,10 @@ export function XdmodChartPanel({ onAsk }: { onAsk: (text: string) => void }) {
   const [selected, setSelected] = useState<string | null>(null);
   const view = turn?.find((v) => v.key === selected) ?? turn?.[0] ?? null;
 
+  const answerId = view?.messageId;
+  const questions = getSuggestedQuestions(
+    stream.messages.find((m) => m.id === answerId),
+  );
   const labels = chartLabels(turn ?? []);
 
   const [Artifact, { open, setOpen }] = useArtifact();
@@ -286,8 +301,9 @@ export function XdmodChartPanel({ onAsk }: { onAsk: (text: string) => void }) {
         <ChartBody
           key={view.key}
           view={view}
+          questions={questions}
           label={labels.get(view.key) ?? view.title}
-          busy={stream.isLoading}
+          busy={stream.isLoading || awaitingCheck}
           onAsk={onAsk}
         />
       </div>
