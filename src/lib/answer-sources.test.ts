@@ -503,39 +503,64 @@ describe("answerWithSources", () => {
 });
 
 describe("readablePassage", () => {
-  const curated = [
-    "# SDSC Expanse Storage",
+  const header = [
+    "SDSC Expanse Storage",
     "Source: https://www.sdsc.edu/systems/expanse/user_guide.html",
     "Keywords: SDSC Expanse Storage, Storage, quotas, file transfer",
     "Description: SDSC Expanse Storage is the persistent storage resource at SDSC.",
-    "## Identity",
-    "- **Name:** SDSC Expanse Projects Storage",
+  ];
+  const body = "## Identity\n\n- **Name:** SDSC Expanse Projects Storage";
+  const tidied = [
+    "SDSC Expanse Storage",
+    "SDSC Expanse Storage is the persistent storage resource at SDSC.",
+    body,
   ].join("\n\n");
 
-  it("drops a curated document's index fields and keeps its summary", () => {
-    expect(readablePassage(curated)).toBe(
-      [
-        "# SDSC Expanse Storage",
-        "SDSC Expanse Storage is the persistent storage resource at SDSC.",
-        "## Identity",
-        "- **Name:** SDSC Expanse Projects Storage",
-      ].join("\n\n"),
+  it("tidies a curated header with blank lines between its lines", () => {
+    expect(readablePassage([...header, body].join("\n\n"))).toBe(tidied);
+  });
+
+  it("tidies a curated header on consecutive lines", () => {
+    expect(readablePassage(`${header.join("\n")}\n${body}`)).toBe(tidied);
+  });
+
+  it("keeps a markdown title and reads bold labels", () => {
+    const passage = [
+      "# Delta",
+      "**Source:** https://docs.ncsa.illinois.edu/delta",
+      "**Tags:** gpu, cpu",
+      "**Summary**: Delta is an NCSA system.",
+      "Body.",
+    ].join("\n");
+    expect(readablePassage(passage)).toBe(
+      "# Delta\n\nDelta is an NCSA system.\n\nBody.",
     );
   });
 
-  it("reads bold labels too", () => {
+  it("keeps a spaced header's description that runs over lines whole", () => {
     expect(
-      readablePassage("**Keywords:** a, b\n\n**Description**: The summary."),
-    ).toBe("The summary.");
+      readablePassage(
+        "Delta\n\nSource: https://x.org/delta\n\nDescription: One\nand two.\n\nBody.",
+      ),
+    ).toBe("Delta\n\nOne\nand two.\n\nBody.");
   });
 
-  it("leaves field-like lines in the body alone", () => {
+  it("leaves a passage without a curated header as retrieved", () => {
+    for (const passage of [
+      "## Transfers\n\nUse Globus.\n\nSource: the SDSC transfer guide, section 3.",
+      "Use Globus.\n\nTags: transfer, globus",
+      "Description: the --description flag sets the job's name.\n\nMore.",
+      "Keywords: a, b",
+      "Title\n\nSource: the SDSC guide\n\nKeywords: a",
+    ])
+      expect(readablePassage(passage)).toBe(passage);
+  });
+
+  it("leaves fields after the header in the body", () => {
     const passage =
-      "## Transfers\n\nUse Globus.\n\nSource: the SDSC transfer guide.";
-    expect(readablePassage(passage)).toBe(passage);
-  });
-
-  it("keeps a passage that is nothing but fields as it was", () => {
-    expect(readablePassage("Keywords: a, b")).toBe("Keywords: a, b");
+      "Delta\nSource: https://x.org/delta\nBody.\n\nKeywords: kept here.";
+    expect(readablePassage(passage)).toBe(
+      "Delta\n\nBody.\n\nKeywords: kept here.",
+    );
   });
 });

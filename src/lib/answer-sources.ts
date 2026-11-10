@@ -71,38 +71,59 @@ export function parsePassages(content: string): Passage[] {
   return passages;
 }
 
-/**
- * Index fields a curated document opens with, under its title: "Source:"
- * repeats the page the panel already links and "Keywords:" is for search,
- * so both go; a "Description:" or "Summary:" is the document's own summary,
- * so it stays, without its label.
- */
-const DOC_FIELD =
-  /^(\*\*|__)?(source|keywords|tags|description|summary)\1?:\1?[ \t]*/i;
+/** A curated document's source line: "Source: <URL>" and nothing else. */
+const HEADER_SOURCE =
+  /^(\*\*|__)?source\1?:\1?[ \t]*<?https?:\/\/\S+?>?[ \t]*$/i;
+
+/** The index fields that follow it. */
+const HEADER_FIELD =
+  /^(\*\*|__)?(keywords|tags|description|summary)\1?:\1?[ \t]*/i;
 
 /**
- * A passage as the source panel shows it: the index fields at its start
- * are tidied away, the rest is left as retrieved. Only paragraphs before
- * the first that isn't a field (after an optional title) are looked at, so
- * a "Source:" line further down is the document's own text.
+ * A passage as the source panel shows it. A curated document opens with a
+ * header: its title, a "Source: <URL>" line, then index fields, on lines
+ * separated by one newline or two. In that header the Source line (the
+ * page the panel already links) and Keywords or Tags (for search) are
+ * dropped, and a Description or Summary is kept without its label. Any
+ * other passage, and everything after the header, is left as retrieved.
  */
 export function readablePassage(passage: string): string {
-  const paragraphs = passage.trim().split(/\n[ \t]*\n/);
-  const out: string[] = [];
-  let i = 0;
-  if (paragraphs[0] && !DOC_FIELD.test(paragraphs[0]))
-    out.push(paragraphs[i++]);
-  for (; i < paragraphs.length; i++) {
-    const field = paragraphs[i].match(DOC_FIELD);
-    if (!field) break;
-    const name = field[2].toLowerCase();
-    if (name === "description" || name === "summary") {
-      const text = paragraphs[i].slice(field[0].length).trim();
-      if (text) out.push(text);
-    }
+  const lines = passage.split("\n");
+  const nextLine = (from: number) => {
+    while (from < lines.length && !lines[from].trim()) from++;
+    return from;
+  };
+  const title = nextLine(0);
+  const first = lines[title]?.trim() ?? "";
+  if (!first || HEADER_SOURCE.test(first) || HEADER_FIELD.test(first)) {
+    return passage;
   }
-  const tidied = [...out, ...paragraphs.slice(i)].join("\n\n");
-  return tidied.trim() ? tidied : passage;
+  const source = nextLine(title + 1);
+  if (!HEADER_SOURCE.test(lines[source]?.trim() ?? "")) return passage;
+
+  const spaced = source > title + 1;
+  const kept = [lines[title]];
+  let rest = source + 1;
+  for (let at = nextLine(rest); at < lines.length; at = nextLine(rest)) {
+    const field = lines[at].trim().match(HEADER_FIELD);
+    if (!field) break;
+    rest = at + 1;
+    if (/^(?:keywords|tags)$/i.test(field[2])) continue;
+    // With blank lines between the header's lines, a description runs on
+    // to the end of its paragraph; on consecutive lines it is one line.
+    const text = [lines[at].trim().slice(field[0].length)];
+    while (
+      spaced &&
+      rest < lines.length &&
+      lines[rest].trim() &&
+      !HEADER_FIELD.test(lines[rest].trim())
+    ) {
+      text.push(lines[rest++]);
+    }
+    if (text.join("").trim()) kept.push(text.join("\n").trim());
+  }
+  const body = lines.slice(nextLine(rest)).join("\n");
+  return [...kept, body].filter((part) => part.trim()).join("\n\n");
 }
 
 const MARKDOWN_LINK =
