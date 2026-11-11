@@ -1,0 +1,96 @@
+{
+  "total": 1,
+  "items": [
+    {
+      "id": "expanse-gpu.sdsc.access-ci.org",
+      "name": "Expanse GPU",
+      "organization": "San Diego Supercomputer Center",
+      "type": "Compute",
+      "status": "production",
+      "mfa_required": true,
+      "account_required": false,
+      "ondemand_url": "https://portal.expanse.sdsc.edu/",
+      "ssh_hosts": ["login.expanse.sdsc.edu"],
+      "transfer_methods": ["Globus"],
+      "queues": [
+        {
+          "name": "gpu",
+          "summary": "4 NVIDIA V100 SXM2 (32 GB vRAM), 56 nodes, 40-core Xeon Gold 6248, 384 GB RAM",
+          "max_wall_time_hours": 48
+        },
+        {
+          "name": "gpu-debug",
+          "summary": "4 NVIDIA V100 SXM2 (32 GB vRAM), 2 nodes, 40-core Xeon Gold 6248, 384 GB RAM",
+          "max_wall_time_hours": 0.5
+        },
+        {
+          "name": "gpu-shared",
+          "summary": "4 NVIDIA V100 SXM2 (32 GB vRAM), 56 nodes, 40-core Xeon Gold 6248, 384 GB RAM",
+          "max_wall_time_hours": 48
+        },
+        {
+          "name": "gpu-preempt",
+          "summary": "4 NVIDIA V100 SXM2 (32 GB vRAM), 50 nodes, 40-core Xeon Gold 6248, 384 GB RAM",
+          "max_wall_time_hours": 168
+        },
+        {
+          "name": "nairr-gpu",
+          "summary": "4 Nvidia H100 (80 GB vRAM), 34 nodes, 36-core 2x Intel Sapphire Road processors, 1 TB RAM",
+          "max_wall_time_hours": 48
+        },
+        {
+          "name": "nairr-gpu-shared",
+          "summary": "4 Nvidia H100 (80 GB vRAM), 34 nodes, 36-core 2x Intel Sapphire Road processors, 1 TB RAM",
+          "max_wall_time_hours": 48
+        },
+        {
+          "name": "ind-gpu",
+          "summary": "4, 4 nodes, 160-core, 1024 GB RAM",
+          "max_wall_time_hours": 48
+        },
+        {
+          "name": "ind-gpu-shared",
+          "summary": "4, 1024 GB RAM",
+          "max_wall_time_hours": 48
+        }
+      ],
+      "wait_times": null,
+      "filesystems": [
+        {
+          "name": "Scratch Lustre",
+          "summary": "10 TB"
+        },
+        {
+          "name": "Scratch GPU Node",
+          "summary": "1600 GB"
+        },
+        {
+          "name": "Home",
+          "summary": "100 GB"
+        }
+      ],
+      "software_url": "https://www.sdsc.edu/systems/expanse/user_guide.html#narrow-wysiwyg-13",
+      "citation_url": "https://support.access-ci.org/documentation/resources/expanse",
+      "details_available": true
+    }
+  ],
+  "unresolved": [
+    {
+      "resource": "Delta",
+      "matches": [
+        {
+          "id": "delta-cpu.ncsa.access-ci.org",
+          "name": "Delta CPU"
+        },
+        {
+          "id": "delta-gpu.ncsa.access-ci.org",
+          "name": "Delta GPU"
+        }
+      ]
+    },
+    {
+      "resource": "Not A Resource",
+      "matches": []
+    }
+  ]
+}
