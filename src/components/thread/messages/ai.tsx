@@ -31,6 +31,7 @@ import {
 } from "@/lib/tool-narration";
 import { isStoppedAnswer } from "@/lib/stopped-answer";
 import { showComparison } from "../software-comparison-panel";
+import { showResourceComparison } from "../resource-comparison-panel";
 
 function CustomComponent({
   message,
@@ -99,6 +100,7 @@ export function AssistantMessage({
   dataOnly = false,
   awaitingCheck = false,
   comparisonKey,
+  resourceComparisonKey,
 }: {
   message: Message | undefined;
   isLoading: boolean;
@@ -110,6 +112,8 @@ export function AssistantMessage({
   dataOnly?: boolean;
   /** The software comparison under this answer (its tool_call_id), if any. */
   comparisonKey?: string;
+  /** The resource comparison under this answer (a tool_call_id), if any. */
+  resourceComparisonKey?: string;
   /** Sends a suggested question as if typed. */
   onAsk?: (question: string) => void;
 }) {
@@ -214,6 +218,20 @@ export function AssistantMessage({
               className="size-4"
             />
             Show software availability
+          </button>
+        )}
+        {resourceComparisonKey && (
+          <button
+            type="button"
+            data-resource-comparison-key={resourceComparisonKey}
+            onClick={() => showResourceComparison(resourceComparisonKey)}
+            className="hover:text-brand hover:border-brand focus-visible:ring-brand mr-auto flex cursor-pointer items-center gap-2 border px-3 py-1.5 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
+          >
+            <Table2
+              aria-hidden
+              className="size-4"
+            />
+            Show resource comparison
           </button>
         )}
 

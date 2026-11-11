@@ -65,6 +65,7 @@ import { ContentBlocksPreview } from "./ContentBlocksPreview";
 import { useArtifactOpen, useArtifactContext } from "./artifact";
 import { RegistrationPanel } from "./registration-panel";
 import { SoftwareComparisonPanel } from "./software-comparison-panel";
+import { ResourceComparisonPanel } from "./resource-comparison-panel";
 import { XdmodChartPanel } from "./xdmod-chart-panel";
 import { COMPOSER_ID, focusComposer } from "./composer";
 import { xdmodItemsByMessage } from "@/lib/xdmod-table";
@@ -72,6 +73,7 @@ import { useChatScroll } from "@/hooks/use-chat-scroll";
 import { useAutoGrow } from "@/hooks/use-auto-grow";
 import { ScrollToBottomButton } from "./scroll-to-bottom";
 import { comparisonsByMessage } from "@/lib/software-comparison";
+import { resourceComparisonsByMessage } from "@/lib/resource-comparison";
 
 export function Thread() {
   const [artifactContext, setArtifactContext] = useArtifactContext();
@@ -119,6 +121,10 @@ export function Thread() {
   // Once per update, not once per message: each answer only needs its key.
   const xdmodItems = useMemo(() => xdmodItemsByMessage(messages), [messages]);
   const comparisons = useMemo(() => comparisonsByMessage(messages), [messages]);
+  const resourceComparisons = useMemo(
+    () => resourceComparisonsByMessage(messages),
+    [messages],
+  );
   const [firstTokenReceived, setFirstTokenReceived] = useFirstTokenReceived(
     messages,
     stream.runStatus,
@@ -526,6 +532,11 @@ export function Thread() {
                           comparisonKey={
                             message.id ? comparisons.get(message.id) : undefined
                           }
+                          resourceComparisonKey={
+                            message.id
+                              ? resourceComparisons.get(message.id)
+                              : undefined
+                          }
                         />
                         {/* An earlier stopped turn keeps its note; the
                             latest one's, with Retry and Edit, is below. */}
@@ -742,6 +753,7 @@ export function Thread() {
       </div>
       <RegistrationPanel onConfirm={(text) => submitMessage(text, [])} />
       <SoftwareComparisonPanel />
+      <ResourceComparisonPanel />
       <XdmodChartPanel
         onAsk={askSuggested}
         awaitingCheck={awaitingCheck}

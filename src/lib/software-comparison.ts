@@ -1,6 +1,8 @@
 import type { Message } from "@langchain/langgraph-sdk";
 import { latestRegistration } from "./registration";
 import { latestXdmodItems } from "./xdmod-table";
+import { toolResult, type Json } from "./tool-result";
+import { latestResourceComparison } from "./resource-comparison";
 
 const COMPARE_TOOL = "compare_software_availability";
 const VERSION_TOOLS = new Set(["get_software_details", "search_software"]);
@@ -48,39 +50,6 @@ export interface SoftwareComparisonView {
   rows: ComparisonRow[];
   /** Requested software the index found nowhere. */
   notFound: string[];
-}
-
-type Json = Record<string, unknown>;
-
-function contentText(content: Message["content"]): string | null {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return null;
-  const text = content
-    .map((block) =>
-      block && typeof block === "object" && "text" in block
-        ? String((block as { text: unknown }).text)
-        : "",
-    )
-    .join("");
-  return text || null;
-}
-
-/** The tool's JSON body, or null for a failed, refused or unreadable call. */
-function toolResult(message: Message): Json | null {
-  if (message.type !== "tool") return null;
-  if ((message as { status?: string }).status === "error") return null;
-  const text = contentText(message.content);
-  if (!text) return null;
-  try {
-    const parsed: unknown = JSON.parse(text);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return null;
-    }
-    const result = parsed as Json;
-    return result.status === "error" ? null : result;
-  } catch {
-    return null;
-  }
 }
 
 function strings(value: unknown): string[] {
@@ -327,7 +296,7 @@ function toolIndex(messages: Message[], toolCallId: string): number {
   );
 }
 
-export type PanelStep = "registration" | "comparison" | "chart";
+export type PanelStep = "registration" | "comparison" | "resources" | "chart";
 
 /**
  * Which panel should hold the shared side panel: the newest step in the
@@ -340,6 +309,7 @@ export function newestPanelStep(messages: Message[]): PanelStep | null {
   const steps: [PanelStep, number][] = [
     ["registration", at(latestRegistration(messages)?.key)],
     ["comparison", at(latestComparison(messages)?.key)],
+    ["resources", at(latestResourceComparison(messages)?.key)],
     // The XDMoD panel's step: a turn can hold several charts and data
     // tables; its newest result counts.
     [

@@ -1,0 +1,189 @@
+{
+  "total": 3,
+  "items": [
+    {
+      "id": "aces.tamu.access-ci.org",
+      "name": "ACES",
+      "organization": "Texas A&M University",
+      "type": "Compute",
+      "status": "production",
+      "mfa_required": true,
+      "account_required": false,
+      "ondemand_url": "https://portal-aces.hprc.tamu.edu/pun/sys/dashboard",
+      "ssh_hosts": ["login.aces.hprc.tamu.edu"],
+      "transfer_methods": ["Globus", "scp/sftp", "rsync", "rclone", "gdown"],
+      "queues": [
+        {
+          "name": "nec",
+          "summary": "8 NEC Vector Engine Type 20B-P (48 GB vRAM), 1 nodes, 48-core Intel Xeon 8268 (Cascade Lake), 768 GB RAM",
+          "max_wall_time_hours": 48
+        },
+        {
+          "name": "bittware",
+          "summary": "None, 2 nodes, 96-core Intel Xeon 8468 (Sapphire Rapids), 512 GB RAM",
+          "max_wall_time_hours": 48
+        },
+        {
+          "name": "nextsilicon",
+          "summary": "None, 2 nodes, 96-core Intel Xeon 8468 (Sapphire Rapids), 512 GB RAM",
+          "max_wall_time_hours": 48
+        },
+        {
+          "name": "gpu",
+          "summary": "2 NVIDIA H100 (80 GB vRAM), 8 nodes, 96-core Intel Xeon 8468 (Sapphire Rapids), 512 GB RAM",
+          "max_wall_time_hours": 48
+        },
+        {
+          "name": "memverge",
+          "summary": "None, 10 nodes, 96-core Intel Xeon 8468 (Sapphire Rapids), 512 GB RAM",
+          "max_wall_time_hours": 48
+        },
+        {
+          "name": "pvc",
+          "summary": "8 Intel Data Center GPU Max 1100 (Ponte Vecchio) (48 GB vRAM), 30 nodes, 96-core Intel Xeon 8468 (Sapphire Rapids), 512 GB RAM",
+          "max_wall_time_hours": 48
+        },
+        {
+          "name": "cpu",
+          "summary": "None, 88 nodes, 96-core Intel Xeon 8468 (Sapphire Rapids), 512 GB RAM",
+          "max_wall_time_hours": 72
+        },
+        {
+          "name": "gpu_debug",
+          "summary": "2 NVIDIA A30 (24 GB vRAM), 3 nodes, 96-core Intel Xeon 8468 (Sapphire Rapids), 512 GB RAM",
+          "max_wall_time_hours": 2
+        },
+        {
+          "name": "gpu_debug",
+          "summary": "2 NVIDIA H100 (80 GB vRAM), 3 nodes, 96-core Intel Xeon 8468 (Sapphire Rapids), 512 GB RAM",
+          "max_wall_time_hours": 2
+        },
+        {
+          "name": "gh01",
+          "summary": "1 NVIDIA H100 (96 GB vRAM), 1 nodes, 72-core ARM Neoverse V2 (NVIDIA Grace ARM), 480 GB RAM",
+          "max_wall_time_hours": null
+        }
+      ],
+      "wait_times": null,
+      "filesystems": [
+        {
+          "name": "Home",
+          "summary": "10 GB, 10,000 files"
+        },
+        {
+          "name": "Scratch",
+          "summary": "1 TB, 250,000 files"
+        },
+        {
+          "name": "Project",
+          "summary": "5 TB, 500,000 files"
+        }
+      ],
+      "software_url": "https://hprc.tamu.edu/software/aces/",
+      "citation_url": "https://support.access-ci.org/documentation/resources/aces",
+      "details_available": true
+    },
+    {
+      "id": "deltaai.ncsa.access-ci.org",
+      "name": "DeltaAI",
+      "organization": "National Center for Supercomputing Applications",
+      "type": "Compute",
+      "status": "production",
+      "mfa_required": true,
+      "account_required": true,
+      "ondemand_url": "https://gh-ondemand.delta.ncsa.illinois.edu/",
+      "ssh_hosts": ["dtai-login.delta.ncsa.illinois.edu"],
+      "transfer_methods": ["Globus", "SCP", "RSYNC"],
+      "queues": [
+        {
+          "name": "ghx4",
+          "summary": "4 NVIDIA H100 (96 GB vRAM), 152 nodes, 288-core NVIDIA Grace ARM (aarch64), 480 GB RAM",
+          "max_wall_time_hours": 48
+        },
+        {
+          "name": "ghx4-interactive",
+          "summary": "4 NVIDIA H100 (96 GB vRAM), 152 nodes, 288-core NVIDIA Grace ARM (aarch64), 480 GB RAM",
+          "max_wall_time_hours": 2
+        }
+      ],
+      "wait_times": null,
+      "filesystems": [
+        {
+          "name": "Home",
+          "summary": "100 GB, 750,000 files"
+        },
+        {
+          "name": "Projects",
+          "summary": "500 GB, 300,000 files"
+        },
+        {
+          "name": "Work HDD",
+          "summary": "1 TB, 500,000 files"
+        },
+        {
+          "name": "Work NVMe",
+          "summary": "1 TB, 500,000 files"
+        },
+        {
+          "name": "Node-local",
+          "summary": "3900 GB"
+        }
+      ],
+      "software_url": "https://docs.ncsa.illinois.edu/systems/deltaai/en/latest/user-guide/software.html",
+      "citation_url": "https://support.access-ci.org/documentation/resources/deltaai",
+      "details_available": true
+    },
+    {
+      "id": "derecho-gpu.ncar.ucar.edu",
+      "name": "Derecho-GPU",
+      "organization": "NSF National Center for Atmospheric Research",
+      "type": "Compute",
+      "status": "post-production",
+      "mfa_required": true,
+      "account_required": true,
+      "ondemand_url": "https://ondemand.hpc.ucar.edu/",
+      "ssh_hosts": ["derecho.hpc.ucar.edu"],
+      "transfer_methods": ["Globus", "scp", "rsync", "sftp", "rclone"],
+      "queues": [
+        {
+          "name": "develop",
+          "summary": "4 NVIDIA A100 (40 GB vRAM), 64-core 1x AMD EPYC 7763 \"Milan\", 487 GB RAM",
+          "max_wall_time_hours": 6
+        },
+        {
+          "name": "main",
+          "summary": "4 NVIDIA A100 (40 GB vRAM), 82 nodes, 64-core 1x AMD EPYC 7763 \"Milan\", 512 GB RAM",
+          "max_wall_time_hours": 12
+        },
+        {
+          "name": "preempt",
+          "summary": "4 NVIDIA A100 (40 GB vRAM), 82 nodes, 64-core 1x AMD EPYC 7763 \"Milan\", 512 GB RAM",
+          "max_wall_time_hours": 100
+        }
+      ],
+      "wait_times": null,
+      "filesystems": [
+        {
+          "name": "Home",
+          "summary": "50 GB"
+        },
+        {
+          "name": "Scratch",
+          "summary": "30 TB, 10,000,000 files"
+        },
+        {
+          "name": "Work",
+          "summary": "2 TB"
+        },
+        {
+          "name": "Campaign Storage",
+          "summary": null
+        }
+      ],
+      "software_url": "https://ncar-hpc-docs.readthedocs.io/en/latest/environment-and-software/hpc-software/",
+      "citation_url": "https://support.access-ci.org/documentation/resources/derecho-0",
+      "details_available": true
+    }
+  ],
+  "unresolved": []
+}
