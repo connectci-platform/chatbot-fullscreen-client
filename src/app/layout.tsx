@@ -3,7 +3,7 @@ import "./globals.css";
 import { Archivo } from "next/font/google";
 import React from "react";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
-import { colorVariables, iconMetadata, program } from "@/config/program";
+import { colorVariables, program, siteMetadata } from "@/config/program";
 import { SiteChromeTop } from "@/components/SiteChrome";
 
 // The @access-ci/ui chrome's CSS asks for "Archivo". Its components render
@@ -18,11 +18,7 @@ const archivo = Archivo({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: program.name,
-  description: program.description,
-  icons: iconMetadata(program),
-};
+export const metadata: Metadata = siteMetadata(program);
 
 export default function RootLayout({
   children,
