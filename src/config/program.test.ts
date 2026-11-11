@@ -1,6 +1,11 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { colorVariables, getProgram, iconMetadata } from "./program";
+import {
+  colorVariables,
+  getProgram,
+  iconMetadata,
+  siteMetadata,
+} from "./program";
 
 describe("getProgram", () => {
   it("defaults to ACCESS", () => {
@@ -76,5 +81,51 @@ describe("iconMetadata", () => {
       ],
       apple: { url: "/p/apple.png", sizes: "180x180" },
     });
+  });
+});
+
+describe("siteMetadata", () => {
+  const access = getProgram("access");
+  const meta = siteMetadata(access);
+
+  it("serves ACCESS from qa.access-ci.org, and its share image exists", () => {
+    expect(access.siteUrl).toBe("https://qa.access-ci.org");
+    expect(meta.metadataBase?.toString()).toBe("https://qa.access-ci.org/");
+    expect(
+      existsSync(path.join(process.cwd(), "public", access.shareImage.src)),
+    ).toBe(true);
+  });
+
+  it("points the canonical address at the start screen", () => {
+    expect(meta.alternates?.canonical).toBe("/");
+  });
+
+  it("gives shared links a large preview card with the program's text", () => {
+    const image = {
+      url: "/programs/access/share.png",
+      width: 1200,
+      height: 630,
+      alt: access.shareImage.alt,
+    };
+    expect(meta.openGraph).toMatchObject({
+      type: "website",
+      url: "/",
+      siteName: "ACCESS Assistant",
+      title: "ACCESS Assistant",
+      description: access.description,
+      images: [image],
+    });
+    expect(meta.twitter).toMatchObject({
+      card: "summary_large_image",
+      title: "ACCESS Assistant",
+      description: access.description,
+      images: [image],
+    });
+  });
+
+  it("keeps the title, summary and icons", () => {
+    expect(meta.title).toBe("ACCESS Assistant");
+    expect(meta.description).toBe(access.description);
+    expect(meta.icons).toEqual(iconMetadata(access));
   });
 });

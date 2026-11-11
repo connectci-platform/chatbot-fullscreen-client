@@ -15,7 +15,13 @@ export const access: ProgramConfig = {
     png: "/programs/access/icon-32.png",
     apple: "/programs/access/apple-icon.png",
   },
-  description: "Chat with the ACCESS-CI AI assistant.",
+  description:
+    "Ask about ACCESS resources, allocations, software, training and usage, answered from ACCESS documentation and live data.",
+  siteUrl: "https://qa.access-ci.org",
+  shareImage: {
+    src: "/programs/access/share.png",
+    alt: "ACCESS Assistant: answers about ACCESS resources, allocations, software, training and usage.",
+  },
   accountName: "ACCESS account",
   supportUrl: "https://support.access-ci.org",
   privacyUrl: "https://support.access-ci.org/tools/access-qa-tool/privacy",

@@ -12,7 +12,22 @@ export type ProgramConfig = {
    * 180px PNG is the Apple touch icon.
    */
   icons: { svg: string; png: string; apple: string };
+  /**
+   * The summary under the title in search results and link previews. Says
+   * what can be asked, in a program reader's words.
+   */
   description: string;
+  /**
+   * The public address this program's assistant is served from. Link
+   * previews need absolute URLs, and the canonical address, robots.txt and
+   * sitemap name it.
+   */
+  siteUrl: string;
+  /**
+   * The 1200x630 picture a link preview shows (Slack, Teams, email, social
+   * sites), under public/programs/<id>/.
+   */
+  shareImage: { src: string; alt: string };
   accountName: string;
   supportUrl: string;
   privacyUrl: string;
@@ -79,6 +94,47 @@ export function iconMetadata({
       { url: icons.png, type: "image/png", sizes: "32x32" },
     ],
     apple: { url: icons.apple, sizes: "180x180" },
+  };
+}
+
+/**
+ * The page metadata for a program: title and summary, icons, the canonical
+ * address, and the Open Graph and Twitter tags that make a shared link show a
+ * preview card.
+ */
+export function siteMetadata(
+  p: Pick<
+    ProgramConfig,
+    "name" | "description" | "siteUrl" | "shareImage" | "icons"
+  >,
+): Metadata {
+  const image = {
+    url: p.shareImage.src,
+    width: 1200,
+    height: 630,
+    alt: p.shareImage.alt,
+  };
+  return {
+    metadataBase: new URL(p.siteUrl),
+    title: p.name,
+    description: p.description,
+    applicationName: p.name,
+    icons: iconMetadata(p),
+    alternates: { canonical: "/" },
+    openGraph: {
+      type: "website",
+      url: "/",
+      siteName: p.name,
+      title: p.name,
+      description: p.description,
+      images: [image],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: p.name,
+      description: p.description,
+      images: [image],
+    },
   };
 }
 

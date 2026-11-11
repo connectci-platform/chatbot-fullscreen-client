@@ -32,7 +32,11 @@ export default tseslint.config(
       ],
       "react-refresh/only-export-components": [
         "warn",
-        { allowConstantExport: true },
+        {
+          allowConstantExport: true,
+          // Next reads these from layouts and pages; they don't affect refresh.
+          allowExportNames: ["metadata", "generateMetadata"],
+        },
       ],
     },
   },
