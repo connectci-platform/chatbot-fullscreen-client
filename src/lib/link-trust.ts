@@ -36,7 +36,9 @@ export function isSameOriginSrc(src: string, origin: string): boolean {
   if (/^[a-z][a-z0-9+.-]*:/i.test(src) && !/^https?:/i.test(src)) return false;
   try {
     const url = new URL(src, origin);
-    return /^https?:$/.test(url.protocol) && url.origin === new URL(origin).origin;
+    return (
+      /^https?:$/.test(url.protocol) && url.origin === new URL(origin).origin
+    );
   } catch {
     return false;
   }

@@ -66,6 +66,67 @@ describe("MarkdownText links", () => {
   });
 });
 
+describe("MarkdownText off-site content", () => {
+  it("loads images from this site", () => {
+    const { container } = render(
+      <MarkdownText>{"![chart](/static/c.png)"}</MarkdownText>,
+    );
+    const img = container.querySelector("img");
+    expect(img?.getAttribute("src")).toBe("/static/c.png");
+    expect(img?.getAttribute("referrerpolicy")).toBe("no-referrer");
+  });
+
+  it("shows an off-site image as a link naming its host, without loading it", () => {
+    const { container } = render(
+      <MarkdownText>{"![secret](https://evil.com/p.png?d=abc)"}</MarkdownText>,
+    );
+    expect(container.querySelector("img")).toBeNull();
+    const link = screen.getByRole("link", { name: "secret" });
+    expect(link.getAttribute("href")).toBe("https://evil.com/p.png?d=abc");
+    expect(container.textContent).toContain("(evil.com)");
+  });
+
+  it("shows only the alt text of a data image", () => {
+    const { container } = render(
+      <MarkdownText>{"![pixel](data:image/png;base64,AAAA)"}</MarkdownText>,
+    );
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.textContent).toContain("pixel");
+  });
+
+  it("doesn't label links to ACCESS sites", () => {
+    const { container } = render(
+      <MarkdownText>{"[docs](https://support.access-ci.org/x)"}</MarkdownText>,
+    );
+    expect(container.textContent).toBe("docs");
+  });
+
+  it("names the host after a link to another site", () => {
+    const { container } = render(
+      <MarkdownText>{"[Fix it](https://evil.com/?d=1)"}</MarkdownText>,
+    );
+    expect(screen.getByRole("link", { name: "Fix it" })).toBeTruthy();
+    expect(container.textContent).toBe("Fix it (evil.com)");
+  });
+
+  it("names the real host of a link disguised with user info", () => {
+    const { container } = render(
+      <MarkdownText>
+        {"[ACCESS](https://access-ci.org@evil.com/x)"}
+      </MarkdownText>,
+    );
+    expect(container.textContent).toBe("ACCESS (evil.com)");
+  });
+
+  it("doesn't repeat a host the link text already shows", () => {
+    const { container } = render(
+      <MarkdownText>{"[https://evil.com/a](https://evil.com/a)"}</MarkdownText>,
+    );
+    expect(container.textContent).toBe("https://evil.com/a");
+  });
+});
+
 describe("MarkdownText headings", () => {
   const md =
     "# One\n\n## Two\n\n### Three\n\n#### Four\n\n##### Five\n\n###### Six";

@@ -6,13 +6,23 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
-import { FC, isValidElement, memo, useMemo, useState } from "react";
+import {
+  Children,
+  FC,
+  isValidElement,
+  memo,
+  type ReactNode,
+  useMemo,
+  useState,
+} from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { SyntaxHighlighter } from "@/components/thread/syntax-highlighter";
 
 import { TooltipIconButton } from "@/components/thread/tooltip-icon-button";
 import { cn } from "@/lib/utils";
 import { markdownBlocks } from "@/lib/markdown-blocks";
+import { program } from "@/config/program";
+import { isSameOriginSrc, isTrustedHost, linkHost } from "@/lib/link-trust";
 
 import "katex/dist/katex.min.css";
 
@@ -69,6 +79,41 @@ function newTabProps(href: string | undefined) {
   return href && /^https?:\/\//i.test(href)
     ? { target: "_blank", rel: "noopener noreferrer" }
     : {};
+}
+
+/** The text a link shows, so a host it already names isn't repeated. */
+function textOf(node: ReactNode): string {
+  return Children.toArray(node)
+    .map((child) =>
+      typeof child === "string" || typeof child === "number"
+        ? String(child)
+        : isValidElement<{ children?: ReactNode }>(child)
+          ? textOf(child.props.children)
+          : "",
+    )
+    .join("");
+}
+
+/**
+ * The host of a link to a site outside the program's own, for showing after
+ * it, or null when the link stays on the program's sites or already shows
+ * where it goes. Answers can carry text a tool fetched or a user shared, and
+ * a link built from it shouldn't pass as one of the program's own.
+ */
+function offsiteHost(href: string | undefined, children: ReactNode) {
+  const host = href ? linkHost(href) : null;
+  if (!host || isTrustedHost(host, program.trustedDomains)) return null;
+  return textOf(children).toLowerCase().includes(host) ? null : host;
+}
+
+function HostLabel({ host }: { host: string }) {
+  return <span className="text-muted-foreground"> ({host})</span>;
+}
+
+function pageOrigin() {
+  return typeof window === "undefined"
+    ? new URL(program.siteUrl).origin
+    : window.location.origin;
 }
 
 const defaultComponents: any = {
@@ -132,13 +177,56 @@ const defaultComponents: any = {
       {...props}
     />
   ),
-  a: ({ className, ...props }: { className?: string; href?: string }) => (
-    <a
-      className={cn("font-medium", className)}
-      {...props}
-      {...newTabProps(props.href)}
-    />
-  ),
+  a: ({
+    className,
+    ...props
+  }: {
+    className?: string;
+    href?: string;
+    children?: ReactNode;
+  }) => {
+    const host = offsiteHost(props.href, props.children);
+    return (
+      <>
+        <a
+          className={cn("font-medium", className)}
+          {...props}
+          {...newTabProps(props.href)}
+        />
+        {host && <HostLabel host={host} />}
+      </>
+    );
+  },
+  // An image is fetched as soon as the answer renders, so one from another
+  // site could carry conversation data out with no click. Only this site's
+  // own images load; another site's becomes a link naming where it goes.
+  img: ({ src, alt }: { src?: unknown; alt?: string }) => {
+    const source = typeof src === "string" ? src : "";
+    if (source && isSameOriginSrc(source, pageOrigin())) {
+      return (
+        <img
+          src={source}
+          alt={alt ?? ""}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+        />
+      );
+    }
+    const host = linkHost(source);
+    if (!host) return <>{alt}</>;
+    return (
+      <>
+        <a
+          className="font-medium"
+          href={source}
+          {...newTabProps(source)}
+        >
+          {alt || "image"}
+        </a>
+        <HostLabel host={host} />
+      </>
+    );
+  },
   blockquote: ({ className, ...props }: { className?: string }) => (
     <blockquote
       className={cn("border-l-2 pl-6 italic", className)}
