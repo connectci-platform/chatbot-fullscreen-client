@@ -773,7 +773,7 @@ export function Thread() {
       </div>
       <RegistrationPanel
         onConfirm={(text, blocks) => submitMessage(text, blocks)}
-        confirmElsewhere={cardPreviews.length > 0}
+        cardPreviews={cardPreviews}
       />
       <SoftwareComparisonPanel />
       <ResourceComparisonPanel />

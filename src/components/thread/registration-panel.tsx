@@ -10,7 +10,12 @@ import {
   type Registration,
   type RegistrationStatus,
 } from "@/lib/registration";
-import { confirmBlock, type ConfirmBlock } from "@/lib/confirm";
+import {
+  cardConfirms,
+  confirmBlock,
+  type ConfirmBlock,
+  type Preview,
+} from "@/lib/confirm";
 import { newestPanelStep } from "@/lib/software-comparison";
 import { useStreamContext } from "@/providers/Stream";
 import { useArtifact } from "./artifact";
@@ -198,10 +203,12 @@ export function RegistrationDetails({
 /** Opens the side panel when the conversation reaches a new registration step. */
 export function RegistrationPanel({
   onConfirm,
-  confirmElsewhere = false,
+  cardPreviews = [],
 }: {
   onConfirm: (message: string, blocks: ConfirmBlock[]) => void;
-  confirmElsewhere?: boolean;
+  /** The previews the chat card confirms. The panel defers to it only for a
+   * registration the card's Confirm actually covers. */
+  cardPreviews?: Preview[];
 }) {
   const stream = useStreamContext();
   const registration = useMemo(
@@ -235,7 +242,7 @@ export function RegistrationPanel({
       <RegistrationDetails
         registration={registration}
         busy={stream.isLoading}
-        confirmElsewhere={confirmElsewhere}
+        confirmElsewhere={cardConfirms(registration.previewId, cardPreviews)}
         onConfirm={() =>
           onConfirm(
             confirmMessage(registration),

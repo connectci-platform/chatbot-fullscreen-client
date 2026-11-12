@@ -69,6 +69,20 @@ function parse(content: Message["content"]): Record<string, unknown> | null {
  * Write-tool previews the user hasn't answered yet: the tool results after
  * the last human message that carry a preview_id, in order.
  */
+/**
+ * Whether the card's Confirm covers this preview. A change with no preview id,
+ * or one the card shows only as a note, isn't in what the card sends.
+ */
+export function cardConfirms(
+  previewId: string | undefined,
+  previews: Preview[],
+): boolean {
+  return (
+    !!previewId &&
+    previews.some((p) => p.previewId === previewId && !p.noChanges)
+  );
+}
+
 export function pendingPreviews(messages: Message[]): Preview[] {
   const lastHuman = messages.findLastIndex((m) => m.type === "human");
   const previews: Preview[] = [];

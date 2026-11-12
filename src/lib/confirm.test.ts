@@ -1,6 +1,7 @@
 import type { Message } from "@langchain/langgraph-sdk";
 import { describe, expect, it } from "vitest";
 import {
+  cardConfirms,
   confirmBlock,
   pendingPreviews,
   previewDetails,
@@ -125,5 +126,27 @@ describe("previewDetails", () => {
       { label: "Event seats", value: "4" },
       { label: "Summary", value: "Hello" },
     ]);
+  });
+});
+
+describe("cardConfirms", () => {
+  const preview = (previewId: string, noChanges = false) => ({
+    previewId,
+    tool: "register_for_event",
+    data: {},
+    noChanges,
+  });
+
+  it("is true only when the card's Confirm covers that preview", () => {
+    expect(cardConfirms(ID_A, [preview(ID_A), preview(ID_B)])).toBe(true);
+    expect(cardConfirms(ID_A, [preview(ID_B)])).toBe(false);
+  });
+
+  it("is false for a change with no preview id, which the card can't confirm", () => {
+    expect(cardConfirms(undefined, [preview(ID_B)])).toBe(false);
+  });
+
+  it("is false for a preview the card shows only as a note", () => {
+    expect(cardConfirms(ID_A, [preview(ID_A, true)])).toBe(false);
   });
 });
