@@ -10,6 +10,7 @@ import {
   type Registration,
   type RegistrationStatus,
 } from "@/lib/registration";
+import { confirmBlock, type ConfirmBlock } from "@/lib/confirm";
 import { newestPanelStep } from "@/lib/software-comparison";
 import { useStreamContext } from "@/providers/Stream";
 import { useArtifact } from "./artifact";
@@ -188,7 +189,7 @@ export function RegistrationDetails({
 export function RegistrationPanel({
   onConfirm,
 }: {
-  onConfirm: (message: string) => void;
+  onConfirm: (message: string, blocks: ConfirmBlock[]) => void;
 }) {
   const stream = useStreamContext();
   const registration = useMemo(
@@ -222,7 +223,14 @@ export function RegistrationPanel({
       <RegistrationDetails
         registration={registration}
         busy={stream.isLoading}
-        onConfirm={() => onConfirm(confirmMessage(registration))}
+        onConfirm={() =>
+          onConfirm(
+            confirmMessage(registration),
+            registration.previewId
+              ? [confirmBlock([registration.previewId])]
+              : [],
+          )
+        }
       />
     </Artifact>
   );

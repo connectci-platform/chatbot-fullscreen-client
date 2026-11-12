@@ -285,7 +285,27 @@ describe("RegistrationPanel", () => {
     );
 
     expect(screen.getByText("panel open")).toBeTruthy();
-    expect(onConfirm).toHaveBeenCalledWith("Yes, please confirm.");
+    expect(onConfirm).toHaveBeenCalledWith("Yes, please confirm.", []);
+  });
+
+  it("sends the confirm block when the preview carries an id", () => {
+    const id = "c".repeat(32);
+    const messages = toolMessages("preview");
+    const tool = messages[1] as { content: string };
+    tool.content = JSON.stringify({
+      ...JSON.parse(tool.content),
+      preview_id: id,
+    });
+    useMessages(messages);
+
+    render(tree());
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirm registration" }),
+    );
+
+    expect(onConfirm).toHaveBeenCalledWith("Yes, please confirm.", [
+      { type: "confirm", preview_ids: [id] },
+    ]);
   });
 
   it("closes when the conversation has no registration", () => {

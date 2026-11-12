@@ -26,6 +26,8 @@ export interface Registration {
   event: RegistrationEvent | null;
   /** Whether a preview can still be confirmed from the panel. */
   actionable: boolean;
+  /** The agent's id for this preview, when it stamps one. */
+  previewId?: string;
 }
 
 const STATUSES = new Set<string>([
@@ -138,6 +140,8 @@ export function latestRegistration(messages: Message[]): Registration | null {
       seatsRemaining: count(data?.seats_remaining),
       event: eventId ? findEvent(messages, eventId) : null,
       actionable: status === "preview" && actionable,
+      previewId:
+        typeof result?.preview_id === "string" ? result.preview_id : undefined,
     };
   }
   return null;
