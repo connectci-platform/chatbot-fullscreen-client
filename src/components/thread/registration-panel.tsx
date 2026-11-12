@@ -64,11 +64,14 @@ export function RegistrationDetails({
   busy,
   onConfirm,
   timeZone,
+  confirmElsewhere = false,
 }: {
   registration: Registration;
   busy: boolean;
   onConfirm: () => void;
   timeZone?: string;
+  /** The thread's confirm card holds this change, so no button here. */
+  confirmElsewhere?: boolean;
 }) {
   const { event, status, actionable } = registration;
   const isPreview = status === "preview";
@@ -125,7 +128,14 @@ export function RegistrationDetails({
         role="status"
         className="flex flex-col gap-4"
       >
-        {isPreview && actionable && (
+        {isPreview && actionable && confirmElsewhere && (
+          <div className="bg-muted rounded-md border p-4">
+            <p className="text-sm">
+              Confirm this change with the others in the chat.
+            </p>
+          </div>
+        )}
+        {isPreview && actionable && !confirmElsewhere && (
           <>
             <div className="bg-muted rounded-md border p-4">
               <p className="font-semibold">{outcome.title}</p>
@@ -188,8 +198,10 @@ export function RegistrationDetails({
 /** Opens the side panel when the conversation reaches a new registration step. */
 export function RegistrationPanel({
   onConfirm,
+  confirmElsewhere = false,
 }: {
   onConfirm: (message: string, blocks: ConfirmBlock[]) => void;
+  confirmElsewhere?: boolean;
 }) {
   const stream = useStreamContext();
   const registration = useMemo(
@@ -223,6 +235,7 @@ export function RegistrationPanel({
       <RegistrationDetails
         registration={registration}
         busy={stream.isLoading}
+        confirmElsewhere={confirmElsewhere}
         onConfirm={() =>
           onConfirm(
             confirmMessage(registration),

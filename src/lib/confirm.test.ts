@@ -32,8 +32,13 @@ describe("pendingPreviews", () => {
       tool("delete_event", { status: "preview", preview_id: ID_B }),
     ];
     expect(pendingPreviews(messages)).toEqual([
-      { previewId: ID_A, tool: "create_event", data: { title: "X" } },
-      { previewId: ID_B, tool: "delete_event", data: {} },
+      {
+        previewId: ID_A,
+        tool: "create_event",
+        data: { title: "X" },
+        noChanges: false,
+      },
+      { previewId: ID_B, tool: "delete_event", data: {}, noChanges: false },
     ]);
   });
 
@@ -53,6 +58,24 @@ describe("pendingPreviews", () => {
         tool("create_event", { status: "created", preview_id: ID_A }),
       ]),
     ).toEqual([]);
+  });
+});
+
+describe("no_changes", () => {
+  it("is read from data and from the top level", () => {
+    const got = pendingPreviews([
+      tool("update_announcement", {
+        status: "preview",
+        preview_id: ID_A,
+        data: { no_changes: true },
+      }),
+      tool("update_event", {
+        status: "preview",
+        preview_id: ID_B,
+        no_changes: true,
+      }),
+    ]);
+    expect(got.map((p) => p.noChanges)).toEqual([true, true]);
   });
 });
 

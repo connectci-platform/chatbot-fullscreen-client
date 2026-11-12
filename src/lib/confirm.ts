@@ -4,6 +4,8 @@ export interface Preview {
   previewId: string;
   tool: string;
   data: Record<string, unknown>;
+  /** Nothing would change, so there is nothing to confirm. */
+  noChanges: boolean;
 }
 
 export interface ConfirmBlock {
@@ -12,6 +14,13 @@ export interface ConfirmBlock {
 }
 
 const PREVIEW_ID = /^[0-9a-f]{32}$/;
+
+/** The most ids the agent accepts in one confirm. */
+export const MAX_CONFIRM_IDS = 10;
+
+export function isPreviewId(value: unknown): value is string {
+  return typeof value === "string" && PREVIEW_ID.test(value);
+}
 
 export const PREVIEW_TITLES: Record<string, string> = {
   register_for_event: "Register for this event",
@@ -67,10 +76,14 @@ export function pendingPreviews(messages: Message[]): Preview[] {
     if (message.type !== "tool") continue;
     const result = parse(message.content);
     const id = result?.preview_id;
-    if (result?.status !== "preview" || typeof id !== "string") continue;
-    if (!PREVIEW_ID.test(id)) continue;
+    if (result?.status !== "preview" || !isPreviewId(id)) continue;
     const data = result.data;
     previews.push({
+      noChanges:
+        result.no_changes === true ||
+        (!!data &&
+          typeof data === "object" &&
+          (data as Record<string, unknown>).no_changes === true),
       previewId: id,
       tool: message.name ?? "",
       data:
@@ -80,14 +93,6 @@ export function pendingPreviews(messages: Message[]): Preview[] {
     });
   }
   return previews;
-}
-
-/** Whether a message's content holds a confirm block. */
-export function hasConfirmBlock(content: Message["content"]): boolean {
-  return (
-    Array.isArray(content) &&
-    content.some((c) => (c as { type?: string }).type === "confirm")
-  );
 }
 
 export interface PreviewRow {

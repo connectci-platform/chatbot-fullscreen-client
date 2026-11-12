@@ -72,6 +72,21 @@ describe("RegistrationDetails", () => {
     expect(onConfirm).toHaveBeenCalledOnce();
   });
 
+  it("hides Confirm when the chat card holds the change", () => {
+    render(
+      <RegistrationDetails
+        registration={preview}
+        busy={false}
+        onConfirm={vi.fn()}
+        confirmElsewhere
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Confirm registration" }),
+    ).toBeNull();
+    expect(screen.getByText("Introduction to GPU Programming")).toBeTruthy();
+  });
+
   it("can't be confirmed while the assistant is working", () => {
     show(preview, true);
 
@@ -306,6 +321,18 @@ describe("RegistrationPanel", () => {
     expect(onConfirm).toHaveBeenCalledWith("Yes, please confirm.", [
       { type: "confirm", preview_ids: [id] },
     ]);
+  });
+
+  it("ignores a malformed preview id", () => {
+    const messages = toolMessages("preview");
+    const t = messages[1] as { content: string };
+    t.content = JSON.stringify({ ...JSON.parse(t.content), preview_id: "xyz" });
+    useMessages(messages);
+    render(tree());
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirm registration" }),
+    );
+    expect(onConfirm).toHaveBeenCalledWith("Yes, please confirm.", []);
   });
 
   it("closes when the conversation has no registration", () => {

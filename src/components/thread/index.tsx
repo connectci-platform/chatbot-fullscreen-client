@@ -572,7 +572,10 @@ export function Thread() {
                   <ConfirmCard
                     previews={cardPreviews}
                     busy={isLoading}
-                    onSend={(text, blocks) => submitMessage(text, blocks)}
+                    onSend={(text, blocks) => {
+                      submitMessage(text, blocks);
+                      focusComposer();
+                    }}
                   />
                 )}
                 <StoppedNote
@@ -770,6 +773,7 @@ export function Thread() {
       </div>
       <RegistrationPanel
         onConfirm={(text, blocks) => submitMessage(text, blocks)}
+        confirmElsewhere={cardPreviews.length > 0}
       />
       <SoftwareComparisonPanel />
       <ResourceComparisonPanel />

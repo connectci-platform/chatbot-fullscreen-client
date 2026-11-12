@@ -1,4 +1,5 @@
 import type { Message } from "@langchain/langgraph-sdk";
+import { isPreviewId } from "./confirm";
 
 const REGISTER_TOOL = "register_for_event";
 const CANCEL_TOOL = "cancel_registration";
@@ -140,8 +141,9 @@ export function latestRegistration(messages: Message[]): Registration | null {
       seatsRemaining: count(data?.seats_remaining),
       event: eventId ? findEvent(messages, eventId) : null,
       actionable: status === "preview" && actionable,
-      previewId:
-        typeof result?.preview_id === "string" ? result.preview_id : undefined,
+      previewId: isPreviewId(result?.preview_id)
+        ? result.preview_id
+        : undefined,
     };
   }
   return null;
