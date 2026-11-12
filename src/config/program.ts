@@ -24,6 +24,12 @@ export type ProgramConfig = {
    */
   siteUrl: string;
   /**
+   * The domains an answer's links may point to without showing their host.
+   * Each also covers its subdomains. Images in answers load only from this
+   * site's own origin.
+   */
+  trustedDomains: string[];
+  /**
    * The 1200x630 picture a link preview shows (Slack, Teams, email, social
    * sites), under public/programs/<id>/.
    */

@@ -18,6 +18,7 @@ export const access: ProgramConfig = {
   description:
     "Ask about ACCESS resources, allocations, software, training and usage, answered from ACCESS documentation and live data.",
   siteUrl: "https://qa.access-ci.org",
+  trustedDomains: ["access-ci.org"],
   shareImage: {
     src: "/programs/access/share.png",
     alt: "ACCESS Assistant: answers about ACCESS resources, allocations, software, training and usage.",
