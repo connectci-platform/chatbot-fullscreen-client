@@ -8,11 +8,16 @@
  * show where they go.
  */
 
-/** The lowercase host of an absolute http(s) link, or null for anything else. */
+/**
+ * The lowercase host of an absolute http(s) or protocol-relative link, or
+ * null for anything else.
+ */
 export function linkHost(href: string): string | null {
-  if (!/^https?:\/\//i.test(href)) return null;
+  const url = href.trim();
+  // A protocol-relative link ("//host/path") opens on another host too.
+  if (!/^(https?:)?\/\//i.test(url)) return null;
   try {
-    return new URL(href).hostname.toLowerCase();
+    return new URL(url, "https://x.invalid").hostname.toLowerCase();
   } catch {
     return null;
   }

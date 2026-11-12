@@ -261,6 +261,7 @@ describe("AnswerSources", () => {
     const link = screen.getByRole("link", { name: "Globus" });
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(container.textContent).toContain("Globus (www.globus.org)");
 
     expect(container.querySelector("img, script")).toBeNull();
     const image = screen.getByRole("link", { name: /Image: Ocean layout/ });

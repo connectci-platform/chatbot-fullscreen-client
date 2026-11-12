@@ -18,6 +18,11 @@ describe("linkHost", () => {
     expect(linkHost("https://аccess-ci.org/x")).toBe("xn--ccess-ci-06g.org");
   });
 
+  it("reads the host of a protocol-relative link", () => {
+    expect(linkHost("//evil.com/x")).toBe("evil.com");
+    expect(linkHost("  https://evil.com/x")).toBe("evil.com");
+  });
+
   it("has no host for mail, relative and in-page links", () => {
     expect(linkHost("mailto:help@access-ci.org")).toBeNull();
     expect(linkHost("/relative")).toBeNull();

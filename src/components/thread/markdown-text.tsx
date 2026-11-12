@@ -7,11 +7,10 @@ import remarkGfm from "remark-gfm";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
 import {
-  Children,
   FC,
   isValidElement,
   memo,
-  type ReactNode,
+  type ComponentProps,
   useMemo,
   useState,
 } from "react";
@@ -21,8 +20,8 @@ import { SyntaxHighlighter } from "@/components/thread/syntax-highlighter";
 import { TooltipIconButton } from "@/components/thread/tooltip-icon-button";
 import { cn } from "@/lib/utils";
 import { markdownBlocks } from "@/lib/markdown-blocks";
-import { program } from "@/config/program";
-import { isSameOriginSrc, isTrustedHost, linkHost } from "@/lib/link-trust";
+import { isSameOriginSrc, linkHost } from "@/lib/link-trust";
+import { OffsiteLink } from "./offsite-link";
 
 import "katex/dist/katex.min.css";
 
@@ -76,43 +75,19 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
  * anchors and mailto: links stay as they are.
  */
 function newTabProps(href: string | undefined) {
-  return href && /^https?:\/\//i.test(href)
+  return href && /^(https?:)?\/\//i.test(href)
     ? { target: "_blank", rel: "noopener noreferrer" }
     : {};
 }
 
-/** The text a link shows, so a host it already names isn't repeated. */
-function textOf(node: ReactNode): string {
-  return Children.toArray(node)
-    .map((child) =>
-      typeof child === "string" || typeof child === "number"
-        ? String(child)
-        : isValidElement<{ children?: ReactNode }>(child)
-          ? textOf(child.props.children)
-          : "",
-    )
-    .join("");
-}
-
 /**
- * The host of a link to a site outside the program's own, for showing after
- * it, or null when the link stays on the program's sites or already shows
- * where it goes. Answers can carry text a tool fetched or a user shared, and
- * a link built from it shouldn't pass as one of the program's own.
+ * The page's origin, for telling this site's images from another's. With no
+ * window (server rendering) no absolute URL counts as this site's, so only
+ * relative paths load there.
  */
-function offsiteHost(href: string | undefined, children: ReactNode) {
-  const host = href ? linkHost(href) : null;
-  if (!host || isTrustedHost(host, program.trustedDomains)) return null;
-  return textOf(children).toLowerCase().includes(host) ? null : host;
-}
-
-function HostLabel({ host }: { host: string }) {
-  return <span className="text-muted-foreground"> ({host})</span>;
-}
-
 function pageOrigin() {
   return typeof window === "undefined"
-    ? new URL(program.siteUrl).origin
+    ? "https://server-render.invalid"
     : window.location.origin;
 }
 
@@ -179,27 +154,20 @@ const defaultComponents: any = {
   ),
   a: ({
     className,
+    node: _node,
     ...props
-  }: {
-    className?: string;
-    href?: string;
-    children?: ReactNode;
-  }) => {
-    const host = offsiteHost(props.href, props.children);
-    return (
-      <>
-        <a
-          className={cn("font-medium", className)}
-          {...props}
-          {...newTabProps(props.href)}
-        />
-        {host && <HostLabel host={host} />}
-      </>
-    );
-  },
+  }: ComponentProps<"a"> & { node?: unknown }) => (
+    <OffsiteLink
+      className={cn("font-medium", className)}
+      {...props}
+      {...newTabProps(props.href)}
+    />
+  ),
   // An image is fetched as soon as the answer renders, so one from another
   // site could carry conversation data out with no click. Only this site's
-  // own images load; another site's becomes a link naming where it goes.
+  // own images load. Same-site paths must never redirect off-site (no open
+  // redirects, no remote patterns in next.config), or this check is moot.
+  // Another site's image becomes its alt text and the host it's from.
   img: ({ src, alt }: { src?: unknown; alt?: string }) => {
     const source = typeof src === "string" ? src : "";
     if (source && isSameOriginSrc(source, pageOrigin())) {
@@ -212,19 +180,15 @@ const defaultComponents: any = {
         />
       );
     }
+    // Plain text, not a link: the image may already sit inside one.
     const host = linkHost(source);
-    if (!host) return <>{alt}</>;
     return (
-      <>
-        <a
-          className="font-medium"
-          href={source}
-          {...newTabProps(source)}
-        >
-          {alt || "image"}
-        </a>
-        <HostLabel host={host} />
-      </>
+      <span>
+        {alt || "image"}
+        {host && (
+          <span className="text-muted-foreground"> (image from {host})</span>
+        )}
+      </span>
     );
   },
   blockquote: ({ className, ...props }: { className?: string }) => (
