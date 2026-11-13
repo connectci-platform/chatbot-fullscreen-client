@@ -95,6 +95,12 @@ describe("pendingPreviews", () => {
     }
   });
 
+  it("lists a preview id once", () => {
+    expect(pendingPreviews([staged, staged]).map((p) => p.previewId)).toEqual([
+      ID_A,
+    ]);
+  });
+
   it("shows only the newest turn's previews", () => {
     const newer = tool("delete_event", {
       status: "preview",

@@ -127,7 +127,9 @@ export function pendingPreviews(messages: Message[]): Preview[] {
     if (!preview) continue;
     if (newTurn) previews = [];
     newTurn = false;
-    previews.push(preview);
+    // Identical calls in one step share an id; the card shows it once.
+    if (!previews.some((p) => p.previewId === preview.previewId))
+      previews.push(preview);
   }
   return previews;
 }
