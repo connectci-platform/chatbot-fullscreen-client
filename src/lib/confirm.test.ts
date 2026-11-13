@@ -278,10 +278,82 @@ describe("htmlText", () => {
     expect(htmlText("2 < 3 and 5 > 4")).toBe("2 < 3 and 5 > 4");
   });
 
-  it("is used for card rows", () => {
-    expect(previewDetails({ body: "<p>Hi</p>" }).rows).toEqual([
+  it("is used for body and description rows, and only those", () => {
+    expect(
+      previewDetails({
+        body: "<p>Hi</p>",
+        description: "<b>Bold</b>",
+        title: "Use <b> tags",
+      }).rows,
+    ).toEqual([
       { label: "Body", value: "Hi" },
+      { label: "Description", value: "Bold" },
+      { label: "Title", value: "Use <b> tags" },
     ]);
+  });
+
+  it("is used for a body change", () => {
+    expect(
+      previewDetails({
+        changes: [{ field: "body", old: "<p>A</p>", new: "<p>B</p>" }],
+      }).rows,
+    ).toEqual([{ label: "Body", value: "A → B" }]);
+  });
+});
+
+describe("htmlText doesn't hide where a link goes", () => {
+  const evil = "https://evil.example";
+
+  it.each([
+    ["an unquoted href", `<a href=${evil}>the docs</a>`],
+    ["a slash before href", `<a/href="${evil}">the docs</a>`],
+    ["an unclosed link", `<a href="${evil}">the docs`],
+    [
+      "a quoted > in another attribute",
+      `<a title="a>b" href="${evil}">the docs</a>`,
+    ],
+  ])("with %s", (_, html) => {
+    expect(htmlText(html)).toBe(`the docs (${evil})`);
+  });
+
+  it("reads href from the link's own tag, not from text inside it", () => {
+    expect(
+      htmlText(
+        `<a href=${evil}><span title=' href="https://access-ci.org"'>the docs</span></a>`,
+      ),
+    ).toBe(`the docs (${evil})`);
+  });
+
+  it("uses the first href, as a browser does", () => {
+    expect(
+      htmlText(`<a href="${evil}" href="https://access-ci.org">x</a>`),
+    ).toBe(`x (${evil})`);
+  });
+
+  it("shows an entity-encoded target decoded", () => {
+    expect(htmlText('<a href="java&#115;cript:alert(1)">x</a>')).toBe(
+      "x (javascript:alert(1))",
+    );
+  });
+
+  it("shows what other tags load", () => {
+    expect(htmlText(`<img src=${evil}/t.png>`)).toBe(`[image: ${evil}/t.png]`);
+    expect(htmlText(`<iframe src="${evil}"></iframe>`)).toBe(
+      `[iframe: ${evil}]`,
+    );
+    expect(htmlText(`<form action="${evil}"><button>Go</button></form>`)).toBe(
+      `[form: ${evil}]Go`,
+    );
+  });
+
+  it("decodes entities once", () => {
+    expect(htmlText("<p>&amp;lt;b&amp;gt; &#60; &#x3e;</p>")).toBe(
+      "&lt;b&gt; < >",
+    );
+  });
+
+  it("drops comments, which a reader doesn't see", () => {
+    expect(htmlText("<p>A<!-- <a href='x'> -->B</p>")).toBe("AB");
   });
 });
 
