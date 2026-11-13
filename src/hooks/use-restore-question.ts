@@ -21,7 +21,8 @@ export function questionParts(
   return {
     text: content.map((b) => (b.type === "text" ? b.text : "")).join(""),
     blocks: content.filter(
-      (b) => b.type !== "text" && (keepConfirm || b.type !== "confirm"),
+      (b) =>
+        b.type !== "text" && (keepConfirm || (b.type as string) !== "confirm"),
     ),
   };
 }
