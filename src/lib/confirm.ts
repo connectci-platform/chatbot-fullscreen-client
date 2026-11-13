@@ -257,6 +257,20 @@ export function previewDetails(data: Record<string, unknown>): {
   const rows: PreviewRow[] = [];
   for (const [key, value] of Object.entries(data)) {
     if (HIDDEN.has(key)) continue;
+    // A time the user can read stands in for its UTC form: start_local for
+    // start_date, shown as "Start".
+    const local = key.match(/^(.*)_local$/)?.[1];
+    if (local && typeof value === "string" && value) {
+      rows.push({ label: humanize(local), value });
+      continue;
+    }
+    const dated = key.match(/^(.*)_date$/)?.[1];
+    if (
+      dated &&
+      typeof data[`${dated}_local`] === "string" &&
+      data[`${dated}_local`]
+    )
+      continue;
     if (key in FLAG_NOTES) {
       if (value === true) notes.push(FLAG_NOTES[key]);
       continue;

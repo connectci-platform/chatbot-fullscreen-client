@@ -278,3 +278,20 @@ describe("htmlText", () => {
     ]);
   });
 });
+
+describe("dates on the card", () => {
+  it("shows the local time in place of the UTC one", () => {
+    expect(
+      previewDetails({
+        title: "Office hours",
+        start_date: "2026-11-19T19:00:00Z",
+        start_local: "Thu, Nov 19, 2026, 1:00 PM CST",
+        end_date: "2026-11-19T20:00:00Z",
+      }).rows,
+    ).toEqual([
+      { label: "Title", value: "Office hours" },
+      { label: "Start", value: "Thu, Nov 19, 2026, 1:00 PM CST" },
+      { label: "End date", value: "2026-11-19T20:00:00Z" },
+    ]);
+  });
+});
