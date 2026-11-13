@@ -90,7 +90,13 @@ export function pendingPreviews(messages: Message[]): Preview[] {
     if (message.type !== "tool") continue;
     const result = parse(message.content);
     const id = result?.preview_id;
-    if (result?.status !== "preview" || !isPreviewId(id)) continue;
+    if (
+      result?.status !== "preview" ||
+      result.executed !== false ||
+      !isPreviewId(id) ||
+      !Object.hasOwn(PREVIEW_TITLES, message.name ?? "")
+    )
+      continue;
     const data = result.data;
     previews.push({
       noChanges:
