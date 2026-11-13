@@ -301,9 +301,11 @@ export function Thread() {
   });
 
   // The blocks came from this box, so they're the kind it holds.
-  const unansweredParts = () => {
+  const unansweredParts = ({ keepConfirm = false } = {}) => {
     if (!unanswered) return null;
-    const { text, blocks } = questionParts(unanswered.question);
+    const { text, blocks } = questionParts(unanswered.question, {
+      keepConfirm,
+    });
     return { text, blocks: blocks as unknown as typeof contentBlocks };
   };
 
@@ -315,7 +317,8 @@ export function Thread() {
 
   /** Asks the unanswered question again as a new run. */
   const retryQuestion = () => {
-    const parts = unansweredParts();
+    // Retry resends the same click, so a Confirm keeps its ids.
+    const parts = unansweredParts({ keepConfirm: true });
     if (!parts || unanswered?.wrote || awaitingCheck || retrying.current)
       return;
     retrying.current = true;
