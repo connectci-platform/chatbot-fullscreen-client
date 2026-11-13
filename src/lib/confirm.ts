@@ -182,8 +182,48 @@ function humanize(key: string): string {
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : key;
 }
 
+const ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  "#39": "'",
+  nbsp: " ",
+};
+
+/**
+ * HTML from a body field as the text a reader sees. A link keeps its target
+ * and an image its source, since the card is what the user approves.
+ */
+export function htmlText(html: string): string {
+  if (!/<\/?[a-z][^>]*>/i.test(html)) return html;
+  const attr = (tag: string, name: string) =>
+    new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i")
+      .exec(tag)
+      ?.slice(1)
+      .find((v) => v !== undefined);
+  return html
+    .replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, (tag, text: string) => {
+      const href = attr(tag, "href");
+      return href ? `${text} (${href})` : text;
+    })
+    .replace(/<img\b[^>]*>/gi, (tag) => {
+      const src = attr(tag, "src");
+      return src ? `[image: ${src}]` : "[image]";
+    })
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<\/(p|div|h[1-6]|ul|ol|blockquote)>/gi, "\n\n")
+    .replace(/<li\b[^>]*>/gi, "• ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (_, e: string) => ENTITIES[e])
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function scalar(value: unknown): string {
   if (value === null || value === undefined || value === "") return "none";
+  if (typeof value === "string") return htmlText(value);
   if (typeof value === "boolean") return value ? "yes" : "no";
   if (Array.isArray(value)) {
     return value.map(scalar).join(", ") || "none";

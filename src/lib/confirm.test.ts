@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   cardConfirms,
   confirmBlock,
+  htmlText,
   pendingPreviews,
   previewDetails,
   previewTitle,
@@ -246,5 +247,34 @@ describe("cardConfirms", () => {
 
   it("is false for a preview the card shows only as a note", () => {
     expect(cardConfirms(ID_A, [preview(ID_A, true)])).toBe(false);
+  });
+});
+
+describe("htmlText", () => {
+  it("shows a body's paragraphs as text", () => {
+    expect(htmlText("<p>One &amp; two.</p><p>Three<br>four</p>")).toBe(
+      "One & two.\n\nThree\nfour",
+    );
+  });
+
+  it("keeps a link's target and an image's source in view", () => {
+    expect(
+      htmlText('<p>See <a href="https://evil.example/x">the docs</a></p>'),
+    ).toBe("See the docs (https://evil.example/x)");
+    expect(htmlText("<img src='/a.png' alt='x'>")).toBe("[image: /a.png]");
+  });
+
+  it("lists items one per line", () => {
+    expect(htmlText("<ul><li>A</li><li>B</li></ul>")).toBe("• A\n• B");
+  });
+
+  it("leaves plain text alone", () => {
+    expect(htmlText("2 < 3 and 5 > 4")).toBe("2 < 3 and 5 > 4");
+  });
+
+  it("is used for card rows", () => {
+    expect(previewDetails({ body: "<p>Hi</p>" }).rows).toEqual([
+      { label: "Body", value: "Hi" },
+    ]);
   });
 });
