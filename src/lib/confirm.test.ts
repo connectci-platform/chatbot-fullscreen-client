@@ -53,16 +53,56 @@ describe("pendingPreviews", () => {
     ]);
   });
 
-  it("returns none once a human message follows", () => {
-    const messages = [
-      tool("create_event", {
-        status: "preview",
-        executed: false,
-        preview_id: ID_A,
-      }),
-      human,
-    ];
-    expect(pendingPreviews(messages)).toEqual([]);
+  const staged = tool("create_event", {
+    status: "preview",
+    executed: false,
+    preview_id: ID_A,
+  });
+  const ai: Message = { id: "a", type: "ai", content: "Click Confirm." };
+
+  it("keeps the card through a typed reply, which can't confirm it", () => {
+    const messages = [staged, ai, { ...human, content: "yes, post it" }, ai];
+    expect(pendingPreviews(messages).map((p) => p.previewId)).toEqual([ID_A]);
+  });
+
+  it("ends once the card is clicked", () => {
+    const click: Message = {
+      id: "c",
+      type: "human",
+      content: [
+        { type: "text", text: "Confirm" },
+        { type: "confirm", preview_ids: [ID_A] },
+      ] as unknown as Message["content"],
+    };
+    expect(pendingPreviews([staged, ai, click])).toEqual([]);
+  });
+
+  it("ends once the click comes back from the thread, ids out of band", () => {
+    const stored: Message = {
+      id: "c",
+      type: "human",
+      content: "Confirm",
+      additional_kwargs: { confirm: [ID_A] },
+    };
+    expect(pendingPreviews([staged, ai, stored, ai])).toEqual([]);
+  });
+
+  it("ends on Cancel, clicked or typed", () => {
+    for (const text of ["Cancel", " cancel. "]) {
+      const cancel: Message = { ...human, content: text };
+      expect(pendingPreviews([staged, ai, cancel, ai])).toEqual([]);
+    }
+  });
+
+  it("shows only the newest turn's previews", () => {
+    const newer = tool("delete_event", {
+      status: "preview",
+      executed: false,
+      preview_id: ID_B,
+    });
+    expect(
+      pendingPreviews([staged, ai, human, newer]).map((p) => p.previewId),
+    ).toEqual([ID_B]);
   });
 
   it("ignores content without a valid preview_id or preview status", () => {

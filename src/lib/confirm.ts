@@ -66,10 +66,6 @@ function parse(content: Message["content"]): Record<string, unknown> | null {
 }
 
 /**
- * Write-tool previews the user hasn't answered yet: the tool results after
- * the last human message that carry a preview_id, in order.
- */
-/**
  * Whether the card's Confirm covers this preview. A change with no preview id,
  * or one the card shows only as a note, isn't in what the card sends.
  */
@@ -83,36 +79,84 @@ export function cardConfirms(
   );
 }
 
+/**
+ * A human message that answers a card: a click on Confirm, or Cancel. A click
+ * carries a confirm block as sent; the agent stores it with the ids moved to
+ * additional_kwargs.confirm, which is how it reads back from the thread.
+ */
+function endsCard(message: Message): boolean {
+  const { content } = message;
+  const stored = (
+    message.additional_kwargs as { confirm?: unknown } | undefined
+  )?.confirm;
+  if (Array.isArray(stored) && stored.length > 0) return true;
+  if (
+    typeof content !== "string" &&
+    content.some((b) => (b.type as string) === "confirm")
+  )
+    return true;
+  const text =
+    typeof content === "string"
+      ? content
+      : content.map((b) => (b.type === "text" ? b.text : "")).join("");
+  return (
+    text
+      .trim()
+      .toLowerCase()
+      .replace(/[.!]+$/, "") === "cancel"
+  );
+}
+
+/**
+ * Write-tool previews the user hasn't answered yet: those of the newest turn
+ * that staged any, in order. They stay through typed replies, which can't
+ * confirm them, and end when the user clicks Confirm or Cancel, or a later
+ * turn stages its own. The agent keeps a preview claimable for a day; past
+ * that, Confirm tells the user it expired.
+ */
 export function pendingPreviews(messages: Message[]): Preview[] {
-  const lastHuman = messages.findLastIndex((m) => m.type === "human");
-  const previews: Preview[] = [];
-  for (const message of messages.slice(lastHuman + 1)) {
-    if (message.type !== "tool") continue;
-    const result = parse(message.content);
-    const id = result?.preview_id;
-    if (
-      result?.status !== "preview" ||
-      result.executed !== false ||
-      !isPreviewId(id) ||
-      !Object.hasOwn(PREVIEW_TITLES, message.name ?? "")
-    )
+  let previews: Preview[] = [];
+  let newTurn = true;
+  for (const message of messages) {
+    if (message.type === "human") {
+      if (endsCard(message)) previews = [];
+      newTurn = true;
       continue;
-    const data = result.data;
-    previews.push({
-      noChanges:
-        result.no_changes === true ||
-        (!!data &&
-          typeof data === "object" &&
-          (data as Record<string, unknown>).no_changes === true),
-      previewId: id,
-      tool: message.name ?? "",
-      data:
-        data && typeof data === "object" && !Array.isArray(data)
-          ? (data as Record<string, unknown>)
-          : {},
-    });
+    }
+    const preview = asPreview(message);
+    if (!preview) continue;
+    if (newTurn) previews = [];
+    newTurn = false;
+    previews.push(preview);
   }
   return previews;
+}
+
+function asPreview(message: Message): Preview | null {
+  if (message.type !== "tool") return null;
+  const result = parse(message.content);
+  const id = result?.preview_id;
+  if (
+    result?.status !== "preview" ||
+    result.executed !== false ||
+    !isPreviewId(id) ||
+    !Object.hasOwn(PREVIEW_TITLES, message.name ?? "")
+  )
+    return null;
+  const data = result.data;
+  return {
+    noChanges:
+      result.no_changes === true ||
+      (!!data &&
+        typeof data === "object" &&
+        (data as Record<string, unknown>).no_changes === true),
+    previewId: id,
+    tool: message.name ?? "",
+    data:
+      data && typeof data === "object" && !Array.isArray(data)
+        ? (data as Record<string, unknown>)
+        : {},
+  };
 }
 
 export interface PreviewRow {
