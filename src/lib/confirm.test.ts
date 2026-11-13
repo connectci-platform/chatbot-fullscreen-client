@@ -23,14 +23,24 @@ const human: Message = { id: "h", type: "human", content: "hi" };
 describe("pendingPreviews", () => {
   it("returns previews after the last human message, in order", () => {
     const messages = [
-      tool("create_event", { status: "preview", executed: false, preview_id: ID_B, data: {} }),
+      tool("create_event", {
+        status: "preview",
+        executed: false,
+        preview_id: ID_B,
+        data: {},
+      }),
       human,
       tool("create_event", {
-        status: "preview", executed: false,
+        status: "preview",
+        executed: false,
         preview_id: ID_A,
         data: { title: "X" },
       }),
-      tool("delete_event", { status: "preview", executed: false, preview_id: ID_B }),
+      tool("delete_event", {
+        status: "preview",
+        executed: false,
+        preview_id: ID_B,
+      }),
     ];
     expect(pendingPreviews(messages)).toEqual([
       {
@@ -45,7 +55,11 @@ describe("pendingPreviews", () => {
 
   it("returns none once a human message follows", () => {
     const messages = [
-      tool("create_event", { status: "preview", executed: false, preview_id: ID_A }),
+      tool("create_event", {
+        status: "preview",
+        executed: false,
+        preview_id: ID_A,
+      }),
       human,
     ];
     expect(pendingPreviews(messages)).toEqual([]);
@@ -55,7 +69,11 @@ describe("pendingPreviews", () => {
     expect(
       pendingPreviews([
         tool("create_event", { status: "preview", executed: false, data: {} }),
-        tool("create_event", { status: "preview", executed: false, preview_id: "nope" }),
+        tool("create_event", {
+          status: "preview",
+          executed: false,
+          preview_id: "nope",
+        }),
         tool("create_event", { status: "created", preview_id: ID_A }),
       ]),
     ).toEqual([]);
@@ -93,12 +111,14 @@ describe("no_changes", () => {
   it("is read from data and from the top level", () => {
     const got = pendingPreviews([
       tool("update_announcement", {
-        status: "preview", executed: false,
+        status: "preview",
+        executed: false,
         preview_id: ID_A,
         data: { no_changes: true },
       }),
       tool("update_event", {
-        status: "preview", executed: false,
+        status: "preview",
+        executed: false,
         preview_id: ID_B,
         no_changes: true,
       }),
