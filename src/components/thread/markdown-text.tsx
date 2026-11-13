@@ -6,13 +6,22 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
-import { FC, isValidElement, memo, useMemo, useState } from "react";
+import {
+  FC,
+  isValidElement,
+  memo,
+  type ComponentProps,
+  useMemo,
+  useState,
+} from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { SyntaxHighlighter } from "@/components/thread/syntax-highlighter";
 
 import { TooltipIconButton } from "@/components/thread/tooltip-icon-button";
 import { cn } from "@/lib/utils";
 import { markdownBlocks } from "@/lib/markdown-blocks";
+import { isSameOriginSrc, linkHost } from "@/lib/link-trust";
+import { OffsiteLink } from "./offsite-link";
 
 import "katex/dist/katex.min.css";
 
@@ -66,9 +75,20 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
  * anchors and mailto: links stay as they are.
  */
 function newTabProps(href: string | undefined) {
-  return href && /^https?:\/\//i.test(href)
+  return href && /^(https?:)?\/\//i.test(href)
     ? { target: "_blank", rel: "noopener noreferrer" }
     : {};
+}
+
+/**
+ * The page's origin, for telling this site's images from another's. With no
+ * window (server rendering) no absolute URL counts as this site's, so only
+ * relative paths load there.
+ */
+function pageOrigin() {
+  return typeof window === "undefined"
+    ? "https://server-render.invalid"
+    : window.location.origin;
 }
 
 const defaultComponents: any = {
@@ -132,13 +152,45 @@ const defaultComponents: any = {
       {...props}
     />
   ),
-  a: ({ className, ...props }: { className?: string; href?: string }) => (
-    <a
+  a: ({
+    className,
+    node: _node,
+    ...props
+  }: ComponentProps<"a"> & { node?: unknown }) => (
+    <OffsiteLink
       className={cn("font-medium", className)}
       {...props}
       {...newTabProps(props.href)}
     />
   ),
+  // An image is fetched as soon as the answer renders, so one from another
+  // site could carry conversation data out with no click. Only this site's
+  // own images load. Same-site paths must never redirect off-site (no open
+  // redirects, no remote patterns in next.config), or this check is moot.
+  // Another site's image becomes its alt text and the host it's from.
+  img: ({ src, alt }: { src?: unknown; alt?: string }) => {
+    const source = typeof src === "string" ? src : "";
+    if (source && isSameOriginSrc(source, pageOrigin())) {
+      return (
+        <img
+          src={source}
+          alt={alt ?? ""}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+        />
+      );
+    }
+    // Plain text, not a link: the image may already sit inside one.
+    const host = linkHost(source);
+    return (
+      <span>
+        {alt || "image"}
+        {host && (
+          <span className="text-muted-foreground"> (image from {host})</span>
+        )}
+      </span>
+    );
+  },
   blockquote: ({ className, ...props }: { className?: string }) => (
     <blockquote
       className={cn("border-l-2 pl-6 italic", className)}

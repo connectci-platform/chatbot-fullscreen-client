@@ -18,6 +18,7 @@ import {
 } from "@/lib/answer-sources";
 import { useStreamContext } from "@/providers/Stream";
 import { useArtifact } from "./artifact";
+import { OffsiteLink } from "./offsite-link";
 import { MarkdownText } from "./markdown-text";
 
 type HeadingProps = ComponentProps<"h4"> & { node?: unknown };
@@ -53,7 +54,7 @@ const PASSAGE_COMPONENTS: Components = {
     ]),
   ),
   a: ({ node: _node, ...props }: ComponentProps<"a"> & { node?: unknown }) => (
-    <a
+    <OffsiteLink
       {...props}
       target="_blank"
       rel="noopener noreferrer"
