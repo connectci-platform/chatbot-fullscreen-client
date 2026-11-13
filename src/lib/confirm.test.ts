@@ -176,6 +176,17 @@ describe("previewDetails", () => {
   });
 });
 
+describe("dates_incomplete", () => {
+  it("is a note, not a row", () => {
+    const { notes, rows } = previewDetails({
+      title: "Office Hours",
+      dates_incomplete: true,
+    });
+    expect(notes).toEqual(["Not all of this series' dates could be loaded."]);
+    expect(rows).toEqual([{ label: "Title", value: "Office Hours" }]);
+  });
+});
+
 describe("cardConfirms", () => {
   const preview = (previewId: string, noChanges = false) => ({
     previewId,
