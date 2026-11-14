@@ -118,4 +118,28 @@ describe("useStoredImage", () => {
     const second = renderHook(() => useStoredImage("t1", id));
     await waitFor(() => expect(second.result.current.src).toBeDefined());
   });
+
+  it("holds only the latest 30 images, and fetches an evicted one again", async () => {
+    get.mockImplementation(async () =>
+      payload({ mime_type: "image/png", base64: PNG }),
+    );
+    const ids = Array.from({ length: 31 }, nextId);
+    for (const id of ids) {
+      const { result, unmount } = renderHook(() => useStoredImage("t1", id));
+      await waitFor(() => expect(result.current.src).toBeDefined());
+      unmount();
+    }
+    expect(get).toHaveBeenCalledTimes(31);
+
+    // The newest is still held, and costs no fetch.
+    const newest = renderHook(() => useStoredImage("t1", ids[30]));
+    expect(newest.result.current.src).toBeDefined();
+    expect(get).toHaveBeenCalledTimes(31);
+
+    // The oldest was evicted from both maps: no first-render image, and a fetch.
+    const oldest = renderHook(() => useStoredImage("t1", ids[0]));
+    expect(oldest.result.current).toEqual({ missing: false });
+    await waitFor(() => expect(oldest.result.current.src).toBeDefined());
+    expect(get).toHaveBeenCalledTimes(32);
+  });
 });

@@ -14,11 +14,29 @@ export type StoredImage = { src?: string; missing: boolean; failed?: boolean };
 const SHOWN_TYPES = new Set(["image/png", "image/jpeg"]);
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
-// For the page's life, so scrolling and re-renders don't fetch again. A
-// failure isn't kept, so the next mount tries again; a 404 is.
+// Recently used, so scrolling and re-renders don't fetch again. A failure
+// isn't kept, so the next mount tries again; a 404 is. Images are data URLs of
+// up to several MB, so only the latest few are held, oldest used out first.
+const MAX_CACHED = 30;
 const loaded = new Map<string, Promise<StoredImage>>();
 // Loaded images, so a remount shows one on its first render.
 const settled = new Map<string, StoredImage>();
+
+/** Marks a key as just used, and drops the least recently used past the cap. */
+function remember(key: string, pending: Promise<StoredImage>) {
+  loaded.delete(key);
+  loaded.set(key, pending);
+  const image = settled.get(key);
+  if (image) {
+    settled.delete(key);
+    settled.set(key, image);
+  }
+  while (loaded.size > MAX_CACHED) {
+    const oldest = loaded.keys().next().value as string;
+    loaded.delete(oldest);
+    settled.delete(oldest);
+  }
+}
 
 async function fetchImage(
   apiUrl: string,
@@ -54,10 +72,13 @@ function loadImage(
 ): Promise<StoredImage> {
   const key = `${threadId}/${attachmentId}`;
   let pending = loaded.get(key);
-  if (!pending) {
+  if (pending) {
+    remember(key, pending);
+  } else {
     pending = fetchImage(apiUrl, threadId, attachmentId).then(
       (image) => {
-        if (image.src) settled.set(key, image);
+        // Not if it was evicted while it loaded.
+        if (image.src && loaded.get(key) === pending) settled.set(key, image);
         return image;
       },
       () => {
@@ -65,7 +86,7 @@ function loadImage(
         return { missing: false, failed: true };
       },
     );
-    loaded.set(key, pending);
+    remember(key, pending);
   }
   return pending;
 }
