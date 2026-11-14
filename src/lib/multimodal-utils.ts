@@ -76,12 +76,7 @@ export async function fileToContentBlock(
   }
 
   if (kind === "image") {
-    const { data, mimeType } = await resizeImage(
-      file,
-      undefined,
-      undefined,
-      limits.maxImageBytes,
-    );
+    const { data, mimeType } = await resizeImage(file);
     return { type: "image", mimeType, data, metadata: { name: file.name } };
   }
 

@@ -79,12 +79,7 @@ describe("resizeImage", () => {
       ["a.jpg", "image/jpeg"],
     ]) {
       const { canvas } = setup(1200, 900);
-      const out = await resizeImage(
-        new File(["hello"], name, { type }),
-        1600,
-        2_000_000,
-        10_000,
-      );
+      const out = await resizeImage(new File(["hello"], name, { type }));
       expect(out).toEqual({ data: btoa("hello"), mimeType: type });
       expect(canvas.toDataURL).not.toHaveBeenCalled();
     }
@@ -105,11 +100,26 @@ describe("resizeImage", () => {
     expect(canvas.toDataURL).not.toHaveBeenCalledWith("image/png");
   });
 
-  it("re-encodes a PNG over the byte limit even within the dimension limit", async () => {
+  it("re-encodes a PNG over 2 MB even within the dimension limit", async () => {
     setup(1000, 1000);
-    const out = await resizeImage(file, 1600, 2_000_000, 0);
-    expect(out.mimeType).toBe("image/png");
-    expect(out.data).toBe("A".repeat(100));
+    const big = new File([new Uint8Array(3_000_000)], "big.png", {
+      type: "image/png",
+    });
+    const out = await resizeImage(big);
+    expect(out).toEqual({ data: "A".repeat(100), mimeType: "image/png" });
+  });
+
+  it("keeps the original when the re-encode comes out bigger", async () => {
+    const big = new File([new Uint8Array(3_000_000)], "big.jpg", {
+      type: "image/jpeg",
+    });
+    const { canvas } = setup(1000, 1000);
+    canvas.toDataURL.mockImplementation(
+      () => `data:image/jpeg;base64,${"A".repeat(5_000_000)}`,
+    );
+    const out = await resizeImage(big);
+    expect(out.mimeType).toBe("image/jpeg");
+    expect(out.data.length).toBe(4_000_000);
   });
 
   it("re-encodes a GIF or WebP, since only PNG and JPEG go out", async () => {
