@@ -127,7 +127,88 @@ function image(name: string, content = name) {
   return new File([content], name, { type: "image/png" });
 }
 
+describe("files still being added", () => {
+  it("counts a file as pending until it has been processed", async () => {
+    auth.status = "signed_out";
+    const { result } = renderHook(() => useFileUpload());
+    expect(result.current.pending).toBe(0);
+    let done: Promise<void>;
+    act(() => {
+      done = result.current.acceptFiles([image("a.png"), image("b.png")]);
+    });
+    expect(result.current.pending).toBe(2);
+    await act(async () => {
+      await done;
+    });
+    expect(result.current.pending).toBe(0);
+    expect(result.current.contentBlocks).toHaveLength(2);
+  });
+
+  it("stops counting a file that was refused", async () => {
+    auth.status = "signed_out";
+    const { result } = renderHook(() => useFileUpload());
+    await act(async () => {
+      await result.current.acceptFiles([
+        new File(["x"], "a.exe", { type: "application/x-msdownload" }),
+      ]);
+    });
+    expect(result.current.pending).toBe(0);
+  });
+});
+
+describe("addBlocks", () => {
+  it("applies the byte limit, as acceptFiles does", () => {
+    auth.status = "signed_out";
+    const { result } = renderHook(() => useFileUpload());
+    const big = (name: string, bytes: number, fill: string) => ({
+      type: "file" as const,
+      mimeType: "application/pdf" as const,
+      data: fill.repeat(Math.ceil((bytes * 4) / 3)),
+      metadata: { filename: name },
+    });
+    act(() => {
+      result.current.addBlocks([
+        big("a.pdf", 5 * MB, "A"),
+        big("b.pdf", 5 * MB, "B"),
+      ]);
+    });
+    expect(result.current.contentBlocks).toHaveLength(1);
+    expect(toast.error).toHaveBeenCalledWith(
+      "b.pdf would take this message over 8 MB. Remove a file or sign in to share up to 20 MB.",
+    );
+  });
+
+  it("lets references in at no cost", () => {
+    auth.status = "signed_out";
+    const { result } = renderHook(() => useFileUpload());
+    act(() => {
+      result.current.addBlocks([
+        { type: "attachment", id: "a".repeat(32) },
+        { type: "attachment", id: "b".repeat(32) },
+      ]);
+    });
+    expect(result.current.contentBlocks).toHaveLength(2);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
 describe("acceptFiles", () => {
+  it("says so when overlapping intakes leave no room for a file", async () => {
+    auth.status = "signed_out";
+    const { result } = renderHook(() => useFileUpload());
+    await act(async () => {
+      await Promise.all([
+        result.current.acceptFiles([image("a.png")]),
+        result.current.acceptFiles([image("b.png")]),
+        result.current.acceptFiles([image("c.png")]),
+      ]);
+    });
+    expect(result.current.contentBlocks).toHaveLength(2);
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining("You can share up to 2 files"),
+    );
+  });
+
   it("refuses the third file for an anonymous user", async () => {
     auth.status = "signed_out";
     const { result } = renderHook(() => useFileUpload());

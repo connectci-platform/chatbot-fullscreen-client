@@ -57,7 +57,6 @@ import { TurnstileChallengePanel } from "./turnstile-challenge";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useQuestionHistory } from "@/hooks/use-question-history";
 import { SidePanel } from "./side-panel";
-import { Label } from "../ui/label";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { UPLOAD_ACCEPT } from "@/config/uploads";
 import { useInitialQuestion } from "@/hooks/use-initial-question";
@@ -86,6 +85,7 @@ export function Thread() {
   const [threadId, _setThreadId] = useQueryState("threadId");
   const [chatHistoryOpen] = useConversationsOpen();
   const [input, setInput] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
   const composerRef = useAutoGrow<HTMLTextAreaElement>(input);
   const {
     contentBlocks,
@@ -97,6 +97,7 @@ export function Thread() {
     addBlocks,
     dragOver,
     handlePaste,
+    pending: filesPending,
   } = useFileUpload({ enabled: program.features.fileUploads });
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
   // Office hours sit in the empty screen's bottom-left corner on wide screens
@@ -300,7 +301,8 @@ export function Thread() {
     if (
       (input.trim().length === 0 && contentBlocks.length === 0) ||
       isLoading ||
-      awaitingCheck
+      awaitingCheck ||
+      filesPending > 0
     )
       return;
     submitMessage(input, contentBlocks, {
@@ -685,16 +687,20 @@ export function Thread() {
                       <div className="flex items-end">
                         {program.features.fileUploads && (
                           <>
-                            <Label
-                              htmlFor="file-input"
-                              className="flex size-11 shrink-0 cursor-pointer items-center justify-center"
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              aria-label="Attach an image, PDF, or text file"
+                              onClick={() => fileInput.current?.click()}
+                              className="size-11 shrink-0 rounded-none border-2 border-transparent focus-visible:border-[#232323]"
                             >
-                              <Plus className="size-5 text-gray-600" />
-                              <span className="sr-only">
-                                Upload PDF or Image
-                              </span>
-                            </Label>
+                              <Plus
+                                aria-hidden
+                                className="size-5 text-gray-600"
+                              />
+                            </Button>
                             <input
+                              ref={fileInput}
                               id="file-input"
                               type="file"
                               onChange={handleFileUpload}
@@ -757,6 +763,7 @@ export function Thread() {
                             disabled={
                               isLoading ||
                               awaitingCheck ||
+                              filesPending > 0 ||
                               (!input.trim() && contentBlocks.length === 0)
                             }
                           >
@@ -767,6 +774,12 @@ export function Thread() {
                           </Button>
                         )}
                       </div>
+                      <p
+                        role="status"
+                        className="text-muted-foreground px-3 pb-2 text-sm empty:hidden"
+                      >
+                        {filesPending > 0 ? "Adding file…" : ""}
+                      </p>
                     </form>
                   </div>
                   <ChatDisclaimer

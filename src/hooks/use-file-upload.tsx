@@ -12,6 +12,7 @@ import {
   ANONYMOUS_LIMITS,
   SIGNED_IN_LIMITS,
   formatLimit,
+  type UploadLimits,
 } from "@/config/uploads";
 import { useAuthStatus } from "@/hooks/use-agent-auth";
 import { fileKind, fileToContentBlock } from "@/lib/multimodal-utils";
@@ -38,6 +39,23 @@ function blockBytes(b: UploadBlock): number {
   return b.type === "attachment" ? 0 : base64Bytes(b.data);
 }
 
+function tooManyMessage(limits: UploadLimits, signedIn: boolean): string {
+  return signedIn
+    ? `You can share up to ${limits.maxFiles} files in one message.`
+    : `You can share up to ${limits.maxFiles} files in one message. Sign in to share up to ${SIGNED_IN_LIMITS.maxFiles}.`;
+}
+
+function overBytesText(
+  name: string,
+  limits: UploadLimits,
+  signedIn: boolean,
+): string {
+  const over = `${name} would take this message over ${formatLimit(limits.maxTotalBytes)}.`;
+  return signedIn
+    ? over
+    : `${over} Remove a file or sign in to share up to ${formatLimit(SIGNED_IN_LIMITS.maxTotalBytes)}.`;
+}
+
 export function useFileUpload({
   initialBlocks = [],
   enabled = true,
@@ -61,13 +79,11 @@ export function useFileUpload({
   const signedIn = useAuthStatus() === "signed_in";
   const limits = signedIn ? SIGNED_IN_LIMITS : ANONYMOUS_LIMITS;
 
-  const tooManyFilesMessage = () =>
-    signedIn
-      ? `You can share up to ${limits.maxFiles} files in one message.`
-      : `You can share up to ${limits.maxFiles} files in one message. Sign in to share up to ${SIGNED_IN_LIMITS.maxFiles}.`;
+  // Files still being read or resized, so Send can wait for them instead of
+  // going out without a file that lands in the next message.
+  const [pending, setPending] = useState(0);
 
-  /** The one intake for the picker, drop and paste. */
-  const acceptFiles = useCallback(
+  const intake = useCallback(
     async (files: File[]): Promise<void> => {
       for (const file of files) {
         const current = blocksRef.current;
@@ -79,7 +95,7 @@ export function useFileUpload({
           continue;
         }
         if (current.length >= limits.maxFiles) {
-          toast.error(tooManyFilesMessage());
+          toast.error(tooManyMessage(limits, signedIn));
           break;
         }
         let block: ImageBlock | FileBlock;
@@ -109,18 +125,30 @@ export function useFileUpload({
         }
         const used = blocksRef.current.reduce((n, b) => n + blockBytes(b), 0);
         if (used + blockBytes(block) > limits.maxTotalBytes) {
-          toast.error(
-            signedIn
-              ? `${file.name} would take this message over ${formatLimit(limits.maxTotalBytes)}.`
-              : `${file.name} would take this message over ${formatLimit(limits.maxTotalBytes)}. Remove a file or sign in to share up to ${formatLimit(SIGNED_IN_LIMITS.maxTotalBytes)}.`,
-          );
+          toast.error(overBytesText(file.name, limits, signedIn));
           continue;
         }
-        if (blocksRef.current.length >= limits.maxFiles) continue;
+        if (blocksRef.current.length >= limits.maxFiles) {
+          toast.error(tooManyMessage(limits, signedIn));
+          break;
+        }
         setContentBlocks((prev) => [...prev, block]);
       }
     },
     [limits, signedIn, setContentBlocks],
+  );
+
+  /** The one intake for the picker, drop and paste. */
+  const acceptFiles = useCallback(
+    async (files: File[]): Promise<void> => {
+      setPending((n) => n + files.length);
+      try {
+        await intake(files);
+      } finally {
+        setPending((n) => n - files.length);
+      }
+    },
+    [intake],
   );
 
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -240,16 +268,28 @@ export function useFileUpload({
         ? a.type === b.type && (a as ResendRef).id === (b as ResendRef).id
         : a.mimeType === b.mimeType && a.data === b.data;
     let leftOut = false;
+    let used = next.reduce((n, b) => n + blockBytes(b), 0);
     for (const block of blocks) {
       if (next.some((b) => same(b, block))) continue;
       if (next.length >= limits.maxFiles) {
         leftOut = true;
         break;
       }
+      if (used + blockBytes(block) > limits.maxTotalBytes) {
+        const name =
+          block.type === "attachment"
+            ? "That file"
+            : "filename" in block.metadata
+              ? block.metadata.filename
+              : block.metadata.name;
+        toast.error(overBytesText(name, limits, signedIn));
+        continue;
+      }
+      used += blockBytes(block);
       next.push(block);
     }
     if (next.length !== blocksRef.current.length) setContentBlocks(next);
-    if (leftOut) toast.error(tooManyFilesMessage());
+    if (leftOut) toast.error(tooManyMessage(limits, signedIn));
   };
 
   const resetBlocks = () => setContentBlocks([]);
@@ -295,5 +335,6 @@ export function useFileUpload({
     dragOver,
     handlePaste,
     acceptFiles,
+    pending,
   };
 }
