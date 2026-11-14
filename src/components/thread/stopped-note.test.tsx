@@ -3,6 +3,7 @@ import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "@langchain/langgraph-sdk";
 import { StreamError } from "@langchain/langgraph-sdk/ui";
+import { toast } from "sonner";
 import { Thread } from "./index";
 
 const question: Message = {
@@ -32,6 +33,7 @@ vi.mock("@/providers/Stream", () => ({
     failChallenge: vi.fn(),
   }),
 }));
+vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 vi.mock("./history", () => ({ default: () => null }));
 vi.mock("./artifact", () => ({
   useArtifact: () => [null, vi.fn()],
@@ -448,5 +450,109 @@ describe("the Stopped note", () => {
     renderThread();
     expect(note()).toBeTruthy();
     expect(screen.queryByText(/A change may already/)).toBeNull();
+  });
+});
+
+describe("files in a question that Edit and Retry bring back", () => {
+  const idA = "a".repeat(32);
+  const idB = "b".repeat(32);
+  const idC = "c".repeat(32);
+  const ref = (id: string, name: string) => ({
+    type: "attachment",
+    id,
+    kind: "pdf",
+    name,
+    size: 10,
+    pages: 1,
+  });
+  const withFiles = (...files: unknown[]): Message =>
+    ({
+      id: "q-1",
+      type: "human",
+      content: [{ type: "text", text: "Read these" }, ...files],
+    }) as Message;
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    stream.isLoading = false;
+    stream.error = undefined;
+    stream.stopped = true;
+    stream.submit.mockClear();
+    vi.mocked(toast.error).mockClear();
+  });
+
+  it("Edit twice shows each file once", () => {
+    stream.messages = [withFiles(ref(idA, "a.pdf"), ref(idB, "b.pdf"))];
+    renderThread();
+    const edit = screen.getByRole("button", { name: "Edit question" });
+    fireEvent.click(edit);
+    fireEvent.click(edit);
+    expect(
+      screen.getAllByRole("button", { name: "Remove a.pdf" }),
+    ).toHaveLength(1);
+    expect(
+      screen.getAllByRole("button", { name: "Remove b.pdf" }),
+    ).toHaveLength(1);
+  });
+
+  it("Edit keeps to the file limit and says so", () => {
+    stream.messages = [
+      withFiles(ref(idA, "a.pdf"), ref(idB, "b.pdf"), ref(idC, "c.pdf")),
+    ];
+    renderThread();
+    fireEvent.click(screen.getByRole("button", { name: "Edit question" }));
+    expect(screen.getByRole("button", { name: "Remove a.pdf" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Remove b.pdf" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Remove c.pdf" })).toBeNull();
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining("up to 2 files"),
+    );
+  });
+
+  it("starting a new chat drops Edit's references but not picked files", async () => {
+    stream.messages = [withFiles(ref(idA, "a.pdf"))];
+    const { container, rerender } = renderThread();
+    fireEvent.click(screen.getByRole("button", { name: "Edit question" }));
+    expect(screen.getByRole("button", { name: "Remove a.pdf" })).toBeTruthy();
+    const picked = new File(["hi"], "mine.txt", { type: "text/plain" });
+    const input = container.querySelector("#file-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [picked] } });
+    expect(await screen.findByText("mine.txt")).toBeTruthy();
+
+    stream.messages = [];
+    stream.stopped = false;
+    rerender(
+      <NuqsTestingAdapter searchParams="?threadId=t-2">
+        <Thread />
+      </NuqsTestingAdapter>,
+    );
+    expect(screen.queryByRole("button", { name: "Remove a.pdf" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Remove mine.txt" }),
+    ).toBeTruthy();
+  });
+
+  it("Retry resends a file that was never stored, not only references", () => {
+    const raw = {
+      type: "image",
+      mimeType: "image/png",
+      data: "iVBORw0KGgo=",
+      metadata: { name: "shot.png" },
+    };
+    stream.messages = [withFiles(raw)];
+    renderThread();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    const [values] = stream.submit.mock.calls[0];
+    expect(values.messages.at(-1).content).toEqual([
+      { type: "text", text: "Read these" },
+      raw,
+    ]);
   });
 });

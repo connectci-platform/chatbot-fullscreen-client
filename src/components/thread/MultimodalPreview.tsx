@@ -3,6 +3,9 @@ import { File, X as XIcon } from "lucide-react";
 import { ContentBlock } from "@langchain/core/messages";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import { FileChip } from "./FileChip";
+import { base64Bytes, fileDetail } from "@/lib/upload-blocks";
+
 export interface MultimodalPreviewProps {
   block: ContentBlock.Multimodal.Data;
   removable?: boolean;
@@ -51,42 +54,28 @@ export const MultimodalPreview: React.FC<MultimodalPreviewProps> = ({
     );
   }
 
-  // PDF block
-  if (block.type === "file" && block.mimeType === "application/pdf") {
+  // A PDF or text file
+  if (
+    block.type === "file" &&
+    (block.mimeType === "application/pdf" || block.mimeType === "text/plain")
+  ) {
     const filename =
-      block.metadata?.filename || block.metadata?.name || "PDF file";
+      block.metadata?.filename ||
+      block.metadata?.name ||
+      (block.mimeType === "application/pdf" ? "PDF file" : "Text file");
     return (
-      <div
-        className={cn(
-          "relative flex items-start gap-2 rounded-md border bg-gray-100 px-3 py-2",
-          className,
-        )}
-      >
-        <div className="flex flex-shrink-0 flex-col items-start justify-start">
-          <File
-            className={cn(
-              "text-teal-700",
-              size === "sm" ? "h-5 w-5" : "h-7 w-7",
-            )}
-          />
-        </div>
-        <span
-          className={cn("min-w-0 flex-1 text-sm break-all text-gray-800")}
-          style={{ wordBreak: "break-all", whiteSpace: "pre-wrap" }}
-        >
-          {String(filename)}
-        </span>
-        {removable && (
-          <button
-            type="button"
-            className="ml-2 self-start rounded-full bg-gray-200 p-1 text-teal-700 hover:bg-gray-300"
-            onClick={onRemove}
-            aria-label="Remove PDF"
-          >
-            <XIcon className="h-4 w-4" />
-          </button>
-        )}
-      </div>
+      <FileChip
+        name={String(filename)}
+        detail={
+          typeof block.data === "string"
+            ? fileDetail({ size: base64Bytes(block.data) })
+            : undefined
+        }
+        removable={removable}
+        onRemove={onRemove}
+        size={size}
+        className={className}
+      />
     );
   }
 

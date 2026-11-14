@@ -13,23 +13,33 @@ const question = {
 function setup(initial: {
   failed: boolean;
   input?: string;
+  blocks?: unknown[];
   question?: Message | null;
 }) {
   const setInput = vi.fn();
   const setBlocks = vi.fn();
+  const registerResendGuard = vi.fn();
   const hook = renderHook(
-    (props: { failed: boolean; input: string }) =>
+    (props: { failed: boolean; input: string; blocks?: unknown[] }) =>
       useRestoreQuestion({
         failed: props.failed,
         input: props.input,
+        blocks: props.blocks ?? [image],
+        registerResendGuard,
         getQuestion: () =>
           initial.question === undefined ? question : initial.question,
         setInput,
         setBlocks,
       }),
-    { initialProps: { failed: initial.failed, input: initial.input ?? "" } },
+    {
+      initialProps: {
+        failed: initial.failed,
+        input: initial.input ?? "",
+        blocks: initial.blocks,
+      } as { failed: boolean; input: string; blocks?: unknown[] },
+    },
   );
-  return { ...hook, setInput, setBlocks };
+  return { ...hook, setInput, setBlocks, registerResendGuard };
 }
 
 const applied = <T>(setter: ReturnType<typeof vi.fn>, previous: T) =>
@@ -79,7 +89,7 @@ describe("useRestoreQuestion", () => {
     setInput.mockClear();
     setBlocks.mockClear();
 
-    rerender({ failed: false, input: "hello" });
+    rerender({ failed: false, input: "hello", blocks: [image] });
 
     expect(setInput).toHaveBeenCalledWith("");
     expect(setBlocks).toHaveBeenCalledWith([]);
@@ -102,6 +112,50 @@ describe("useRestoreQuestion", () => {
     rerender({ failed: true, input: "" });
 
     expect(setInput).toHaveBeenCalledOnce();
+  });
+});
+
+describe("resend guard", () => {
+  const guardOf = (spy: ReturnType<typeof vi.fn>) =>
+    spy.mock.calls.at(-1)?.[0] as (() => boolean) | null;
+
+  it("allows a sign-in's resend while the box holds what was put back", () => {
+    const { rerender, registerResendGuard } = setup({ failed: true });
+    rerender({ failed: true, input: "hello", blocks: [image] });
+    expect(guardOf(registerResendGuard)?.()).toBe(true);
+  });
+
+  it("refuses it once the text has changed", () => {
+    const { rerender, registerResendGuard } = setup({ failed: true });
+    rerender({ failed: true, input: "hello there", blocks: [image] });
+    expect(guardOf(registerResendGuard)?.()).toBe(false);
+  });
+
+  it("refuses it once a file has been removed", () => {
+    const { rerender, registerResendGuard } = setup({ failed: true });
+    rerender({ failed: true, input: "hello", blocks: [] });
+    expect(guardOf(registerResendGuard)?.()).toBe(false);
+  });
+
+  it("refuses it when the box held other files and the question's were not put back", () => {
+    const { registerResendGuard } = setup({
+      failed: true,
+      input: "hello",
+      blocks: [{ type: "image", source_type: "base64", other: true }],
+    });
+    expect(guardOf(registerResendGuard)?.()).toBe(false);
+  });
+
+  it("leaves the box as it is when the check clears over a changed box", () => {
+    const { rerender, setInput, setBlocks, registerResendGuard } = setup({
+      failed: true,
+    });
+    setInput.mockClear();
+    setBlocks.mockClear();
+    rerender({ failed: false, input: "hello", blocks: [] });
+    expect(setInput).not.toHaveBeenCalled();
+    expect(setBlocks).not.toHaveBeenCalled();
+    expect(guardOf(registerResendGuard)).toBeNull();
   });
 });
 
@@ -130,5 +184,82 @@ describe("confirm blocks", () => {
   it("restore after a failed check doesn't carry them", () => {
     const { setBlocks } = setup({ failed: true, question: confirmed });
     expect(applied(setBlocks, [])).toEqual([image]);
+  });
+});
+
+describe("stored files", () => {
+  const ref = {
+    type: "attachment",
+    id: "c".repeat(32),
+    kind: "image",
+    name: "Screenshot.png",
+    mime_type: "image/png",
+    width: 1600,
+    height: 1000,
+  };
+  const pdf = {
+    type: "attachment",
+    id: "d".repeat(32),
+    kind: "pdf",
+    name: "report.pdf",
+    size: 2048,
+    pages: 3,
+    est_tokens: 900,
+  };
+  const note = {
+    type: "text",
+    text: "[Not shared: notes.docx isn't a supported file.]",
+  };
+  const saved = {
+    id: "m3",
+    type: "human",
+    content: [{ type: "text", text: "What is this?" }, ref, note, pdf],
+  } as unknown as Message;
+
+  it("Retry resends each stored file as a bare reference, with no file data", () => {
+    expect(questionParts(saved, { keepConfirm: true })).toEqual({
+      text: "What is this?",
+      blocks: [
+        { type: "attachment", id: "c".repeat(32) },
+        { type: "attachment", id: "d".repeat(32) },
+      ],
+    });
+  });
+
+  it("Edit gets the same bare references", () => {
+    expect(questionParts(saved).blocks).toEqual([
+      { type: "attachment", id: "c".repeat(32) },
+      { type: "attachment", id: "d".repeat(32) },
+    ]);
+  });
+
+  it("leaves out the agent's not-shared notes", () => {
+    expect(questionParts(saved).text).toBe("What is this?");
+  });
+
+  it("the Turnstile restore keeps the file blocks of a question not yet stored", () => {
+    const file = {
+      type: "file",
+      mimeType: "text/plain",
+      data: btoa("echo hi\n"),
+      metadata: { filename: "job.sh" },
+    };
+    const raw = {
+      type: "image",
+      mimeType: "image/png",
+      data: "iVBORw0KGgo=",
+      metadata: { name: "pasted.png" },
+    };
+    const challenged = {
+      id: "m4",
+      type: "human",
+      content: [{ type: "text", text: "Why?" }, raw, file],
+    } as unknown as Message;
+    const { setInput, setBlocks } = setup({
+      failed: true,
+      question: challenged,
+    });
+    expect(applied(setInput, "")).toBe("Why?");
+    expect(applied(setBlocks, [])).toEqual([raw, file]);
   });
 });

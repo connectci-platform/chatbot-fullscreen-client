@@ -1,43 +1,111 @@
 import { ContentBlock } from "@langchain/core/messages";
-import { toast } from "sonner";
+import {
+  HEIC_EXTENSIONS,
+  TEXT_FILE_EXTENSIONS,
+  formatLimit,
+  imageType,
+  type UploadLimits,
+} from "@/config/uploads";
+import { resizeImage } from "@/lib/image-resize";
+import type { FileBlock, ImageBlock } from "@/lib/upload-blocks";
 
-// Returns a Promise of a typed multimodal block for images or PDFs
+export type FileKind = "image" | "pdf" | "text";
+
+export const NOT_A_TEXT_FILE = "That doesn't look like a text file.";
+
+function extension(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot < 0 ? "" : name.slice(dot + 1).toLowerCase();
+}
+
+export function textFileExtension(name: string): boolean {
+  return (TEXT_FILE_EXTENSIONS as readonly string[]).includes(extension(name));
+}
+
+const HEIC_MESSAGE =
+  "HEIC photos aren't supported yet. Export it as JPEG or PNG and share that.";
+
+/** Why a file isn't accepted, ready to show. */
+export function unsupportedMessage(file: File): string {
+  if (
+    file.type === "image/heic" ||
+    file.type === "image/heif" ||
+    (HEIC_EXTENSIONS as readonly string[]).includes(extension(file.name))
+  ) {
+    return HEIC_MESSAGE;
+  }
+  return `${file.name} isn't a supported file. Share an image, a PDF, or a text file.`;
+}
+
+/** What kind of upload a file is, or null when it is not accepted. */
+export function fileKind(file: File): FileKind | null {
+  if (imageType(file)) return "image";
+  if (
+    file.type === "application/pdf" ||
+    (!file.type && extension(file.name) === "pdf")
+  ) {
+    return "pdf";
+  }
+  if (textFileExtension(file.name)) return "text";
+  return null;
+}
+
+/**
+ * Turns a picked file into a block to send, or throws an Error whose message
+ * is ready to show. Images are resized; the size limit applies to the file as
+ * picked.
+ */
 export async function fileToContentBlock(
   file: File,
-): Promise<ContentBlock.Multimodal.Data> {
-  const supportedImageTypes = [
-    "image/jpeg",
-    "image/png",
-    "image/gif",
-    "image/webp",
-  ];
-  const supportedFileTypes = [...supportedImageTypes, "application/pdf"];
-
-  if (!supportedFileTypes.includes(file.type)) {
-    toast.error(
-      `Unsupported file type: ${file.type}. Supported types are: ${supportedFileTypes.join(", ")}`,
+  limits: UploadLimits,
+): Promise<ImageBlock | FileBlock> {
+  const kind = fileKind(file);
+  if (!kind) {
+    throw new Error(unsupportedMessage(file));
+  }
+  const max = {
+    image: limits.maxImageBytes,
+    pdf: limits.maxPdfBytes,
+    text: limits.maxTextBytes,
+  }[kind];
+  if (file.size > max) {
+    const noun = { image: "Images", pdf: "PDFs", text: "Text files" }[kind];
+    throw new Error(
+      `${file.name} is too large. ${noun} can be up to ${formatLimit(max)}.`,
     );
-    return Promise.reject(new Error(`Unsupported file type: ${file.type}`));
   }
 
-  const data = await fileToBase64(file);
+  if (kind === "image") {
+    const { data, mimeType } = await resizeImage(file);
+    return { type: "image", mimeType, data, metadata: { name: file.name } };
+  }
 
-  if (supportedImageTypes.includes(file.type)) {
+  if (kind === "text") {
+    const bytes = new Uint8Array(await readArrayBuffer(file));
+    if (bytes.includes(0)) throw new Error(NOT_A_TEXT_FILE);
     return {
-      type: "image",
-      mimeType: file.type,
-      data,
-      metadata: { name: file.name },
+      type: "file",
+      mimeType: "text/plain",
+      data: await fileToBase64(file),
+      metadata: { filename: file.name },
     };
   }
 
-  // PDF
   return {
     type: "file",
     mimeType: "application/pdf",
-    data,
+    data: await fileToBase64(file),
     metadata: { filename: file.name },
   };
+}
+
+function readArrayBuffer(file: File): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as ArrayBuffer);
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 // Helper to convert File to base64 string
@@ -66,7 +134,8 @@ export function isBase64ContentBlock(
     "mimeType" in block &&
     typeof (block as { mimeType?: unknown }).mimeType === "string" &&
     ((block as { mimeType: string }).mimeType.startsWith("image/") ||
-      (block as { mimeType: string }).mimeType === "application/pdf")
+      (block as { mimeType: string }).mimeType === "application/pdf" ||
+      (block as { mimeType: string }).mimeType === "text/plain")
   ) {
     return true;
   }

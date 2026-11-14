@@ -17,8 +17,8 @@ describe("getProgram", () => {
     expect(() => getProgram("nope")).toThrow('Unknown program "nope"');
   });
 
-  it("keeps uploads off for ACCESS", () => {
-    expect(getProgram("access").features.fileUploads).toBe(false);
+  it("turns uploads on for ACCESS", () => {
+    expect(getProgram("access").features.fileUploads).toBe(true);
   });
   it("points ACCESS at its logo file", () => {
     expect(getProgram("access").logo).toEqual({

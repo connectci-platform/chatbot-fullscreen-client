@@ -57,14 +57,15 @@ import { TurnstileChallengePanel } from "./turnstile-challenge";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useQuestionHistory } from "@/hooks/use-question-history";
 import { SidePanel } from "./side-panel";
-import { Label } from "../ui/label";
 import { useFileUpload } from "@/hooks/use-file-upload";
+import { UPLOAD_ACCEPT } from "@/config/uploads";
 import { useInitialQuestion } from "@/hooks/use-initial-question";
 import { useFirstTokenReceived } from "@/hooks/use-first-token-received";
 import { ContentBlocksPreview } from "./ContentBlocksPreview";
 import { useArtifactOpen, useArtifactContext } from "./artifact";
 import { ConfirmCard } from "./confirm-card";
 import { pendingPreviews, type ConfirmBlock } from "@/lib/confirm";
+import { isAttachmentRef, type AttachmentRef } from "@/lib/upload-blocks";
 import { RegistrationPanel } from "./registration-panel";
 import { SoftwareComparisonPanel } from "./software-comparison-panel";
 import { ResourceComparisonPanel } from "./resource-comparison-panel";
@@ -84,6 +85,7 @@ export function Thread() {
   const [threadId, _setThreadId] = useQueryState("threadId");
   const [chatHistoryOpen] = useConversationsOpen();
   const [input, setInput] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
   const composerRef = useAutoGrow<HTMLTextAreaElement>(input);
   const {
     contentBlocks,
@@ -92,8 +94,10 @@ export function Thread() {
     dropRef,
     removeBlock,
     resetBlocks: _resetBlocks,
+    addBlocks,
     dragOver,
     handlePaste,
+    pending: filesPending,
   } = useFileUpload({ enabled: program.features.fileUploads });
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
   // Office hours sit in the empty screen's bottom-left corner on wide screens
@@ -139,9 +143,11 @@ export function Thread() {
   useRestoreQuestion({
     failed: stream.turnstileFailed,
     input,
+    blocks: contentBlocks,
     getQuestion: stream.challengedQuestion,
     setInput,
     setBlocks: setContentBlocks,
+    registerResendGuard: stream.setResendGuard,
   });
 
   // This conversation's questions, for Up and Down in the message box.
@@ -155,6 +161,18 @@ export function Thread() {
         .map((m) => questionParts(m).text),
     [messages],
   );
+  // Files stored in this thread, to name the ones Edit puts in the box.
+  const sharedFiles = useMemo(() => {
+    const files = new Map<string, AttachmentRef>();
+    for (const m of messages) {
+      if (m.type !== "human" || !Array.isArray(m.content)) continue;
+      // The SDK's block union doesn't include references.
+      for (const block of m.content as unknown[]) {
+        if (isAttachmentRef(block)) files.set(block.id, block);
+      }
+    }
+    return files;
+  }, [messages]);
   const questionHistory = useQuestionHistory({
     questions: askedQuestions,
     input,
@@ -202,6 +220,17 @@ export function Thread() {
       );
     }
   }, [stream.error, authStatus, setThreadId]);
+
+  // Edit's references name files stored in the thread it was clicked in. In
+  // another thread the agent can't find them, so they leave the box. Files
+  // picked in this box are the person's own and stay.
+  useEffect(() => {
+    setContentBlocks((blocks) =>
+      blocks.some((b) => b.type === "attachment")
+        ? blocks.filter((b) => b.type !== "attachment")
+        : blocks,
+    );
+  }, [threadId, setContentBlocks]);
 
   // Set by Edit: sending the edited question replaces the unanswered one.
   const replaceOnSend = useRef(false);
@@ -274,7 +303,8 @@ export function Thread() {
     if (
       (input.trim().length === 0 && contentBlocks.length === 0) ||
       isLoading ||
-      awaitingCheck
+      awaitingCheck ||
+      filesPending > 0
     )
       return;
     submitMessage(input, contentBlocks, {
@@ -335,7 +365,7 @@ export function Thread() {
     setInput((draft) =>
       draft.trim() ? `${draft}\n${parts.text}` : parts.text,
     );
-    setContentBlocks((blocks) => [...blocks, ...parts.blocks]);
+    addBlocks(parts.blocks);
     // A turn that made a change stays, so the record of it isn't lost.
     replaceOnSend.current = !unanswered?.wrote;
     focusComposer({ atEnd: true });
@@ -651,6 +681,7 @@ export function Thread() {
                     >
                       <ContentBlocksPreview
                         blocks={contentBlocks}
+                        sharedFiles={sharedFiles}
                         onRemove={removeBlock}
                       />
                       {/* The box and its buttons on one row, Send inside the
@@ -658,21 +689,25 @@ export function Thread() {
                       <div className="flex items-end">
                         {program.features.fileUploads && (
                           <>
-                            <Label
-                              htmlFor="file-input"
-                              className="flex size-11 shrink-0 cursor-pointer items-center justify-center"
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              aria-label="Attach an image, PDF, or text file"
+                              onClick={() => fileInput.current?.click()}
+                              className="size-11 shrink-0 rounded-none border-2 border-transparent focus-visible:border-[#232323]"
                             >
-                              <Plus className="size-5 text-gray-600" />
-                              <span className="sr-only">
-                                Upload PDF or Image
-                              </span>
-                            </Label>
+                              <Plus
+                                aria-hidden
+                                className="size-5 text-gray-600"
+                              />
+                            </Button>
                             <input
+                              ref={fileInput}
                               id="file-input"
                               type="file"
                               onChange={handleFileUpload}
                               multiple
-                              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+                              accept={UPLOAD_ACCEPT}
                               className="hidden"
                             />
                           </>
@@ -730,6 +765,7 @@ export function Thread() {
                             disabled={
                               isLoading ||
                               awaitingCheck ||
+                              filesPending > 0 ||
                               (!input.trim() && contentBlocks.length === 0)
                             }
                           >
@@ -740,6 +776,12 @@ export function Thread() {
                           </Button>
                         )}
                       </div>
+                      <p
+                        role="status"
+                        className="text-muted-foreground px-3 pb-2 text-sm empty:hidden"
+                      >
+                        {filesPending > 0 ? "Adding file…" : ""}
+                      </p>
                     </form>
                   </div>
                   <ChatDisclaimer
