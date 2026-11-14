@@ -331,7 +331,7 @@ describe("htmlText doesn't hide where a link goes", () => {
   });
 
   it("shows an entity-encoded target decoded", () => {
-    expect(htmlText('<a href="java&#115;cript:alert(1)">x</a>')).toBe(
+    expect(htmlText('<a href="&#106;avascript:alert(1)">x</a>')).toBe(
       "x (javascript:alert(1))",
     );
   });
