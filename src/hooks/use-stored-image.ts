@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { threadGet } from "@/lib/thread-attachments";
 import { useStreamContext } from "@/providers/Stream";
 
-export type StoredImage = { src?: string; missing: boolean };
+/**
+ * `missing` is only for an image the agent says is gone (a 404). `failed` is
+ * any other failure, including a payload that can't be shown: the image may
+ * still be stored, so it isn't called gone.
+ */
+export type StoredImage = { src?: string; missing: boolean; failed?: boolean };
 
 // The only types a data URL is built with. Whatever else a payload claims
 // (an SVG could carry script) is not shown.
@@ -10,7 +15,7 @@ const SHOWN_TYPES = new Set(["image/png", "image/jpeg"]);
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
 // For the page's life, so scrolling and re-renders don't fetch again. A
-// failure other than a 404 isn't kept, so the next mount tries again.
+// failure isn't kept, so the next mount tries again; a 404 is.
 const loaded = new Map<string, Promise<StoredImage>>();
 // Loaded images, so a remount shows one on its first render.
 const settled = new Map<string, StoredImage>();
@@ -37,7 +42,7 @@ async function fetchImage(
     typeof base64 !== "string" ||
     !BASE64.test(base64)
   ) {
-    return { missing: true };
+    throw new Error("The stored image can't be shown");
   }
   return { src: `data:${mime_type};base64,${base64}`, missing: false };
 }
@@ -57,7 +62,7 @@ function loadImage(
       },
       () => {
         loaded.delete(key);
-        return { missing: true };
+        return { missing: false, failed: true };
       },
     );
     loaded.set(key, pending);
@@ -65,10 +70,7 @@ function loadImage(
   return pending;
 }
 
-/**
- * A stored image in this thread, as a data URL for an img. `missing` is set
- * when it is gone (a 404), can't be shown, or failed to load.
- */
+/** A stored image in this thread, as a data URL for an img. */
 export function useStoredImage(
   threadId: string,
   attachmentId: string,

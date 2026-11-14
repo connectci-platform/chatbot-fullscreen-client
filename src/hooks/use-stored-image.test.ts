@@ -57,11 +57,21 @@ describe("useStoredImage", () => {
     expect(result.current.src).toBeUndefined();
   });
 
-  it("treats another failure as missing too", async () => {
+  it("reports a network failure as failed, not missing", async () => {
     get.mockRejectedValue(new TypeError("network"));
     const id = nextId();
     const { result } = renderHook(() => useStoredImage("t1", id));
-    await waitFor(() => expect(result.current.missing).toBe(true));
+    await waitFor(() => expect(result.current.failed).toBe(true));
+    expect(result.current.missing).toBe(false);
+  });
+
+  it("reports a 500 as failed, not missing", async () => {
+    get.mockResolvedValue(new Response("", { status: 500 }));
+    const id = nextId();
+    const { result } = renderHook(() => useStoredImage("t1", id));
+    await waitFor(() => expect(result.current.failed).toBe(true));
+    expect(result.current.missing).toBe(false);
+    expect(result.current.src).toBeUndefined();
   });
 
   it("never makes a data URL from an SVG payload", async () => {
@@ -70,17 +80,20 @@ describe("useStoredImage", () => {
     );
     const id = nextId();
     const { result } = renderHook(() => useStoredImage("t1", id));
-    await waitFor(() => expect(result.current.missing).toBe(true));
+    await waitFor(() => expect(result.current.failed).toBe(true));
+    expect(result.current.missing).toBe(false);
     expect(result.current.src).toBeUndefined();
   });
 
-  it("refuses data that isn't base64", async () => {
+  it("refuses data that isn't base64, as failed rather than gone", async () => {
     get.mockResolvedValue(
       payload({ mime_type: "image/png", base64: 'x" onerror="y' }),
     );
     const id = nextId();
     const { result } = renderHook(() => useStoredImage("t1", id));
-    await waitFor(() => expect(result.current.missing).toBe(true));
+    await waitFor(() => expect(result.current.failed).toBe(true));
+    expect(result.current.missing).toBe(false);
+    expect(result.current.src).toBeUndefined();
   });
 
   it("fetches each image once per session", async () => {
@@ -98,7 +111,7 @@ describe("useStoredImage", () => {
     const id = nextId();
     get.mockResolvedValueOnce(new Response("", { status: 503 }));
     const first = renderHook(() => useStoredImage("t1", id));
-    await waitFor(() => expect(first.result.current.missing).toBe(true));
+    await waitFor(() => expect(first.result.current.failed).toBe(true));
     first.unmount();
 
     get.mockResolvedValueOnce(payload({ mime_type: "image/png", base64: PNG }));

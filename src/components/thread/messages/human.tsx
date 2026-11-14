@@ -22,7 +22,7 @@ function StoredImageThumb({
   file: AttachmentRef;
 }) {
   const name = file.name || "Image";
-  const { src, missing } = useStoredImage(threadId, file.id);
+  const { src, missing, failed } = useStoredImage(threadId, file.id);
   if (src) {
     return (
       <Image
@@ -34,7 +34,7 @@ function StoredImageThumb({
       />
     );
   }
-  if (missing) {
+  if (missing || failed) {
     return (
       <div className="flex max-w-48 items-start gap-2 rounded-md border bg-gray-100 px-3 py-2 text-gray-500">
         <ImageOff
@@ -42,7 +42,9 @@ function StoredImageThumb({
           aria-hidden
         />
         <div className="flex min-w-0 flex-col">
-          <span className="text-xs">Image no longer available</span>
+          <span className="text-xs">
+            {missing ? "Image no longer available" : "Couldn't load this image"}
+          </span>
           <span className="text-sm break-all text-gray-800">{name}</span>
         </div>
       </div>

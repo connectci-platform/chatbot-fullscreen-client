@@ -97,6 +97,25 @@ describe("HumanMessage", () => {
     expect(screen.queryByRole("img")).toBeNull();
   });
 
+  it("doesn't call an image gone when it only failed to load", async () => {
+    get.mockResolvedValue(new Response("", { status: 500 }));
+    render(
+      <HumanMessage
+        message={question([
+          {
+            type: "attachment",
+            id: nextId(),
+            kind: "image",
+            name: "Screenshot.png",
+          },
+        ])}
+      />,
+    );
+    expect(await screen.findByText("Couldn't load this image")).toBeTruthy();
+    expect(screen.getByText("Screenshot.png")).toBeTruthy();
+    expect(screen.queryByText("Image no longer available")).toBeNull();
+  });
+
   it("shows a stored PDF as a chip with its name, size and pages, without fetching", () => {
     render(
       <HumanMessage
