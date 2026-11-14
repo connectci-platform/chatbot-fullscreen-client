@@ -1,84 +1,128 @@
-import { useState, useRef, useEffect, ChangeEvent } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  ChangeEvent,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { toast } from "sonner";
-import { ContentBlock } from "@langchain/core/messages";
-import { fileToContentBlock } from "@/lib/multimodal-utils";
+import {
+  ANONYMOUS_LIMITS,
+  SIGNED_IN_LIMITS,
+  formatLimit,
+} from "@/config/uploads";
+import { useAuthStatus } from "@/hooks/use-agent-auth";
+import { fileKind, fileToContentBlock } from "@/lib/multimodal-utils";
+import {
+  base64Bytes,
+  type FileBlock,
+  type ImageBlock,
+} from "@/lib/upload-blocks";
 
-export const SUPPORTED_FILE_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-  "application/pdf",
-];
+export type UploadBlock = ImageBlock | FileBlock;
 
 interface UseFileUploadOptions {
-  initialBlocks?: ContentBlock.Multimodal.Data[];
+  initialBlocks?: UploadBlock[];
   enabled?: boolean;
+}
+
+function blockName(b: UploadBlock): string {
+  return b.type === "image" ? b.metadata.name : b.metadata.filename;
+}
+
+/** Bytes that will go on the wire for a block. */
+function blockBytes(b: UploadBlock): number {
+  return base64Bytes(b.data);
 }
 
 export function useFileUpload({
   initialBlocks = [],
   enabled = true,
 }: UseFileUploadOptions = {}) {
-  const [contentBlocks, setContentBlocks] =
-    useState<ContentBlock.Multimodal.Data[]>(initialBlocks);
+  const [contentBlocks, setContentBlocksState] =
+    useState<UploadBlock[]>(initialBlocks);
+  // Kept in step with the state so several intakes in a row (a drop, then a
+  // paste) each see the files the one before added.
+  const blocksRef = useRef(contentBlocks);
+  const setContentBlocks: Dispatch<SetStateAction<UploadBlock[]>> = useCallback(
+    (action) => {
+      blocksRef.current =
+        typeof action === "function" ? action(blocksRef.current) : action;
+      setContentBlocksState(blocksRef.current);
+    },
+    [],
+  );
   const dropRef = useRef<HTMLDivElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const dragCounter = useRef(0);
+  const signedIn = useAuthStatus() === "signed_in";
+  const limits = signedIn ? SIGNED_IN_LIMITS : ANONYMOUS_LIMITS;
 
-  const isDuplicate = (file: File, blocks: ContentBlock.Multimodal.Data[]) => {
-    if (file.type === "application/pdf") {
-      return blocks.some(
-        (b) =>
-          b.type === "file" &&
-          b.mimeType === "application/pdf" &&
-          b.metadata?.filename === file.name,
-      );
-    }
-    if (SUPPORTED_FILE_TYPES.includes(file.type)) {
-      return blocks.some(
-        (b) =>
-          b.type === "image" &&
-          b.metadata?.name === file.name &&
-          b.mimeType === file.type,
-      );
-    }
-    return false;
-  };
+  /** The one intake for the picker, drop and paste. */
+  const acceptFiles = useCallback(
+    async (files: File[]): Promise<void> => {
+      for (const file of files) {
+        const current = blocksRef.current;
+        const kind = fileKind(file);
+        if (!kind) {
+          toast.error(
+            `${file.name} isn't a supported file. Share an image, a PDF, or a text file.`,
+          );
+          continue;
+        }
+        const duplicate = current.some(
+          (b) =>
+            blockName(b) === file.name &&
+            (b.type === "image") === (kind === "image"),
+        );
+        if (duplicate) {
+          toast.error(
+            `${file.name} is already attached. Each file can only be added once per message.`,
+          );
+          continue;
+        }
+        if (current.length >= limits.maxFiles) {
+          toast.error(
+            signedIn
+              ? `You can share up to ${limits.maxFiles} files in one message.`
+              : `You can share up to ${limits.maxFiles} files in one message. Sign in to share up to ${SIGNED_IN_LIMITS.maxFiles}.`,
+          );
+          break;
+        }
+        let block: UploadBlock;
+        try {
+          block = await fileToContentBlock(file, limits);
+        } catch (err) {
+          toast.error(
+            err instanceof Error ? err.message : "Couldn't add that file.",
+          );
+          continue;
+        }
+        // Reread: another intake may have added files while this one decoded.
+        const used = blocksRef.current.reduce((n, b) => n + blockBytes(b), 0);
+        if (used + blockBytes(block) > limits.maxTotalBytes) {
+          toast.error(
+            signedIn
+              ? `${file.name} would take this message over ${formatLimit(limits.maxTotalBytes)}.`
+              : `${file.name} would take this message over ${formatLimit(limits.maxTotalBytes)}. Remove a file or sign in to share up to ${formatLimit(SIGNED_IN_LIMITS.maxTotalBytes)}.`,
+          );
+          continue;
+        }
+        if (blocksRef.current.length >= limits.maxFiles) continue;
+        setContentBlocks((prev) => [...prev, block]);
+      }
+    },
+    [limits, signedIn, setContentBlocks],
+  );
 
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-    const fileArray = Array.from(files);
-    const validFiles = fileArray.filter((file) =>
-      SUPPORTED_FILE_TYPES.includes(file.type),
-    );
-    const invalidFiles = fileArray.filter(
-      (file) => !SUPPORTED_FILE_TYPES.includes(file.type),
-    );
-    const duplicateFiles = validFiles.filter((file) =>
-      isDuplicate(file, contentBlocks),
-    );
-    const uniqueFiles = validFiles.filter(
-      (file) => !isDuplicate(file, contentBlocks),
-    );
-
-    if (invalidFiles.length > 0) {
-      toast.error(
-        "You have uploaded invalid file type. Please upload a JPEG, PNG, GIF, WEBP image or a PDF.",
-      );
-    }
-    if (duplicateFiles.length > 0) {
-      toast.error(
-        `Duplicate file(s) detected: ${duplicateFiles.map((f) => f.name).join(", ")}. Each file can only be uploaded once per message.`,
-      );
-    }
-
-    const newBlocks = uniqueFiles.length
-      ? await Promise.all(uniqueFiles.map(fileToContentBlock))
-      : [];
-    setContentBlocks((prev) => [...prev, ...newBlocks]);
+    const picked = Array.from(files);
     e.target.value = "";
+    await acceptFiles(picked);
   };
 
   // With uploads off, still cancel window drags so a dropped file can't
@@ -122,35 +166,7 @@ export function useFileUpload({
 
       if (!e.dataTransfer) return;
 
-      const files = Array.from(e.dataTransfer.files);
-      const validFiles = files.filter((file) =>
-        SUPPORTED_FILE_TYPES.includes(file.type),
-      );
-      const invalidFiles = files.filter(
-        (file) => !SUPPORTED_FILE_TYPES.includes(file.type),
-      );
-      const duplicateFiles = validFiles.filter((file) =>
-        isDuplicate(file, contentBlocks),
-      );
-      const uniqueFiles = validFiles.filter(
-        (file) => !isDuplicate(file, contentBlocks),
-      );
-
-      if (invalidFiles.length > 0) {
-        toast.error(
-          "You have uploaded invalid file type. Please upload a JPEG, PNG, GIF, WEBP image or a PDF.",
-        );
-      }
-      if (duplicateFiles.length > 0) {
-        toast.error(
-          `Duplicate file(s) detected: ${duplicateFiles.map((f) => f.name).join(", ")}. Each file can only be uploaded once per message.`,
-        );
-      }
-
-      const newBlocks = uniqueFiles.length
-        ? await Promise.all(uniqueFiles.map(fileToContentBlock))
-        : [];
-      setContentBlocks((prev) => [...prev, ...newBlocks]);
+      await acceptFiles(Array.from(e.dataTransfer.files));
     };
     const handleWindowDragEnd = (e: DragEvent) => {
       dragCounter.current = 0;
@@ -200,7 +216,7 @@ export function useFileUpload({
       window.removeEventListener("dragover", handleWindowDragOver);
       dragCounter.current = 0;
     };
-  }, [contentBlocks, enabled]);
+  }, [acceptFiles, enabled]);
 
   const removeBlock = (idx: number) => {
     setContentBlocks((prev) => prev.filter((_, i) => i !== idx));
@@ -209,7 +225,7 @@ export function useFileUpload({
   const resetBlocks = () => setContentBlocks([]);
 
   /**
-   * Handle paste event for files (images, PDFs)
+   * Handle paste event for files (images, PDFs, text files)
    * Can be used as onPaste={handlePaste} on a textarea or input
    */
   const handlePaste = async (
@@ -230,47 +246,7 @@ export function useFileUpload({
       return;
     }
     e.preventDefault();
-    const validFiles = files.filter((file) =>
-      SUPPORTED_FILE_TYPES.includes(file.type),
-    );
-    const invalidFiles = files.filter(
-      (file) => !SUPPORTED_FILE_TYPES.includes(file.type),
-    );
-    const isDuplicate = (file: File) => {
-      if (file.type === "application/pdf") {
-        return contentBlocks.some(
-          (b) =>
-            b.type === "file" &&
-            b.mimeType === "application/pdf" &&
-            b.metadata?.filename === file.name,
-        );
-      }
-      if (SUPPORTED_FILE_TYPES.includes(file.type)) {
-        return contentBlocks.some(
-          (b) =>
-            b.type === "image" &&
-            b.metadata?.name === file.name &&
-            b.mimeType === file.type,
-        );
-      }
-      return false;
-    };
-    const duplicateFiles = validFiles.filter(isDuplicate);
-    const uniqueFiles = validFiles.filter((file) => !isDuplicate(file));
-    if (invalidFiles.length > 0) {
-      toast.error(
-        "You have pasted an invalid file type. Please paste a JPEG, PNG, GIF, WEBP image or a PDF.",
-      );
-    }
-    if (duplicateFiles.length > 0) {
-      toast.error(
-        `Duplicate file(s) detected: ${duplicateFiles.map((f) => f.name).join(", ")}. Each file can only be uploaded once per message.`,
-      );
-    }
-    if (uniqueFiles.length > 0) {
-      const newBlocks = await Promise.all(uniqueFiles.map(fileToContentBlock));
-      setContentBlocks((prev) => [...prev, ...newBlocks]);
-    }
+    await acceptFiles(files);
   };
 
   return {
@@ -282,5 +258,6 @@ export function useFileUpload({
     resetBlocks,
     dragOver,
     handlePaste,
+    acceptFiles,
   };
 }

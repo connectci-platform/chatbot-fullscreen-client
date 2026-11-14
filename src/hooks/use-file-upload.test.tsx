@@ -4,6 +4,16 @@ import { useEffect } from "react";
 import { describe, it, expect, vi } from "vitest";
 import { useFileUpload } from "./use-file-upload";
 
+const auth = vi.hoisted(() => ({ status: "signed_out" as string }));
+vi.mock("@/hooks/use-agent-auth", () => ({
+  useAuthStatus: () => auth.status,
+}));
+vi.mock("@/lib/image-resize", () => ({
+  resizeImage: vi.fn(async () => ({ data: "RESIZED", mimeType: "image/png" })),
+}));
+vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
+import { toast } from "sonner";
+
 const png = new File(["x"], "pic.png", { type: "image/png" });
 
 function pasteEvent() {
@@ -88,5 +98,111 @@ describe("useFileUpload with uploads enabled", () => {
     });
 
     await waitFor(() => expect(latest.contentBlocks).toHaveLength(1));
+  });
+});
+
+const MB = 1024 * 1024;
+
+function pdf(name: string, bytes: number) {
+  return new File([new Uint8Array(bytes)], name, { type: "application/pdf" });
+}
+
+function image(name: string) {
+  return new File(["x"], name, { type: "image/png" });
+}
+
+describe("acceptFiles", () => {
+  it("refuses the third file for an anonymous user", async () => {
+    auth.status = "signed_out";
+    const { result } = renderHook(() => useFileUpload());
+    await act(async () => {
+      await result.current.acceptFiles([image("a.png"), image("b.png")]);
+    });
+    await act(async () => {
+      await result.current.acceptFiles([image("c.png")]);
+    });
+    expect(result.current.contentBlocks).toHaveLength(2);
+    expect(toast.error).toHaveBeenCalledWith(
+      "You can share up to 2 files in one message. Sign in to share up to 5.",
+    );
+  });
+
+  it("treats an unknown sign-in state as anonymous", async () => {
+    auth.status = "unknown";
+    const { result } = renderHook(() => useFileUpload());
+    await act(async () => {
+      await result.current.acceptFiles([
+        image("a.png"),
+        image("b.png"),
+        image("c.png"),
+      ]);
+    });
+    expect(result.current.contentBlocks).toHaveLength(2);
+  });
+
+  it("allows five files when signed in", async () => {
+    auth.status = "signed_in";
+    const { result } = renderHook(() => useFileUpload());
+    await act(async () => {
+      await result.current.acceptFiles(
+        ["a", "b", "c", "d", "e", "f"].map((n) => image(`${n}.png`)),
+      );
+    });
+    expect(result.current.contentBlocks).toHaveLength(5);
+    expect(toast.error).toHaveBeenCalledWith(
+      "You can share up to 5 files in one message.",
+    );
+  });
+
+  it("refuses a message over 8 MB total for an anonymous user", async () => {
+    auth.status = "signed_out";
+    const { result } = renderHook(() => useFileUpload());
+    await act(async () => {
+      await result.current.acceptFiles([
+        pdf("a.pdf", 4.5 * MB),
+        pdf("b.pdf", 4.5 * MB),
+      ]);
+    });
+    expect(result.current.contentBlocks).toHaveLength(1);
+    expect(toast.error).toHaveBeenCalledWith(
+      "b.pdf would take this message over 8 MB. Remove a file or sign in to share up to 20 MB.",
+    );
+  });
+
+  it("accepts a text file picked with no MIME type and skips duplicates", async () => {
+    auth.status = "signed_out";
+    const { result } = renderHook(() => useFileUpload());
+    const job = () => new File(["echo hi"], "job.sh", { type: "" });
+    await act(async () => {
+      await result.current.acceptFiles([job()]);
+    });
+    await act(async () => {
+      await result.current.acceptFiles([job()]);
+    });
+    expect(result.current.contentBlocks).toHaveLength(1);
+    expect(result.current.contentBlocks[0]).toMatchObject({
+      type: "file",
+      mimeType: "text/plain",
+    });
+  });
+
+  it("sends picker, paste and drop through the same limits", async () => {
+    auth.status = "signed_out";
+    const { result } = renderHook(() => useFileUpload());
+    await act(async () => {
+      await result.current.handleFileUpload({
+        target: { files: [image("a.png")], value: "x" },
+      } as never);
+    });
+    const paste = pasteEvent();
+    await act(async () => {
+      await result.current.handlePaste(paste.event);
+    });
+    expect(result.current.contentBlocks).toHaveLength(2);
+    await act(async () => {
+      await result.current.handlePaste(paste.event);
+    });
+    // pic.png is a duplicate now, and a third file would also be over the limit.
+    expect(result.current.contentBlocks).toHaveLength(2);
   });
 });

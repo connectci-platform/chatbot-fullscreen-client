@@ -59,6 +59,7 @@ import { useQuestionHistory } from "@/hooks/use-question-history";
 import { SidePanel } from "./side-panel";
 import { Label } from "../ui/label";
 import { useFileUpload } from "@/hooks/use-file-upload";
+import { UPLOAD_ACCEPT } from "@/config/uploads";
 import { useInitialQuestion } from "@/hooks/use-initial-question";
 import { useFirstTokenReceived } from "@/hooks/use-first-token-received";
 import { ContentBlocksPreview } from "./ContentBlocksPreview";
@@ -672,7 +673,7 @@ export function Thread() {
                               type="file"
                               onChange={handleFileUpload}
                               multiple
-                              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+                              accept={UPLOAD_ACCEPT}
                               className="hidden"
                             />
                           </>

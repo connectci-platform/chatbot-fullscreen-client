@@ -1,43 +1,93 @@
 import { ContentBlock } from "@langchain/core/messages";
-import { toast } from "sonner";
+import {
+  IMAGE_MIME_TYPES,
+  TEXT_FILE_EXTENSIONS,
+  formatLimit,
+  type UploadLimits,
+} from "@/config/uploads";
+import { resizeImage } from "@/lib/image-resize";
+import type { FileBlock, ImageBlock } from "@/lib/upload-blocks";
 
-// Returns a Promise of a typed multimodal block for images or PDFs
+export type FileKind = "image" | "pdf" | "text";
+
+export const NOT_A_TEXT_FILE = "That doesn't look like a text file.";
+
+export function textFileExtension(name: string): boolean {
+  const dot = name.lastIndexOf(".");
+  if (dot < 0) return false;
+  return (TEXT_FILE_EXTENSIONS as readonly string[]).includes(
+    name.slice(dot + 1).toLowerCase(),
+  );
+}
+
+/** What kind of upload a file is, or null when it is not accepted. */
+export function fileKind(file: File): FileKind | null {
+  if ((IMAGE_MIME_TYPES as readonly string[]).includes(file.type)) {
+    return "image";
+  }
+  if (file.type === "application/pdf") return "pdf";
+  if (textFileExtension(file.name)) return "text";
+  return null;
+}
+
+/**
+ * Turns a picked file into a block to send, or throws an Error whose message
+ * is ready to show. Images are resized; the size limit applies to the file as
+ * picked.
+ */
 export async function fileToContentBlock(
   file: File,
-): Promise<ContentBlock.Multimodal.Data> {
-  const supportedImageTypes = [
-    "image/jpeg",
-    "image/png",
-    "image/gif",
-    "image/webp",
-  ];
-  const supportedFileTypes = [...supportedImageTypes, "application/pdf"];
-
-  if (!supportedFileTypes.includes(file.type)) {
-    toast.error(
-      `Unsupported file type: ${file.type}. Supported types are: ${supportedFileTypes.join(", ")}`,
+  limits: UploadLimits,
+): Promise<ImageBlock | FileBlock> {
+  const kind = fileKind(file);
+  if (!kind) {
+    throw new Error(
+      `${file.name} isn't a supported file. Share an image, a PDF, or a text file.`,
     );
-    return Promise.reject(new Error(`Unsupported file type: ${file.type}`));
+  }
+  const max = {
+    image: limits.maxImageBytes,
+    pdf: limits.maxPdfBytes,
+    text: limits.maxTextBytes,
+  }[kind];
+  if (file.size > max) {
+    const noun = { image: "Images", pdf: "PDFs", text: "Text files" }[kind];
+    throw new Error(
+      `${file.name} is too large. ${noun} can be up to ${formatLimit(max)}.`,
+    );
   }
 
-  const data = await fileToBase64(file);
+  if (kind === "image") {
+    const { data, mimeType } = await resizeImage(file);
+    return { type: "image", mimeType, data, metadata: { name: file.name } };
+  }
 
-  if (supportedImageTypes.includes(file.type)) {
+  if (kind === "text") {
+    const bytes = new Uint8Array(await readArrayBuffer(file));
+    if (bytes.includes(0)) throw new Error(NOT_A_TEXT_FILE);
     return {
-      type: "image",
-      mimeType: file.type,
-      data,
-      metadata: { name: file.name },
+      type: "file",
+      mimeType: "text/plain",
+      data: await fileToBase64(file),
+      metadata: { filename: file.name },
     };
   }
 
-  // PDF
   return {
     type: "file",
     mimeType: "application/pdf",
-    data,
+    data: await fileToBase64(file),
     metadata: { filename: file.name },
   };
+}
+
+function readArrayBuffer(file: File): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as ArrayBuffer);
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 // Helper to convert File to base64 string
