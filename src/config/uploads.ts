@@ -65,6 +65,31 @@ export const IMAGE_MIME_TYPES = [
   "image/webp",
 ] as const;
 
+/** The image type a file name suggests, for files a browser gave no type. */
+export const IMAGE_TYPE_BY_EXTENSION: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+};
+
+/** Apple's photo formats, which the agent can't read. */
+export const HEIC_EXTENSIONS = ["heic", "heif"] as const;
+
+/** The image type of a file: its own, or else what its name suggests. */
+export function imageType(file: { type: string; name: string }): string | null {
+  if ((IMAGE_MIME_TYPES as readonly string[]).includes(file.type)) {
+    return file.type;
+  }
+  if (file.type) return null;
+  const dot = file.name.lastIndexOf(".");
+  if (dot < 0) return null;
+  return (
+    IMAGE_TYPE_BY_EXTENSION[file.name.slice(dot + 1).toLowerCase()] ?? null
+  );
+}
+
 /** For the file picker's `accept` attribute. */
 export const UPLOAD_ACCEPT = [
   ...IMAGE_MIME_TYPES,

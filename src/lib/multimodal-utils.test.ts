@@ -1,5 +1,10 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { fileToContentBlock, textFileExtension } from "./multimodal-utils";
+import {
+  fileKind,
+  fileToContentBlock,
+  textFileExtension,
+  unsupportedMessage,
+} from "./multimodal-utils";
 import { ANONYMOUS_LIMITS } from "@/config/uploads";
 
 vi.mock("./image-resize", () => ({
@@ -77,5 +82,40 @@ describe("textFileExtension", () => {
     expect(textFileExtension("x.f90")).toBe(true);
     expect(textFileExtension("x.docx")).toBe(false);
     expect(textFileExtension("Makefile")).toBe(false);
+  });
+});
+
+describe("fileKind", () => {
+  const f = (name: string, type = "") => new File(["x"], name, { type });
+
+  it("falls back to the extension when the type is empty", () => {
+    expect(fileKind(f("shot.PNG"))).toBe("image");
+    expect(fileKind(f("photo.jpeg"))).toBe("image");
+    expect(fileKind(f("paper.pdf"))).toBe("pdf");
+    expect(fileKind(f("job.sh"))).toBe("text");
+  });
+
+  it("trusts a type that is given over the name", () => {
+    expect(fileKind(f("shot.png", "application/x-msdownload"))).toBeNull();
+    expect(fileKind(f("shot.png", "image/jpeg"))).toBe("image");
+  });
+
+  it("does not accept HEIC, and says why", () => {
+    for (const file of [
+      f("IMG_1.heic"),
+      f("IMG_2.HEIF"),
+      f("IMG_3.jpg", "image/heic"),
+    ]) {
+      expect(fileKind(file)).toBeNull();
+      expect(unsupportedMessage(file)).toBe(
+        "HEIC photos aren't supported yet. Export it as JPEG or PNG and share that.",
+      );
+    }
+  });
+
+  it("names an unsupported file in the generic message", () => {
+    expect(unsupportedMessage(f("a.exe"))).toBe(
+      "a.exe isn't a supported file. Share an image, a PDF, or a text file.",
+    );
   });
 });

@@ -1,8 +1,9 @@
 import { ContentBlock } from "@langchain/core/messages";
 import {
-  IMAGE_MIME_TYPES,
+  HEIC_EXTENSIONS,
   TEXT_FILE_EXTENSIONS,
   formatLimit,
+  imageType,
   type UploadLimits,
 } from "@/config/uploads";
 import { resizeImage } from "@/lib/image-resize";
@@ -12,20 +13,39 @@ export type FileKind = "image" | "pdf" | "text";
 
 export const NOT_A_TEXT_FILE = "That doesn't look like a text file.";
 
-export function textFileExtension(name: string): boolean {
+function extension(name: string): string {
   const dot = name.lastIndexOf(".");
-  if (dot < 0) return false;
-  return (TEXT_FILE_EXTENSIONS as readonly string[]).includes(
-    name.slice(dot + 1).toLowerCase(),
-  );
+  return dot < 0 ? "" : name.slice(dot + 1).toLowerCase();
+}
+
+export function textFileExtension(name: string): boolean {
+  return (TEXT_FILE_EXTENSIONS as readonly string[]).includes(extension(name));
+}
+
+const HEIC_MESSAGE =
+  "HEIC photos aren't supported yet. Export it as JPEG or PNG and share that.";
+
+/** Why a file isn't accepted, ready to show. */
+export function unsupportedMessage(file: File): string {
+  if (
+    file.type === "image/heic" ||
+    file.type === "image/heif" ||
+    (HEIC_EXTENSIONS as readonly string[]).includes(extension(file.name))
+  ) {
+    return HEIC_MESSAGE;
+  }
+  return `${file.name} isn't a supported file. Share an image, a PDF, or a text file.`;
 }
 
 /** What kind of upload a file is, or null when it is not accepted. */
 export function fileKind(file: File): FileKind | null {
-  if ((IMAGE_MIME_TYPES as readonly string[]).includes(file.type)) {
-    return "image";
+  if (imageType(file)) return "image";
+  if (
+    file.type === "application/pdf" ||
+    (!file.type && extension(file.name) === "pdf")
+  ) {
+    return "pdf";
   }
-  if (file.type === "application/pdf") return "pdf";
   if (textFileExtension(file.name)) return "text";
   return null;
 }
@@ -41,9 +61,7 @@ export async function fileToContentBlock(
 ): Promise<ImageBlock | FileBlock> {
   const kind = fileKind(file);
   if (!kind) {
-    throw new Error(
-      `${file.name} isn't a supported file. Share an image, a PDF, or a text file.`,
-    );
+    throw new Error(unsupportedMessage(file));
   }
   const max = {
     image: limits.maxImageBytes,

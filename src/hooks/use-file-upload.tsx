@@ -15,7 +15,11 @@ import {
   type UploadLimits,
 } from "@/config/uploads";
 import { useAuthStatus } from "@/hooks/use-agent-auth";
-import { fileKind, fileToContentBlock } from "@/lib/multimodal-utils";
+import {
+  fileKind,
+  fileToContentBlock,
+  unsupportedMessage,
+} from "@/lib/multimodal-utils";
 import {
   base64Bytes,
   type FileBlock,
@@ -89,9 +93,7 @@ export function useFileUpload({
         const current = blocksRef.current;
         const kind = fileKind(file);
         if (!kind) {
-          toast.error(
-            `${file.name} isn't a supported file. Share an image, a PDF, or a text file.`,
-          );
+          toast.error(unsupportedMessage(file));
           continue;
         }
         if (current.length >= limits.maxFiles) {
