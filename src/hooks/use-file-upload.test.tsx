@@ -24,11 +24,11 @@ import { toast } from "sonner";
 
 const png = new File(["x"], "pic.png", { type: "image/png" });
 
-function pasteEvent() {
+function pasteEvent(types: string[] = ["Files"]) {
   const preventDefault = vi.fn();
   const event = {
     preventDefault,
-    clipboardData: { items: [{ kind: "file", getAsFile: () => png }] },
+    clipboardData: { types, items: [{ kind: "file", getAsFile: () => png }] },
   } as unknown as ClipboardEvent<HTMLTextAreaElement>;
   return { event, preventDefault };
 }
@@ -230,6 +230,33 @@ describe("acceptFiles", () => {
     });
     // pic.png is a duplicate now, and a third file would also be over the limit.
     expect(result.current.contentBlocks).toHaveLength(2);
+  });
+
+  it("leaves a paste that holds text alone, even with a picture of it", async () => {
+    auth.status = "signed_out";
+    const { result } = renderHook(() => useFileUpload());
+    for (const types of [
+      ["text/plain", "text/html", "Files"],
+      ["text/html", "Files"],
+    ]) {
+      const { event, preventDefault } = pasteEvent(types);
+      await act(async () => {
+        await result.current.handlePaste(event);
+      });
+      expect(preventDefault).not.toHaveBeenCalled();
+    }
+    expect(result.current.contentBlocks).toEqual([]);
+  });
+
+  it("still takes a paste of only an image", async () => {
+    auth.status = "signed_out";
+    const { result } = renderHook(() => useFileUpload());
+    const { event, preventDefault } = pasteEvent(["Files"]);
+    await act(async () => {
+      await result.current.handlePaste(event);
+    });
+    expect(preventDefault).toHaveBeenCalled();
+    expect(result.current.contentBlocks).toHaveLength(1);
   });
 
   it("accepts two different pasted images that are both named image.png", async () => {

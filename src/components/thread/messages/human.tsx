@@ -9,6 +9,7 @@ import { isBase64ContentBlock } from "@/lib/multimodal-utils";
 import {
   fileDetail,
   isAttachmentRef,
+  notSharedNotes,
   type AttachmentRef,
 } from "@/lib/upload-blocks";
 import { useStreamContext } from "@/providers/Stream";
@@ -91,6 +92,10 @@ function SharedFile({
 export function HumanMessage({ message }: { message: Message }) {
   const { threadId } = useStreamContext();
   const contentString = getContentString(message.content);
+  // With no words typed, a question whose files were all refused would show
+  // an empty bubble. The agent's notes say why, shown muted and apart from the
+  // question, so Copy and resend still leave them out.
+  const notes = contentString ? [] : notSharedNotes(message.content);
 
   return (
     <div
@@ -130,6 +135,11 @@ export function HumanMessage({ message }: { message: Message }) {
               {contentString}
             </p>
           ) : null}
+          {notes.length > 0 && (
+            <p className="text-muted-foreground ml-auto max-w-prose text-right text-sm">
+              {notes.join(" ")}
+            </p>
+          )}
         </div>
       </div>
     </div>

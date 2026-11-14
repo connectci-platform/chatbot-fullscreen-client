@@ -57,6 +57,28 @@ export function isTypedText(
   );
 }
 
+/** The sentences the agent gave for files it left out of a saved question. */
+export function notSharedNotes(content: unknown): string[] {
+  if (!Array.isArray(content)) return [];
+  const notes: string[] = [];
+  for (const block of content) {
+    if (
+      isRecord(block) &&
+      block.type === "text" &&
+      typeof block.text === "string" &&
+      block.text.startsWith(NOT_SHARED_PREFIX)
+    ) {
+      notes.push(
+        block.text
+          .slice(NOT_SHARED_PREFIX.length)
+          .replace(/\]\s*$/, "")
+          .trim(),
+      );
+    }
+  }
+  return notes;
+}
+
 export function isAttachmentRef(value: unknown): value is AttachmentRef {
   return (
     isRecord(value) && value.type === "attachment" && isPreviewId(value.id)

@@ -206,4 +206,19 @@ describe("HumanMessage", () => {
     );
     expect(container.textContent).toBe("Why did my job fail?");
   });
+
+  it("shows the agent's notes, muted, when every file was refused and nothing was typed", () => {
+    render(
+      <HumanMessage
+        message={question([
+          {
+            type: "text",
+            text: "[Not shared: notes.docx isn't a supported file.]",
+          },
+        ])}
+      />,
+    );
+    const note = screen.getByText("notes.docx isn't a supported file.");
+    expect(note.className).toContain("text-muted-foreground");
+  });
 });

@@ -61,6 +61,11 @@ export function useFileUpload({
   const signedIn = useAuthStatus() === "signed_in";
   const limits = signedIn ? SIGNED_IN_LIMITS : ANONYMOUS_LIMITS;
 
+  const tooManyFilesMessage = () =>
+    signedIn
+      ? `You can share up to ${limits.maxFiles} files in one message.`
+      : `You can share up to ${limits.maxFiles} files in one message. Sign in to share up to ${SIGNED_IN_LIMITS.maxFiles}.`;
+
   /** The one intake for the picker, drop and paste. */
   const acceptFiles = useCallback(
     async (files: File[]): Promise<void> => {
@@ -74,11 +79,7 @@ export function useFileUpload({
           continue;
         }
         if (current.length >= limits.maxFiles) {
-          toast.error(
-            signedIn
-              ? `You can share up to ${limits.maxFiles} files in one message.`
-              : `You can share up to ${limits.maxFiles} files in one message. Sign in to share up to ${SIGNED_IN_LIMITS.maxFiles}.`,
-          );
+          toast.error(tooManyFilesMessage());
           break;
         }
         let block: ImageBlock | FileBlock;
@@ -227,6 +228,30 @@ export function useFileUpload({
     setContentBlocks((prev) => prev.filter((_, i) => i !== idx));
   };
 
+  /**
+   * Puts files back in the box, as Edit does: references to stored files, or
+   * files that were sent but never stored. One already there is skipped, and
+   * the count limit holds, with the usual toast when some are left out.
+   */
+  const addBlocks = (blocks: UploadBlock[]) => {
+    const next = [...blocksRef.current];
+    const same = (a: UploadBlock, b: UploadBlock) =>
+      a.type === "attachment" || b.type === "attachment"
+        ? a.type === b.type && (a as ResendRef).id === (b as ResendRef).id
+        : a.mimeType === b.mimeType && a.data === b.data;
+    let leftOut = false;
+    for (const block of blocks) {
+      if (next.some((b) => same(b, block))) continue;
+      if (next.length >= limits.maxFiles) {
+        leftOut = true;
+        break;
+      }
+      next.push(block);
+    }
+    if (next.length !== blocksRef.current.length) setContentBlocks(next);
+    if (leftOut) toast.error(tooManyFilesMessage());
+  };
+
   const resetBlocks = () => setContentBlocks([]);
 
   /**
@@ -239,6 +264,11 @@ export function useFileUpload({
     if (!enabled) return;
     const items = e.clipboardData.items;
     if (!items) return;
+    // Excel, Word, PowerPoint and Numbers put a picture of the selection on
+    // the clipboard next to its text. Text means the person copied text, so
+    // the default paste runs and the picture isn't taken.
+    const types = Array.from(e.clipboardData.types ?? []);
+    if (types.includes("text/plain") || types.includes("text/html")) return;
     const files: File[] = [];
     for (let i = 0; i < items.length; i += 1) {
       const item = items[i];
@@ -261,6 +291,7 @@ export function useFileUpload({
     dropRef,
     removeBlock,
     resetBlocks,
+    addBlocks,
     dragOver,
     handlePaste,
     acceptFiles,

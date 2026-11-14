@@ -94,6 +94,7 @@ export function Thread() {
     dropRef,
     removeBlock,
     resetBlocks: _resetBlocks,
+    addBlocks,
     dragOver,
     handlePaste,
   } = useFileUpload({ enabled: program.features.fileUploads });
@@ -216,6 +217,17 @@ export function Thread() {
       );
     }
   }, [stream.error, authStatus, setThreadId]);
+
+  // Edit's references name files stored in the thread it was clicked in. In
+  // another thread the agent can't find them, so they leave the box. Files
+  // picked in this box are the person's own and stay.
+  useEffect(() => {
+    setContentBlocks((blocks) =>
+      blocks.some((b) => b.type === "attachment")
+        ? blocks.filter((b) => b.type !== "attachment")
+        : blocks,
+    );
+  }, [threadId, setContentBlocks]);
 
   // Set by Edit: sending the edited question replaces the unanswered one.
   const replaceOnSend = useRef(false);
@@ -349,7 +361,7 @@ export function Thread() {
     setInput((draft) =>
       draft.trim() ? `${draft}\n${parts.text}` : parts.text,
     );
-    setContentBlocks((blocks) => [...blocks, ...parts.blocks]);
+    addBlocks(parts.blocks);
     // A turn that made a change stays, so the record of it isn't lost.
     replaceOnSend.current = !unanswered?.wrote;
     focusComposer({ atEnd: true });
