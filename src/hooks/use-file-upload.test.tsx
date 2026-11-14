@@ -1,7 +1,7 @@
 import { act, render, renderHook, waitFor } from "@testing-library/react";
 import type { ClipboardEvent } from "react";
 import { useEffect } from "react";
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import { useFileUpload } from "./use-file-upload";
 
 const auth = vi.hoisted(() => ({ status: "signed_out" as string }));
@@ -9,7 +9,15 @@ vi.mock("@/hooks/use-agent-auth", () => ({
   useAuthStatus: () => auth.status,
 }));
 vi.mock("@/lib/image-resize", () => ({
-  resizeImage: vi.fn(async () => ({ data: "RESIZED", mimeType: "image/png" })),
+  // The data stands in for the picture, so equal content gives equal data.
+  resizeImage: vi.fn(async (file: File) => ({
+    data: await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(btoa(reader.result as string));
+      reader.readAsText(file);
+    }),
+    mimeType: "image/png",
+  })),
 }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 import { toast } from "sonner";
@@ -101,14 +109,18 @@ describe("useFileUpload with uploads enabled", () => {
   });
 });
 
+beforeEach(() => vi.mocked(toast.error).mockClear());
+
 const MB = 1024 * 1024;
 
-function pdf(name: string, bytes: number) {
-  return new File([new Uint8Array(bytes)], name, { type: "application/pdf" });
+function pdf(name: string, bytes: number, fill = 0) {
+  return new File([new Uint8Array(bytes).fill(fill)], name, {
+    type: "application/pdf",
+  });
 }
 
-function image(name: string) {
-  return new File(["x"], name, { type: "image/png" });
+function image(name: string, content = name) {
+  return new File([content], name, { type: "image/png" });
 }
 
 describe("acceptFiles", () => {
@@ -160,7 +172,7 @@ describe("acceptFiles", () => {
     await act(async () => {
       await result.current.acceptFiles([
         pdf("a.pdf", 4.5 * MB),
-        pdf("b.pdf", 4.5 * MB),
+        pdf("b.pdf", 4.5 * MB, 1),
       ]);
     });
     expect(result.current.contentBlocks).toHaveLength(1);
@@ -204,5 +216,34 @@ describe("acceptFiles", () => {
     });
     // pic.png is a duplicate now, and a third file would also be over the limit.
     expect(result.current.contentBlocks).toHaveLength(2);
+  });
+
+  it("accepts two different pasted images that are both named image.png", async () => {
+    auth.status = "signed_out";
+    const { result } = renderHook(() => useFileUpload());
+    await act(async () => {
+      await result.current.acceptFiles([image("image.png", "first")]);
+    });
+    await act(async () => {
+      await result.current.acceptFiles([image("image.png", "second")]);
+    });
+    expect(result.current.contentBlocks).toHaveLength(2);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("refuses the same file added twice once, even when intakes overlap", async () => {
+    auth.status = "signed_in";
+    const { result } = renderHook(() => useFileUpload());
+    await act(async () => {
+      await Promise.all([
+        result.current.acceptFiles([image("a.png", "same")]),
+        result.current.acceptFiles([image("a.png", "same")]),
+      ]);
+    });
+    expect(result.current.contentBlocks).toHaveLength(1);
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(toast.error).toHaveBeenCalledWith(
+      "a.png is already attached. Each file can only be added once per message.",
+    );
   });
 });

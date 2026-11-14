@@ -28,10 +28,6 @@ interface UseFileUploadOptions {
   enabled?: boolean;
 }
 
-function blockName(b: UploadBlock): string {
-  return b.type === "image" ? b.metadata.name : b.metadata.filename;
-}
-
 /** Bytes that will go on the wire for a block. */
 function blockBytes(b: UploadBlock): number {
   return base64Bytes(b.data);
@@ -72,17 +68,6 @@ export function useFileUpload({
           );
           continue;
         }
-        const duplicate = current.some(
-          (b) =>
-            blockName(b) === file.name &&
-            (b.type === "image") === (kind === "image"),
-        );
-        if (duplicate) {
-          toast.error(
-            `${file.name} is already attached. Each file can only be added once per message.`,
-          );
-          continue;
-        }
         if (current.length >= limits.maxFiles) {
           toast.error(
             signedIn
@@ -100,7 +85,19 @@ export function useFileUpload({
           );
           continue;
         }
-        // Reread: another intake may have added files while this one decoded.
+        // Compare after processing, against the latest blocks, so the same file
+        // added twice is refused once even when two intakes overlap. Different
+        // files that share a name (every pasted screenshot is image.png) pass.
+        if (
+          blocksRef.current.some(
+            (b) => b.mimeType === block.mimeType && b.data === block.data,
+          )
+        ) {
+          toast.error(
+            `${file.name} is already attached. Each file can only be added once per message.`,
+          );
+          continue;
+        }
         const used = blocksRef.current.reduce((n, b) => n + blockBytes(b), 0);
         if (used + blockBytes(block) > limits.maxTotalBytes) {
           toast.error(
