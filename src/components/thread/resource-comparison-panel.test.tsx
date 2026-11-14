@@ -66,6 +66,36 @@ describe("ResourceComparisonTable", () => {
     ).toEqual(["Anvil GPU", "Stampede3", "Jetstream2 GPU"]);
   });
 
+  it("fills the panel, scrolling sideways only past what fits", () => {
+    render(<ResourceComparisonTable view={view(anvilSet)} />);
+
+    const table = screen.getByRole("table");
+    expect(table.className).toContain("w-full");
+    expect(table.className).not.toContain("min-w-max");
+    // A 7rem label column and 11rem for each of three resources.
+    expect(table.style.minWidth).toBe("40rem");
+  });
+
+  it("keeps the resource names in view as the table scrolls", () => {
+    render(<ResourceComparisonTable view={view(anvilSet)} />);
+
+    for (const header of screen.getAllByRole("columnheader")) {
+      expect(header.className).toContain("sticky");
+      expect(header.className).toContain("top-0");
+    }
+    expect(
+      screen.getByRole("region", { name: "Resources side by side" }).className,
+    ).toContain("overflow-auto");
+  });
+
+  it("wraps a hostname at its dots without changing its text", () => {
+    render(<ResourceComparisonTable view={view(deltaSet)} />);
+
+    const code = within(cell("Log in", "Delta GPU")).getAllByRole("code")[0];
+    expect(code.querySelectorAll("wbr").length).toBeGreaterThan(0);
+    expect(code.textContent).toMatch(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/);
+  });
+
   it("says Not documented for a gap, never no", () => {
     render(<ResourceComparisonTable view={view(anvilSet)} />);
 

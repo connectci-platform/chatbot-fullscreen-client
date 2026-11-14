@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   latestResourceComparison,
   resourceComparisonFor,
@@ -9,6 +16,7 @@ import {
 } from "@/lib/resource-comparison";
 import { newestPanelStep } from "@/lib/software-comparison";
 import { useStreamContext } from "@/providers/Stream";
+import { cn } from "@/lib/utils";
 import { useArtifact } from "./artifact";
 
 const SHOWN = 3;
@@ -51,6 +59,16 @@ function hours(value: number): string {
   return `${Number.isInteger(value) ? value : value.toFixed(1)} h`;
 }
 
+/** A hostname that wraps after its dots rather than mid-word. */
+function breakable(host: string): ReactNode {
+  return host.split(/(?<=\.)/).map((part, i) => (
+    <Fragment key={i}>
+      {i > 0 && <wbr />}
+      {part}
+    </Fragment>
+  ));
+}
+
 interface Row {
   label: string;
   cell: (resource: ComparedResource) => ReactNode;
@@ -87,11 +105,8 @@ const ROWS: Row[] = [
       }
       for (const [i, host] of (r.sshHosts ?? []).entries()) {
         items.push(
-          <li
-            key={`ssh-${i}`}
-            className="[overflow-wrap:anywhere]"
-          >
-            SSH <code className="text-xs">{host}</code>
+          <li key={`ssh-${i}`}>
+            SSH <code className="text-xs">{breakable(host)}</code>
           </li>,
         );
       }
@@ -206,9 +221,17 @@ const ROWS: Row[] = [
   },
 ];
 
+// Separate borders: collapsed ones scroll away from a sticky header.
 const ROW_HEADER =
-  "bg-background sticky left-0 z-10 w-[8rem] min-w-[8rem] border-r border-b px-3 py-2 text-left align-top font-semibold";
-const CELL = "w-[15rem] min-w-[15rem] border-b px-3 py-2 align-top";
+  "bg-background sticky left-0 z-10 border-r border-b px-3 py-2.5 text-left align-top font-semibold";
+const CELL =
+  "border-r border-b px-3 py-2.5 align-top [overflow-wrap:anywhere] last:border-r-0";
+const HEAD =
+  "bg-muted sticky top-0 z-20 border-r border-b px-3 py-2.5 text-left align-bottom font-semibold last:border-r-0";
+// The label column, and the narrowest a resource column gets before the
+// table scrolls sideways: two resources fit the panel, more scroll.
+const LABEL_REM = 7;
+const COLUMN_REM = 11;
 
 export function ResourceComparisonTable({
   view,
@@ -225,8 +248,8 @@ export function ResourceComparisonTable({
   const unmatched = view.unresolved.filter((u) => u.matches.length === 0);
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto p-4 sm:p-6">
-      <p className="text-muted-foreground text-sm">
+    <div className="flex h-full flex-col gap-4 p-4 sm:p-6">
+      <p className="text-muted-foreground shrink-0 text-sm">
         From ACCESS Resource Documentation. Not documented means the
         documentation doesn&apos;t cover it, not that the resource lacks it.
       </p>
@@ -235,18 +258,28 @@ export function ResourceComparisonTable({
         role="region"
         aria-label="Resources side by side"
         tabIndex={0}
-        className="max-w-full overflow-x-auto rounded-md border"
+        // Scrolls both ways itself, so the header row and the label column
+        // stay in view.
+        className="min-h-0 max-w-full flex-1 overflow-auto rounded-md border"
       >
-        <table className="min-w-max border-collapse text-left text-sm">
+        <table
+          className="w-full table-fixed border-separate border-spacing-0 text-left text-sm"
+          style={{
+            minWidth: `${LABEL_REM + COLUMN_REM * view.resources.length}rem`,
+          }}
+        >
           <caption className="sr-only">Comparing {names}</caption>
+          <colgroup>
+            <col style={{ width: `${LABEL_REM}rem` }} />
+          </colgroup>
           <thead>
             <tr>
-              <td className="bg-background sticky left-0 z-10 border-r border-b" />
+              <td className={cn(HEAD, "left-0 z-30 border-r")} />
               {view.resources.map((r) => (
                 <th
                   key={r.id}
                   scope="col"
-                  className={`${CELL} align-bottom`}
+                  className={HEAD}
                 >
                   {r.citationUrl ? (
                     <a
@@ -294,14 +327,14 @@ export function ResourceComparisonTable({
       {ambiguous.map((u) => (
         <p
           key={u.name}
-          className="text-sm"
+          className="shrink-0 text-sm"
         >
           {u.name} could mean {u.matches.join(", ")}, so it isn&apos;t in the
           table. Ask about one of them by name.
         </p>
       ))}
       {unmatched.length > 0 && (
-        <p className="text-sm">
+        <p className="shrink-0 text-sm">
           Resource Documentation has nothing named{" "}
           {unmatched.map((u) => u.name).join(", ")}.
         </p>
