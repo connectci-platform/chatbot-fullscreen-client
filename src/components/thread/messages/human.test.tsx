@@ -16,4 +16,20 @@ describe("HumanMessage", () => {
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Copy content" })).toBeNull();
   });
+
+  it("shows only the word Confirm for a confirm block", () => {
+    const { container } = render(
+      <HumanMessage
+        message={{
+          id: "h2",
+          type: "human",
+          content: [
+            { type: "text", text: "Confirm" },
+            { type: "confirm", preview_ids: ["a".repeat(32)] },
+          ] as unknown as Message["content"],
+        }}
+      />,
+    );
+    expect(container.textContent).toBe("Confirm");
+  });
 });

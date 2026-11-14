@@ -3,7 +3,16 @@ import type { Message } from "@langchain/langgraph-sdk";
 
 type Content = Exclude<Message["content"], string>;
 
-export function questionParts(message: Message): {
+/**
+ * A question's text and non-text blocks. Confirm blocks are left out unless
+ * `keepConfirm` is set: they are a click on a card, so only an exact Retry
+ * of that click may resend them. Edit and restore put the blocks in the
+ * message box, where whatever is typed next would go out with them.
+ */
+export function questionParts(
+  message: Message,
+  { keepConfirm = false }: { keepConfirm?: boolean } = {},
+): {
   text: string;
   blocks: Content;
 } {
@@ -11,7 +20,10 @@ export function questionParts(message: Message): {
   if (typeof content === "string") return { text: content, blocks: [] };
   return {
     text: content.map((b) => (b.type === "text" ? b.text : "")).join(""),
-    blocks: content.filter((b) => b.type !== "text"),
+    blocks: content.filter(
+      (b) =>
+        b.type !== "text" && (keepConfirm || (b.type as string) !== "confirm"),
+    ),
   };
 }
 

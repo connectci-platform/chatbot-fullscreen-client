@@ -10,6 +10,12 @@ import {
   type Registration,
   type RegistrationStatus,
 } from "@/lib/registration";
+import {
+  cardConfirms,
+  confirmBlock,
+  type ConfirmBlock,
+  type Preview,
+} from "@/lib/confirm";
 import { newestPanelStep } from "@/lib/software-comparison";
 import { useStreamContext } from "@/providers/Stream";
 import { useArtifact } from "./artifact";
@@ -63,11 +69,14 @@ export function RegistrationDetails({
   busy,
   onConfirm,
   timeZone,
+  confirmElsewhere = false,
 }: {
   registration: Registration;
   busy: boolean;
   onConfirm: () => void;
   timeZone?: string;
+  /** The thread's confirm card holds this change, so no button here. */
+  confirmElsewhere?: boolean;
 }) {
   const { event, status, actionable } = registration;
   const isPreview = status === "preview";
@@ -124,7 +133,14 @@ export function RegistrationDetails({
         role="status"
         className="flex flex-col gap-4"
       >
-        {isPreview && actionable && (
+        {isPreview && actionable && confirmElsewhere && (
+          <div className="bg-muted rounded-md border p-4">
+            <p className="text-sm">
+              Confirm this change with the others in the chat.
+            </p>
+          </div>
+        )}
+        {isPreview && actionable && !confirmElsewhere && (
           <>
             <div className="bg-muted rounded-md border p-4">
               <p className="font-semibold">{outcome.title}</p>
@@ -187,8 +203,12 @@ export function RegistrationDetails({
 /** Opens the side panel when the conversation reaches a new registration step. */
 export function RegistrationPanel({
   onConfirm,
+  cardPreviews = [],
 }: {
-  onConfirm: (message: string) => void;
+  onConfirm: (message: string, blocks: ConfirmBlock[]) => void;
+  /** The previews the chat card confirms. The panel defers to it only for a
+   * registration the card's Confirm actually covers. */
+  cardPreviews?: Preview[];
 }) {
   const stream = useStreamContext();
   const registration = useMemo(
@@ -222,7 +242,15 @@ export function RegistrationPanel({
       <RegistrationDetails
         registration={registration}
         busy={stream.isLoading}
-        onConfirm={() => onConfirm(confirmMessage(registration))}
+        confirmElsewhere={cardConfirms(registration.previewId, cardPreviews)}
+        onConfirm={() =>
+          onConfirm(
+            confirmMessage(registration),
+            registration.previewId
+              ? [confirmBlock([registration.previewId])]
+              : [],
+          )
+        }
       />
     </Artifact>
   );

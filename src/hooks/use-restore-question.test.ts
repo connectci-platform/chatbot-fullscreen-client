@@ -1,7 +1,7 @@
 import { renderHook } from "@testing-library/react";
 import type { Message } from "@langchain/langgraph-sdk";
 import { describe, expect, it, vi } from "vitest";
-import { useRestoreQuestion } from "./use-restore-question";
+import { questionParts, useRestoreQuestion } from "./use-restore-question";
 
 const image = { type: "image", source_type: "base64" };
 const question = {
@@ -102,5 +102,33 @@ describe("useRestoreQuestion", () => {
     rerender({ failed: true, input: "" });
 
     expect(setInput).toHaveBeenCalledOnce();
+  });
+});
+
+describe("confirm blocks", () => {
+  const confirm = { type: "confirm", preview_ids: ["a".repeat(32)] };
+  const confirmed = {
+    id: "m2",
+    type: "human",
+    content: [{ type: "text", text: "Confirm" }, confirm, image],
+  } as unknown as Message;
+
+  it("questionParts leaves them out, as Edit uses it", () => {
+    expect(questionParts(confirmed)).toEqual({
+      text: "Confirm",
+      blocks: [image],
+    });
+  });
+
+  it("questionParts keeps them for Retry, which resends the same click", () => {
+    expect(questionParts(confirmed, { keepConfirm: true }).blocks).toEqual([
+      confirm,
+      image,
+    ]);
+  });
+
+  it("restore after a failed check doesn't carry them", () => {
+    const { setBlocks } = setup({ failed: true, question: confirmed });
+    expect(applied(setBlocks, [])).toEqual([image]);
   });
 });

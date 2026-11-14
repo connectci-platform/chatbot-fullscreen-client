@@ -63,6 +63,8 @@ import { useInitialQuestion } from "@/hooks/use-initial-question";
 import { useFirstTokenReceived } from "@/hooks/use-first-token-received";
 import { ContentBlocksPreview } from "./ContentBlocksPreview";
 import { useArtifactOpen, useArtifactContext } from "./artifact";
+import { ConfirmCard } from "./confirm-card";
+import { pendingPreviews, type ConfirmBlock } from "@/lib/confirm";
 import { RegistrationPanel } from "./registration-panel";
 import { SoftwareComparisonPanel } from "./software-comparison-panel";
 import { ResourceComparisonPanel } from "./resource-comparison-panel";
@@ -214,7 +216,7 @@ export function Thread() {
    */
   const submitMessage = (
     text: string,
-    blocks: typeof contentBlocks,
+    blocks: typeof contentBlocks | ConfirmBlock[],
     { replacing = false }: { replacing?: boolean } = {},
   ) => {
     setFirstTokenReceived(false);
@@ -230,7 +232,7 @@ export function Thread() {
       content: [
         ...(text.trim().length > 0 ? [{ type: "text", text }] : []),
         ...blocks,
-      ] as Message["content"],
+      ] as unknown as Message["content"],
     };
 
     const toolMessages = ensureToolCallsHaveResponses(kept(stream.messages));
@@ -258,6 +260,14 @@ export function Thread() {
       },
     );
   };
+
+  // A turn whose only change is a registration keeps the side panel.
+  const cardPreviews = useMemo(() => {
+    const previews = pendingPreviews(stream.messages);
+    return previews.every((p) => p.tool === "register_for_event")
+      ? []
+      : previews;
+  }, [stream.messages]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -291,9 +301,11 @@ export function Thread() {
   });
 
   // The blocks came from this box, so they're the kind it holds.
-  const unansweredParts = () => {
+  const unansweredParts = ({ keepConfirm = false } = {}) => {
     if (!unanswered) return null;
-    const { text, blocks } = questionParts(unanswered.question);
+    const { text, blocks } = questionParts(unanswered.question, {
+      keepConfirm,
+    });
     return { text, blocks: blocks as unknown as typeof contentBlocks };
   };
 
@@ -305,7 +317,8 @@ export function Thread() {
 
   /** Asks the unanswered question again as a new run. */
   const retryQuestion = () => {
-    const parts = unansweredParts();
+    // Retry resends the same click, so a Confirm keeps its ids.
+    const parts = unansweredParts({ keepConfirm: true });
     if (!parts || unanswered?.wrote || awaitingCheck || retrying.current)
       return;
     retrying.current = true;
@@ -558,6 +571,16 @@ export function Thread() {
                     isLoading={isLoading}
                   />
                 )}
+                {cardPreviews.length > 0 && (
+                  <ConfirmCard
+                    previews={cardPreviews}
+                    busy={isLoading}
+                    onSend={(text, blocks) => {
+                      submitMessage(text, blocks);
+                      focusComposer();
+                    }}
+                  />
+                )}
                 <StoppedNote
                   turn={unanswered}
                   retryRef={retryButton}
@@ -751,7 +774,10 @@ export function Thread() {
           onClose={closeArtifact}
         />
       </div>
-      <RegistrationPanel onConfirm={(text) => submitMessage(text, [])} />
+      <RegistrationPanel
+        onConfirm={(text, blocks) => submitMessage(text, blocks)}
+        cardPreviews={cardPreviews}
+      />
       <SoftwareComparisonPanel />
       <ResourceComparisonPanel />
       <XdmodChartPanel
