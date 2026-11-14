@@ -30,7 +30,7 @@ export const access: ProgramConfig = {
     droppable: "AI can make mistakes.",
     text: "Don't share passwords or secrets.",
   },
-  features: { fileUploads: false, siteHeader: false },
+  features: { fileUploads: true, siteHeader: false },
   starterQuestions: [
     "Sign me up for an upcoming GPU training",
     "Which ACCESS resources have GROMACS, and which versions?",

@@ -31,8 +31,30 @@ export interface AttachmentRef {
   est_tokens?: number;
 }
 
+/** What Retry and Edit send for a stored upload. The agent reads only the id. */
+export type ResendRef = { type: "attachment"; id: string };
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+/** The agent adds these to a saved question when it leaves a file out. */
+const NOT_SHARED_PREFIX = "[Not shared: ";
+
+/**
+ * Text the person typed. The agent's "[Not shared: ...]" notes are text
+ * blocks too, but they aren't the person's words, so the bubble, Copy and
+ * resend leave them out.
+ */
+export function isTypedText(
+  value: unknown,
+): value is { type: "text"; text: string } {
+  return (
+    isRecord(value) &&
+    value.type === "text" &&
+    typeof value.text === "string" &&
+    !value.text.startsWith(NOT_SHARED_PREFIX)
+  );
 }
 
 export function isAttachmentRef(value: unknown): value is AttachmentRef {
@@ -55,19 +77,13 @@ export function isFileBlock(value: unknown): value is FileBlock {
  */
 export function toResendBlocks(
   content: unknown,
-): Array<{ type: "text"; text: string } | { type: "attachment"; id: string }> {
+): Array<{ type: "text"; text: string } | ResendRef> {
   if (!Array.isArray(content)) return [];
-  const out: Array<
-    { type: "text"; text: string } | { type: "attachment"; id: string }
-  > = [];
+  const out: Array<{ type: "text"; text: string } | ResendRef> = [];
   for (const block of content) {
     if (isAttachmentRef(block)) {
       out.push({ type: "attachment", id: block.id });
-    } else if (
-      isRecord(block) &&
-      block.type === "text" &&
-      typeof block.text === "string"
-    ) {
+    } else if (isTypedText(block)) {
       out.push({ type: "text", text: block.text });
     }
   }
@@ -78,4 +94,33 @@ export function toResendBlocks(
 export function base64Bytes(data: string): number {
   const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
   return Math.floor((data.length * 3) / 4) - padding;
+}
+
+/** "12 B", "2 KB", "1.5 MB". */
+export function formatBytes(bytes: number): string {
+  const units = ["B", "KB", "MB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const shown = unit === 0 ? value : Math.round(value * 10) / 10;
+  return `${shown} ${units[unit]}`;
+}
+
+/** "1.5 MB · 12 pages", from what a block says about its file. */
+export function fileDetail({
+  size,
+  pages,
+}: {
+  size?: number;
+  pages?: number;
+}): string | undefined {
+  const parts: string[] = [];
+  if (typeof size === "number" && size >= 0) parts.push(formatBytes(size));
+  if (typeof pages === "number" && pages > 0) {
+    parts.push(pages === 1 ? "1 page" : `${pages} pages`);
+  }
+  return parts.length ? parts.join(" · ") : undefined;
 }

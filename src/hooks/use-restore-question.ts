@@ -1,13 +1,24 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import type { Message } from "@langchain/langgraph-sdk";
+import {
+  isAttachmentRef,
+  isTypedText,
+  toResendBlocks,
+} from "@/lib/upload-blocks";
 
 type Content = Exclude<Message["content"], string>;
 
 /**
- * A question's text and non-text blocks. Confirm blocks are left out unless
- * `keepConfirm` is set: they are a click on a card, so only an exact Retry
- * of that click may resend them. Edit and restore put the blocks in the
- * message box, where whatever is typed next would go out with them.
+ * A question's typed text and non-text blocks. A stored upload comes back as
+ * a bare `{type: "attachment", id}` reference, so a resend never carries the
+ * file again; a file still in the question as sent (one the agent hasn't
+ * stored, such as after a failed Turnstile check) comes back as it is. The
+ * agent's "[Not shared: ...]" notes are left out.
+ *
+ * Confirm blocks are left out unless `keepConfirm` is set: they are a click
+ * on a card, so only an exact Retry of that click may resend them. Edit and
+ * restore put the blocks in the message box, where whatever is typed next
+ * would go out with them.
  */
 export function questionParts(
   message: Message,
@@ -19,11 +30,16 @@ export function questionParts(
   const { content } = message;
   if (typeof content === "string") return { text: content, blocks: [] };
   return {
-    text: content.map((b) => (b.type === "text" ? b.text : "")).join(""),
-    blocks: content.filter(
-      (b) =>
-        b.type !== "text" && (keepConfirm || (b.type as string) !== "confirm"),
-    ),
+    text: content
+      .filter(isTypedText)
+      .map((b) => b.text)
+      .join(""),
+    blocks: content.flatMap((b): Content => {
+      if (b.type === "text") return [];
+      if (isAttachmentRef(b)) return toResendBlocks([b]) as Content;
+      if (!keepConfirm && (b.type as string) === "confirm") return [];
+      return [b];
+    }),
   };
 }
 

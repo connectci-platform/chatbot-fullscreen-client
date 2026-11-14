@@ -181,6 +181,20 @@ describe("acceptFiles", () => {
     );
   });
 
+  it("adds a file next to a stored one that Edit put back", async () => {
+    auth.status = "signed_in";
+    const { result } = renderHook(() =>
+      useFileUpload({
+        initialBlocks: [{ type: "attachment", id: "a".repeat(32) }],
+      }),
+    );
+    await act(async () => {
+      await result.current.acceptFiles([image("b.png")]);
+    });
+    expect(result.current.contentBlocks).toHaveLength(2);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
   it("accepts a text file picked with no MIME type and skips duplicates", async () => {
     auth.status = "signed_out";
     const { result } = renderHook(() => useFileUpload());

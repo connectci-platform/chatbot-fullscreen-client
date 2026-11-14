@@ -19,18 +19,23 @@ import {
   base64Bytes,
   type FileBlock,
   type ImageBlock,
+  type ResendRef,
 } from "@/lib/upload-blocks";
 
-export type UploadBlock = ImageBlock | FileBlock;
+/**
+ * What the message box holds: files picked here, and references to files
+ * already stored in the thread, which Edit puts back.
+ */
+export type UploadBlock = ImageBlock | FileBlock | ResendRef;
 
 interface UseFileUploadOptions {
   initialBlocks?: UploadBlock[];
   enabled?: boolean;
 }
 
-/** Bytes that will go on the wire for a block. */
+/** Bytes that will go on the wire for a block. A reference is only an id. */
 function blockBytes(b: UploadBlock): number {
-  return base64Bytes(b.data);
+  return b.type === "attachment" ? 0 : base64Bytes(b.data);
 }
 
 export function useFileUpload({
@@ -76,7 +81,7 @@ export function useFileUpload({
           );
           break;
         }
-        let block: UploadBlock;
+        let block: ImageBlock | FileBlock;
         try {
           block = await fileToContentBlock(file, limits);
         } catch (err) {
@@ -90,7 +95,10 @@ export function useFileUpload({
         // files that share a name (every pasted screenshot is image.png) pass.
         if (
           blocksRef.current.some(
-            (b) => b.mimeType === block.mimeType && b.data === block.data,
+            (b) =>
+              b.type !== "attachment" &&
+              b.mimeType === block.mimeType &&
+              b.data === block.data,
           )
         ) {
           toast.error(

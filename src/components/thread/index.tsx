@@ -66,6 +66,7 @@ import { ContentBlocksPreview } from "./ContentBlocksPreview";
 import { useArtifactOpen, useArtifactContext } from "./artifact";
 import { ConfirmCard } from "./confirm-card";
 import { pendingPreviews, type ConfirmBlock } from "@/lib/confirm";
+import { isAttachmentRef, type AttachmentRef } from "@/lib/upload-blocks";
 import { RegistrationPanel } from "./registration-panel";
 import { SoftwareComparisonPanel } from "./software-comparison-panel";
 import { ResourceComparisonPanel } from "./resource-comparison-panel";
@@ -156,6 +157,18 @@ export function Thread() {
         .map((m) => questionParts(m).text),
     [messages],
   );
+  // Files stored in this thread, to name the ones Edit puts in the box.
+  const sharedFiles = useMemo(() => {
+    const files = new Map<string, AttachmentRef>();
+    for (const m of messages) {
+      if (m.type !== "human" || !Array.isArray(m.content)) continue;
+      // The SDK's block union doesn't include references.
+      for (const block of m.content as unknown[]) {
+        if (isAttachmentRef(block)) files.set(block.id, block);
+      }
+    }
+    return files;
+  }, [messages]);
   const questionHistory = useQuestionHistory({
     questions: askedQuestions,
     input,
@@ -652,6 +665,7 @@ export function Thread() {
                     >
                       <ContentBlocksPreview
                         blocks={contentBlocks}
+                        sharedFiles={sharedFiles}
                         onRemove={removeBlock}
                       />
                       {/* The box and its buttons on one row, Send inside the

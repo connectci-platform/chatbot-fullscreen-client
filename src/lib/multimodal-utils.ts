@@ -116,7 +116,8 @@ export function isBase64ContentBlock(
     "mimeType" in block &&
     typeof (block as { mimeType?: unknown }).mimeType === "string" &&
     ((block as { mimeType: string }).mimeType.startsWith("image/") ||
-      (block as { mimeType: string }).mimeType === "application/pdf")
+      (block as { mimeType: string }).mimeType === "application/pdf" ||
+      (block as { mimeType: string }).mimeType === "text/plain")
   ) {
     return true;
   }

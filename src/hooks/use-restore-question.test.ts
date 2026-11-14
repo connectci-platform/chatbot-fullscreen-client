@@ -132,3 +132,80 @@ describe("confirm blocks", () => {
     expect(applied(setBlocks, [])).toEqual([image]);
   });
 });
+
+describe("stored files", () => {
+  const ref = {
+    type: "attachment",
+    id: "c".repeat(32),
+    kind: "image",
+    name: "Screenshot.png",
+    mime_type: "image/png",
+    width: 1600,
+    height: 1000,
+  };
+  const pdf = {
+    type: "attachment",
+    id: "d".repeat(32),
+    kind: "pdf",
+    name: "report.pdf",
+    size: 2048,
+    pages: 3,
+    est_tokens: 900,
+  };
+  const note = {
+    type: "text",
+    text: "[Not shared: notes.docx isn't a supported file.]",
+  };
+  const saved = {
+    id: "m3",
+    type: "human",
+    content: [{ type: "text", text: "What is this?" }, ref, note, pdf],
+  } as unknown as Message;
+
+  it("Retry resends each stored file as a bare reference, with no file data", () => {
+    expect(questionParts(saved, { keepConfirm: true })).toEqual({
+      text: "What is this?",
+      blocks: [
+        { type: "attachment", id: "c".repeat(32) },
+        { type: "attachment", id: "d".repeat(32) },
+      ],
+    });
+  });
+
+  it("Edit gets the same bare references", () => {
+    expect(questionParts(saved).blocks).toEqual([
+      { type: "attachment", id: "c".repeat(32) },
+      { type: "attachment", id: "d".repeat(32) },
+    ]);
+  });
+
+  it("leaves out the agent's not-shared notes", () => {
+    expect(questionParts(saved).text).toBe("What is this?");
+  });
+
+  it("the Turnstile restore keeps the file blocks of a question not yet stored", () => {
+    const file = {
+      type: "file",
+      mimeType: "text/plain",
+      data: btoa("echo hi\n"),
+      metadata: { filename: "job.sh" },
+    };
+    const raw = {
+      type: "image",
+      mimeType: "image/png",
+      data: "iVBORw0KGgo=",
+      metadata: { name: "pasted.png" },
+    };
+    const challenged = {
+      id: "m4",
+      type: "human",
+      content: [{ type: "text", text: "Why?" }, raw, file],
+    } as unknown as Message;
+    const { setInput, setBlocks } = setup({
+      failed: true,
+      question: challenged,
+    });
+    expect(applied(setInput, "")).toBe("Why?");
+    expect(applied(setBlocks, [])).toEqual([raw, file]);
+  });
+});

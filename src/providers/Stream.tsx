@@ -33,6 +33,10 @@ import {
   shouldResendAfterSignIn,
 } from "@/lib/run-errors";
 import { isRunStatusEvent, type RunStatusEvent } from "@/lib/run-status";
+import {
+  isUploadDroppedEvent,
+  uploadDroppedMessage,
+} from "@/lib/upload-dropped";
 import { afterStop, stoppedTurn } from "@/lib/stopped-answer";
 import { claimThread, noteAuthStatus } from "@/lib/thread-claim";
 import { viewerTimeZone } from "@/lib/time-zone";
@@ -193,6 +197,14 @@ const StreamSession = ({
     onCustomEvent: (event, options) => {
       if (isRequiresAuthEvent(event)) {
         showRequiresAuth(event);
+        return;
+      }
+      if (isUploadDroppedEvent(event)) {
+        // Files the agent left out of this question, with its reasons.
+        toast.warning(uploadDroppedMessage(event), {
+          richColors: true,
+          closeButton: true,
+        });
         return;
       }
       if (isRunStatusEvent(event)) {
