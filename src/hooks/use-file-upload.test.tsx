@@ -24,11 +24,15 @@ import { toast } from "sonner";
 
 const png = new File(["x"], "pic.png", { type: "image/png" });
 
-function pasteEvent(types: string[] = ["Files"]) {
+function pasteEvent(types: string[] = ["Files"], text = "") {
   const preventDefault = vi.fn();
   const event = {
     preventDefault,
-    clipboardData: { types, items: [{ kind: "file", getAsFile: () => png }] },
+    clipboardData: {
+      types,
+      getData: (type: string) => (type === "text/plain" ? text : ""),
+      items: [{ kind: "file", getAsFile: () => png }],
+    },
   } as unknown as ClipboardEvent<HTMLTextAreaElement>;
   return { event, preventDefault };
 }
@@ -235,17 +239,32 @@ describe("acceptFiles", () => {
   it("leaves a paste that holds text alone, even with a picture of it", async () => {
     auth.status = "signed_out";
     const { result } = renderHook(() => useFileUpload());
-    for (const types of [
+    const { event, preventDefault } = pasteEvent(
       ["text/plain", "text/html", "Files"],
-      ["text/html", "Files"],
-    ]) {
-      const { event, preventDefault } = pasteEvent(types);
+      "A1\tB1",
+    );
+    await act(async () => {
+      await result.current.handlePaste(event);
+    });
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(result.current.contentBlocks).toEqual([]);
+  });
+
+  it("takes the image when a browser's Copy image adds only an html fragment", async () => {
+    auth.status = "signed_out";
+    const { result } = renderHook(() => useFileUpload());
+    for (const text of [undefined, "  \n"]) {
+      const types =
+        text === undefined
+          ? ["text/html", "Files"]
+          : ["text/plain", "text/html", "Files"];
+      const { event, preventDefault } = pasteEvent(types, text);
       await act(async () => {
         await result.current.handlePaste(event);
       });
-      expect(preventDefault).not.toHaveBeenCalled();
+      expect(preventDefault).toHaveBeenCalled();
     }
-    expect(result.current.contentBlocks).toEqual([]);
+    expect(result.current.contentBlocks.length).toBeGreaterThan(0);
   });
 
   it("still takes a paste of only an image", async () => {

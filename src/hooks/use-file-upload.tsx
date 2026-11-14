@@ -265,10 +265,10 @@ export function useFileUpload({
     const items = e.clipboardData.items;
     if (!items) return;
     // Excel, Word, PowerPoint and Numbers put a picture of the selection on
-    // the clipboard next to its text. Text means the person copied text, so
-    // the default paste runs and the picture isn't taken.
-    const types = Array.from(e.clipboardData.types ?? []);
-    if (types.includes("text/plain") || types.includes("text/html")) return;
+    // the clipboard next to its text. Real text means the person copied text,
+    // so the default paste runs and the picture isn't taken. A browser's "Copy
+    // image" adds only an html fragment, so html alone doesn't count.
+    if (e.clipboardData.getData("text/plain").trim()) return;
     const files: File[] = [];
     for (let i = 0; i < items.length; i += 1) {
       const item = items[i];
