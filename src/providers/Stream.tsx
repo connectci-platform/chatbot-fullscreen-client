@@ -74,6 +74,11 @@ type StreamContextType = TypedStream & {
   failChallenge: () => void;
   /** The human message of the run that was challenged. */
   challengedQuestion: () => Message | null;
+  /**
+   * The message box says whether it still holds the question a failed check
+   * put back. A sign-in resends the question only while it does.
+   */
+  setResendGuard: (guard: (() => boolean) | null) => void;
   /** The person stopped the latest run before its answer was delivered. */
   stopped: boolean;
 };
@@ -235,6 +240,7 @@ const StreamSession = ({
   // Every submit, however it started, so a challenged run can go out again.
   const lastSubmit = useRef<Parameters<TypedStream["submit"]> | null>(null);
   const resentChallenge = useRef<unknown>(null);
+  const resendGuard = useRef<(() => boolean) | null>(null);
   const newQuestion = useRef(false);
   const [tokenSent, setTokenSent] = useState(false);
   const [widgetFailed, setWidgetFailed] = useState(false);
@@ -325,7 +331,9 @@ const StreamSession = ({
         prevAuthStatus.current,
         authStatus,
         streamValue.error,
-      )
+      ) &&
+      // The box changed since the question was put back: leave it as it is.
+      (resendGuard.current?.() ?? true)
     ) {
       resend();
     }
@@ -424,6 +432,9 @@ const StreamSession = ({
         resendWithToken: resend,
         turnstileFailed,
         failChallenge: () => setWidgetFailed(true),
+        setResendGuard: (guard) => {
+          resendGuard.current = guard;
+        },
         challengedQuestion: () =>
           submittedMessages(lastSubmit.current?.[0]).findLast(
             (m) => m.type === "human",

@@ -143,9 +143,11 @@ export function Thread() {
   useRestoreQuestion({
     failed: stream.turnstileFailed,
     input,
+    blocks: contentBlocks,
     getQuestion: stream.challengedQuestion,
     setInput,
     setBlocks: setContentBlocks,
+    registerResendGuard: stream.setResendGuard,
   });
 
   // This conversation's questions, for Up and Down in the message box.

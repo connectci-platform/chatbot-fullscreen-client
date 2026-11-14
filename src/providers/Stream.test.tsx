@@ -233,6 +233,28 @@ describe("resending a challenged question", () => {
     expect(options.context?.turnstile_token).toBeUndefined();
   });
 
+  it("resends after a sign-in while the box still holds the restored question", () => {
+    const hook = setup();
+    askAndChallenge(hook);
+    act(() => hook.result.current.setResendGuard(() => true));
+
+    sdk.authStatus = "signed_in";
+    hook.rerender();
+
+    expect(sdk.submit).toHaveBeenCalledOnce();
+  });
+
+  it("sends nothing after a sign-in once the person changed the box", () => {
+    const hook = setup();
+    askAndChallenge(hook);
+    act(() => hook.result.current.setResendGuard(() => false));
+
+    sdk.authStatus = "signed_in";
+    hook.rerender();
+
+    expect(sdk.submit).not.toHaveBeenCalled();
+  });
+
   describe("a failed check", () => {
     it("isn't failed on the first challenge", () => {
       const hook = setup();

@@ -47,39 +47,62 @@ export function questionParts(
  * Puts a question back in the message box when its Turnstile check fails, so
  * the person can send it again. Sending is the deliberate retry: nothing goes
  * out by itself. If a sign-in sends the question instead, the box is cleared
- * so it can't be sent twice.
+ * so it can't be sent twice. A sign-in only sends it while the box still holds
+ * exactly what was put back (`registerResendGuard` tells the sender): once the
+ * person has changed the text or the files, what they see is what they meant to
+ * send, so nothing is resent behind their back.
  */
 export function useRestoreQuestion<Block>({
   failed,
   input,
+  blocks,
   getQuestion,
   setInput,
   setBlocks,
+  registerResendGuard,
 }: {
   failed: boolean;
   input: string;
+  blocks: Block[];
   getQuestion: () => Message | null;
   setInput: Dispatch<SetStateAction<string>>;
   setBlocks: Dispatch<SetStateAction<Block[]>>;
+  registerResendGuard?: (guard: (() => boolean) | null) => void;
 }) {
-  const restored = useRef<string | null>(null);
+  const restored = useRef<{ text: string; blocks: Block[] } | null>(null);
+  // The guard is called between renders, so it reads the latest box.
+  const box = useRef({ input, blocks });
+  box.current = { input, blocks };
+
+  const unchanged = () => {
+    const was = restored.current;
+    if (!was) return false;
+    const now = box.current;
+    return (
+      now.input === was.text &&
+      now.blocks.length === was.blocks.length &&
+      now.blocks.every((b, i) => b === was.blocks[i])
+    );
+  };
 
   useEffect(() => {
     if (failed) {
       const question = getQuestion();
       if (restored.current !== null || !question) return;
-      const { text, blocks } = questionParts(question);
-      restored.current = text;
+      const { text, blocks: questionBlocks } = questionParts(question);
+      restored.current = { text, blocks: questionBlocks as Block[] };
+      registerResendGuard?.(unchanged);
       setInput((prev) => prev || text);
-      setBlocks((prev) => (prev.length ? prev : (blocks as Block[])));
+      setBlocks((prev) => (prev.length ? prev : (questionBlocks as Block[])));
       return;
     }
     if (restored.current === null) return;
-    if (input === restored.current) {
+    if (unchanged()) {
       setInput("");
       setBlocks([]);
     }
     restored.current = null;
+    registerResendGuard?.(null);
     // Runs on the change of state, not on each keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [failed]);

@@ -13,23 +13,33 @@ const question = {
 function setup(initial: {
   failed: boolean;
   input?: string;
+  blocks?: unknown[];
   question?: Message | null;
 }) {
   const setInput = vi.fn();
   const setBlocks = vi.fn();
+  const registerResendGuard = vi.fn();
   const hook = renderHook(
-    (props: { failed: boolean; input: string }) =>
+    (props: { failed: boolean; input: string; blocks?: unknown[] }) =>
       useRestoreQuestion({
         failed: props.failed,
         input: props.input,
+        blocks: props.blocks ?? [image],
+        registerResendGuard,
         getQuestion: () =>
           initial.question === undefined ? question : initial.question,
         setInput,
         setBlocks,
       }),
-    { initialProps: { failed: initial.failed, input: initial.input ?? "" } },
+    {
+      initialProps: {
+        failed: initial.failed,
+        input: initial.input ?? "",
+        blocks: initial.blocks,
+      } as { failed: boolean; input: string; blocks?: unknown[] },
+    },
   );
-  return { ...hook, setInput, setBlocks };
+  return { ...hook, setInput, setBlocks, registerResendGuard };
 }
 
 const applied = <T>(setter: ReturnType<typeof vi.fn>, previous: T) =>
@@ -79,7 +89,7 @@ describe("useRestoreQuestion", () => {
     setInput.mockClear();
     setBlocks.mockClear();
 
-    rerender({ failed: false, input: "hello" });
+    rerender({ failed: false, input: "hello", blocks: [image] });
 
     expect(setInput).toHaveBeenCalledWith("");
     expect(setBlocks).toHaveBeenCalledWith([]);
@@ -102,6 +112,50 @@ describe("useRestoreQuestion", () => {
     rerender({ failed: true, input: "" });
 
     expect(setInput).toHaveBeenCalledOnce();
+  });
+});
+
+describe("resend guard", () => {
+  const guardOf = (spy: ReturnType<typeof vi.fn>) =>
+    spy.mock.calls.at(-1)?.[0] as (() => boolean) | null;
+
+  it("allows a sign-in's resend while the box holds what was put back", () => {
+    const { rerender, registerResendGuard } = setup({ failed: true });
+    rerender({ failed: true, input: "hello", blocks: [image] });
+    expect(guardOf(registerResendGuard)?.()).toBe(true);
+  });
+
+  it("refuses it once the text has changed", () => {
+    const { rerender, registerResendGuard } = setup({ failed: true });
+    rerender({ failed: true, input: "hello there", blocks: [image] });
+    expect(guardOf(registerResendGuard)?.()).toBe(false);
+  });
+
+  it("refuses it once a file has been removed", () => {
+    const { rerender, registerResendGuard } = setup({ failed: true });
+    rerender({ failed: true, input: "hello", blocks: [] });
+    expect(guardOf(registerResendGuard)?.()).toBe(false);
+  });
+
+  it("refuses it when the box held other files and the question's were not put back", () => {
+    const { registerResendGuard } = setup({
+      failed: true,
+      input: "hello",
+      blocks: [{ type: "image", source_type: "base64", other: true }],
+    });
+    expect(guardOf(registerResendGuard)?.()).toBe(false);
+  });
+
+  it("leaves the box as it is when the check clears over a changed box", () => {
+    const { rerender, setInput, setBlocks, registerResendGuard } = setup({
+      failed: true,
+    });
+    setInput.mockClear();
+    setBlocks.mockClear();
+    rerender({ failed: false, input: "hello", blocks: [] });
+    expect(setInput).not.toHaveBeenCalled();
+    expect(setBlocks).not.toHaveBeenCalled();
+    expect(guardOf(registerResendGuard)).toBeNull();
   });
 });
 
