@@ -49,14 +49,14 @@ describe("resizeImage", () => {
     expect(close).toHaveBeenCalled();
   });
 
-  it("does not upscale a small image", async () => {
+  it("does not upscale a small image that has to be re-encoded", async () => {
     const { canvas } = setup(400, 300);
-    await resizeImage(file);
+    await resizeImage(new File(["x"], "a.gif", { type: "image/gif" }));
     expect([canvas.width, canvas.height]).toEqual([400, 300]);
   });
 
   it("falls back to JPEG when the PNG is over 2 MB", async () => {
-    setup(1000, 1000, 3_000_000);
+    setup(2000, 2000, 3_000_000);
     const out = await resizeImage(file);
     expect(out).toEqual({ data: "JPEGDATA", mimeType: "image/jpeg" });
   });
@@ -71,5 +71,52 @@ describe("resizeImage", () => {
     await expect(resizeImage(file)).rejects.toThrow(
       "Couldn't read that image. Try a PNG or JPEG.",
     );
+  });
+
+  it("sends a PNG or JPEG within the limits as it is, without re-encoding", async () => {
+    for (const [name, type] of [
+      ["a.png", "image/png"],
+      ["a.jpg", "image/jpeg"],
+    ]) {
+      const { canvas } = setup(1200, 900);
+      const out = await resizeImage(
+        new File(["hello"], name, { type }),
+        1600,
+        2_000_000,
+        10_000,
+      );
+      expect(out).toEqual({ data: btoa("hello"), mimeType: type });
+      expect(canvas.toDataURL).not.toHaveBeenCalled();
+    }
+  });
+
+  it("treats a file with no type as PNG or JPEG by its name", async () => {
+    setup(100, 100);
+    const out = await resizeImage(new File(["hi"], "a.JPG", { type: "" }));
+    expect(out).toEqual({ data: btoa("hi"), mimeType: "image/jpeg" });
+  });
+
+  it("re-encodes a JPEG that is over the dimension limit as JPEG", async () => {
+    const { canvas } = setup(3200, 2000);
+    const out = await resizeImage(
+      new File(["x"], "a.jpg", { type: "image/jpeg" }),
+    );
+    expect(out).toEqual({ data: "JPEGDATA", mimeType: "image/jpeg" });
+    expect(canvas.toDataURL).not.toHaveBeenCalledWith("image/png");
+  });
+
+  it("re-encodes a PNG over the byte limit even within the dimension limit", async () => {
+    setup(1000, 1000);
+    const out = await resizeImage(file, 1600, 2_000_000, 0);
+    expect(out.mimeType).toBe("image/png");
+    expect(out.data).toBe("A".repeat(100));
+  });
+
+  it("re-encodes a GIF or WebP, since only PNG and JPEG go out", async () => {
+    setup(100, 100);
+    const out = await resizeImage(
+      new File(["x"], "a.webp", { type: "image/webp" }),
+    );
+    expect(out.mimeType).toBe("image/png");
   });
 });
