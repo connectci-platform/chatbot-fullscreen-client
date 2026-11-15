@@ -1,6 +1,8 @@
 import type { AuthStatus } from "./agent-token";
 
 const GENERIC = "Something went wrong. Please try again.";
+const TOO_LARGE =
+  "That's too much to send at once. Shorten the question, or share long text as a file.";
 
 // Names the SDK reports when the user stopped the run on purpose.
 const SILENT = new Set(["cancelled", "AbortError"]);
@@ -37,6 +39,25 @@ export function isNotFound(error: unknown): boolean {
 }
 
 /**
+ * The agent's explanation for a 413, such as a question over its length
+ * limit. The proxy's own 413, for a request over its size cap, has none.
+ */
+function tooLargeDetail(error: unknown): string | null {
+  if (!(error instanceof Error)) return null;
+  const { status, text } = error as Error & {
+    status?: unknown;
+    text?: unknown;
+  };
+  if (status !== 413) return null;
+  try {
+    const detail: unknown = JSON.parse(String(text)).detail;
+    return typeof detail === "string" && detail ? detail : TOO_LARGE;
+  } catch {
+    return TOO_LARGE;
+  }
+}
+
+/**
  * A conversation that 404ed while signed out may be the person's own, so
  * after they sign in the page reloads to open it as them.
  */
@@ -54,7 +75,6 @@ export function shouldReloadAfterSignIn(
  */
 export function runErrorToastOptions(error: unknown, startNew: () => void) {
   return {
-    richColors: true,
     closeButton: true,
     ...(isNotFound(error) && {
       duration: Infinity,
@@ -95,5 +115,5 @@ export function runErrorMessage(
   const name = error instanceof Error ? error.name : "";
   if (isStopError(error) || isTurnstileChallenge(error)) return null;
   if (name === "timeout") return "That took too long. Please try again.";
-  return GENERIC;
+  return tooLargeDetail(error) ?? GENERIC;
 }

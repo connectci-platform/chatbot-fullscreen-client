@@ -53,6 +53,6 @@ export function openSignIn(source: AgentTokenSource = getAgentTokenSource()) {
 export function showSignInError(error: unknown) {
   toast.error(
     error instanceof Error ? error.message : "Couldn't check your sign-in.",
-    { richColors: true, closeButton: true },
+    { closeButton: true },
   );
 }

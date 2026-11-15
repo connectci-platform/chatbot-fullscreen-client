@@ -145,7 +145,7 @@ function useHandoffExchange(apiUrl: string | undefined) {
 
     exchangeHandoffToken(apiUrl, handoffToken).then((result) => {
       if (result.status === "not_sent") {
-        toast.error(result.message, { richColors: true, closeButton: true });
+        toast.error(result.message, { closeButton: true });
         return;
       }
       if (result.threadId) {
@@ -154,7 +154,6 @@ function useHandoffExchange(apiUrl: string | undefined) {
         toast.error(
           "We couldn't open that conversation. Please start a new one.",
           {
-            richColors: true,
             closeButton: true,
           },
         );
@@ -207,7 +206,6 @@ const StreamSession = ({
       if (isUploadDroppedEvent(event)) {
         // Files the agent left out of this question, with its reasons.
         toast.warning(uploadDroppedMessage(event), {
-          richColors: true,
           closeButton: true,
         });
         return;
@@ -412,7 +410,6 @@ const StreamSession = ({
         toast.error(`${program.name} isn't available right now`, {
           description: "Please try again in a few minutes.",
           duration: 10000,
-          richColors: true,
           closeButton: true,
         });
       }
