@@ -1,0 +1,68 @@
+{
+  "total": 2,
+  "items": [
+    {
+      "id": null,
+      "name": "Sage",
+      "organization": null,
+      "type": null,
+      "status": null,
+      "mfa_required": false,
+      "account_required": true,
+      "ondemand_url": null,
+      "ssh_hosts": ["waggle-dev-node-<VSN>"],
+      "transfer_methods": ["Python Sage Data Client", "HTTP API"],
+      "queues": [
+        {
+          "name": "Wild Sage Node",
+          "summary": "1 NVIDIA Xavier NX shared CPU/GPU platform, NVIDIA Xavier NX ARM64 node controller, 8 GB RAM",
+          "max_wall_time_hours": null
+        },
+        {
+          "name": "Blade Node",
+          "summary": "1 NVIDIA T4, Multi-core ARM64, 32 GB RAM",
+          "max_wall_time_hours": null
+        }
+      ],
+      "wait_times": null,
+      "filesystems": null,
+      "software_url": "https://portal.sagecontinuum.org/apps/explore",
+      "citation_url": "https://support.access-ci.org/documentation/resources/sage",
+      "details_available": true
+    },
+    {
+      "id": "launch.tamu.access-ci.org",
+      "name": "Launch",
+      "organization": "Texas A&M University",
+      "type": "Compute",
+      "status": "production",
+      "mfa_required": true,
+      "account_required": false,
+      "ondemand_url": "https://portal-launch.hprc.tamu.edu/",
+      "ssh_hosts": null,
+      "transfer_methods": ["Globus", "HPRC Portal file browser"],
+      "queues": [
+        {
+          "name": "CPU compute node",
+          "summary": "35 nodes, 192-core 2x AMD EPYC 9654, 384 GB RAM",
+          "max_wall_time_hours": null
+        },
+        {
+          "name": "gpu",
+          "summary": "2 NVIDIA A30 (24 GB vRAM), 10 nodes, 192-core 2x AMD EPYC 9654, 768 GB RAM",
+          "max_wall_time_hours": null
+        }
+      ],
+      "wait_times": null,
+      "filesystems": [
+        { "name": "Home", "summary": "10 GB, 10,000 files" },
+        { "name": "Scratch", "summary": "1 TB, 250,000 files" },
+        { "name": "Project", "summary": "5 TB, 500,000 files" }
+      ],
+      "software_url": null,
+      "citation_url": "https://support.access-ci.org/documentation/resources/launch",
+      "details_available": true
+    }
+  ],
+  "unresolved": []
+}

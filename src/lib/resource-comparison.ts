@@ -8,6 +8,7 @@ const COMPARE_TOOL = "compare_resources";
  * documentation doesn't cover it, never that the resource lacks it.
  */
 export interface ComparedResource {
+  /** The catalog id, or the name for a resource with only a documentation page. */
   id: string;
   name: string;
   organization: string | null;
@@ -98,9 +99,10 @@ function waitTimes(value: unknown): WaitTimes | null {
 }
 
 function toResource(item: Json): ComparedResource | null {
-  const id = text(item.id);
   const name = text(item.name);
-  if (!id || !name) return null;
+  if (!name) return null;
+  // Some resources, such as Sage, have a documentation page but no catalog id.
+  const id = text(item.id) ?? `name:${name.toLowerCase()}`;
   return {
     id,
     name,
