@@ -157,7 +157,6 @@ export function ThreadActionsView({
       toast.error("Error", {
         description: "Please set the LangGraph deployment URL in settings.",
         duration: 5000,
-        richColors: true,
         closeButton: true,
       });
       return;
@@ -192,7 +191,6 @@ export function ThreadActionsView({
       console.error("Error approving all actions", error);
       toast.error("Error", {
         description: "Failed to approve all actions.",
-        richColors: true,
         closeButton: true,
         duration: 5000,
       });
@@ -205,7 +203,6 @@ export function ThreadActionsView({
     if (addressedActions.size !== actionRequests.length) {
       toast.error("Error", {
         description: `Please address all ${actionRequests.length} actions before submitting.`,
-        richColors: true,
         closeButton: true,
         duration: 5000,
       });
@@ -240,7 +237,6 @@ export function ThreadActionsView({
       console.error("Error submitting all actions", error);
       toast.error("Error", {
         description: "Failed to submit actions.",
-        richColors: true,
         closeButton: true,
         duration: 5000,
       });
@@ -268,7 +264,6 @@ export function ThreadActionsView({
     if (!decision || error) {
       toast.error("Error", {
         description: error ?? "Unable to determine decision.",
-        richColors: true,
         closeButton: true,
         duration: 5000,
       });

@@ -30,6 +30,24 @@ async function sdkNotFound(): Promise<unknown> {
   );
 }
 
+// The error a real SDK client throws when the run request is refused.
+async function sdkRunRefused(response: Response): Promise<unknown> {
+  const client = new Client({
+    apiUrl: "https://agent.example/api/v1",
+    callerOptions: { maxRetries: 0, fetch: async () => response },
+  });
+  try {
+    for await (const _ of client.runs.stream("t-1", "agent", {
+      input: {},
+    })) {
+      // Not reached: the request is refused.
+    }
+  } catch (error) {
+    return error;
+  }
+  throw new Error("expected a rejection");
+}
+
 describe("runErrorToastOptions", () => {
   it("offers a new conversation on a 404 and stays until used", async () => {
     const startNew = vi.fn();
@@ -91,6 +109,37 @@ describe("runErrorMessage", () => {
     expect(runErrorMessage("boom", "signed_in")).toBe(
       "Something went wrong. Please try again.",
     );
+  });
+
+  it("shows the agent's explanation for a question that is too long", async () => {
+    const detail =
+      "The question is 41,000 characters; the limit is 40,000. Share long text as a file instead.";
+    const error = await sdkRunRefused(
+      new Response(JSON.stringify({ detail }), {
+        status: 413,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    expect(runErrorMessage(error, "signed_out")).toBe(detail);
+  });
+
+  it("explains a request too large for the proxy, which sends no detail", async () => {
+    const tooLarge =
+      "That's too much to send at once. Shorten the question, or share long text as a file.";
+    expect(
+      runErrorMessage(
+        await sdkRunRefused(new Response("", { status: 413 })),
+        "signed_in",
+      ),
+    ).toBe(tooLarge);
+    expect(
+      runErrorMessage(
+        await sdkRunRefused(
+          new Response(JSON.stringify({ detail: 3 }), { status: 413 }),
+        ),
+        "signed_in",
+      ),
+    ).toBe(tooLarge);
   });
 
   it("shows nothing when the user cancelled", () => {

@@ -116,7 +116,6 @@ export default function useInterruptedActions({
       toast.error("Error", {
         description: error ?? "Unsupported response type.",
         duration: 5000,
-        richColors: true,
         closeButton: true,
       });
       return;
@@ -126,7 +125,6 @@ export default function useInterruptedActions({
       toast.error("Error", {
         description: error,
         duration: 5000,
-        richColors: true,
         closeButton: true,
       });
       return;
@@ -159,14 +157,12 @@ export default function useInterruptedActions({
         toast.error("Error: Invalid assistant ID", {
           description:
             "The provided assistant ID was not found in this graph. Please update the assistant ID in the settings and try again.",
-          richColors: true,
           closeButton: true,
           duration: 5000,
         });
       } else {
         toast.error("Error", {
           description: "Failed to submit response.",
-          richColors: true,
           closeButton: true,
           duration: 5000,
         });
@@ -205,7 +201,6 @@ export default function useInterruptedActions({
       console.error("Error marking thread as resolved", error);
       toast.error("Error", {
         description: "Failed to mark thread as resolved.",
-        richColors: true,
         closeButton: true,
         duration: 3000,
       });

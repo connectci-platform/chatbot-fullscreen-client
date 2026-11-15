@@ -348,7 +348,6 @@ export function InboxItemInput({
     ) {
       toast.error("Error", {
         description: "Unable to update edited values.",
-        richColors: true,
         closeButton: true,
       });
       return;
