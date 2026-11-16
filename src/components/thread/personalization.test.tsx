@@ -13,6 +13,9 @@ vi.mock("nuqs", () => ({ useQueryState: () => [route.threadId, vi.fn()] }));
 vi.mock("@/hooks/use-agent-auth", () => ({
   useAuthStatus: () => auth.status,
 }));
+vi.mock("@/providers/Thread", () => ({
+  useThreads: () => ({ setThreads: vi.fn() }),
+}));
 vi.mock("@/providers/Stream", () => ({
   useStreamContext: () => ({ apiUrl: "https://agent.example/api/v1" }),
 }));

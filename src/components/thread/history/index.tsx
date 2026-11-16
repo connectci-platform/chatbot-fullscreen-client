@@ -1,5 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { useThreads } from "@/providers/Thread";
+import { useStreamContext } from "@/providers/Stream";
+import { DeleteError, deleteConversation } from "@/lib/conversations";
+import { Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Thread } from "@langchain/langgraph-sdk";
 import { useEffect, useRef, useState } from "react";
 
@@ -18,8 +22,22 @@ import {
 import { focusConversationsToggle } from "../control-focus";
 import { useConversationsOpen } from "@/hooks/use-conversations-open";
 import { focusComposer } from "../composer";
+import { ConfirmDialog } from "../confirm-dialog";
 import { SettingsButton } from "../settings";
 import { SiteLinks } from "../site-links";
+
+function threadTitle(t: Thread): string {
+  if (
+    typeof t.values === "object" &&
+    t.values &&
+    "messages" in t.values &&
+    Array.isArray(t.values.messages) &&
+    t.values.messages?.length > 0
+  ) {
+    return getContentString(t.values.messages[0].content);
+  }
+  return t.thread_id;
+}
 
 function ThreadList({
   threads,
@@ -29,29 +47,49 @@ function ThreadList({
   onThreadClick?: (threadId: string) => void;
 }) {
   const [threadId, setThreadId] = useQueryState("threadId");
+  const { apiUrl } = useStreamContext();
+  const { setThreads } = useThreads();
+  const [deleting, setDeleting] = useState<Thread | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const confirmDelete = () => {
+    if (!deleting) return;
+    const id = deleting.thread_id;
+    setBusy(true);
+    deleteConversation(apiUrl, id)
+      .then(() => {
+        setThreads((all) => all.filter((t) => t.thread_id !== id));
+        // Deleting the conversation on screen starts a new one.
+        if (id === threadId) setThreadId(null);
+        setDeleting(null);
+        toast.success("Conversation deleted.");
+      })
+      .catch((error: unknown) =>
+        toast.error(
+          error instanceof DeleteError
+            ? error.message
+            : "Couldn't delete. Try again.",
+          { closeButton: true },
+        ),
+      )
+      .finally(() => setBusy(false));
+  };
 
   return (
     <div className="min-h-0 w-full flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent">
       <ul className="flex w-full flex-col gap-1 px-2 pb-2">
         {threads.map((t) => {
-          let itemText = t.thread_id;
-          if (
-            typeof t.values === "object" &&
-            t.values &&
-            "messages" in t.values &&
-            Array.isArray(t.values.messages) &&
-            t.values.messages?.length > 0
-          ) {
-            const firstMessage = t.values.messages[0];
-            itemText = getContentString(firstMessage.content);
-          }
+          const itemText = threadTitle(t);
           const current = t.thread_id === threadId;
           return (
-            <li key={t.thread_id}>
+            <li
+              key={t.thread_id}
+              className="group flex items-center gap-1"
+            >
               <Button
                 variant="ghost"
                 aria-current={current ? "page" : undefined}
-                className="aria-[current=page]:bg-accent min-h-11 w-full items-center justify-start text-left font-normal"
+                className="aria-[current=page]:bg-accent min-h-11 min-w-0 flex-1 items-center justify-start text-left font-normal"
                 onClick={(e) => {
                   e.preventDefault();
                   onThreadClick?.(t.thread_id);
@@ -61,10 +99,34 @@ function ThreadList({
               >
                 <span className="truncate">{itemText}</span>
               </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={`Delete conversation: ${itemText}`}
+                className="text-muted-foreground size-11 shrink-0 opacity-60 group-hover:opacity-100 focus-visible:opacity-100"
+                onClick={() => setDeleting(t)}
+              >
+                <Trash2 aria-hidden />
+              </Button>
             </li>
           );
         })}
       </ul>
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title="Delete this conversation?"
+        description={
+          <>
+            {deleting ? `"${threadTitle(deleting)}" ` : ""}and everything kept
+            for it, including files you shared and your ratings, will be
+            deleted. This can't be undone.
+          </>
+        }
+        confirmLabel="Delete"
+        busy={busy}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }
