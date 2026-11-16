@@ -40,6 +40,12 @@ import {
 import { afterStop, stoppedTurn } from "@/lib/stopped-answer";
 import { claimThread, noteAuthStatus } from "@/lib/thread-claim";
 import { viewerTimeZone } from "@/lib/time-zone";
+import {
+  isAllowedOnce,
+  isPersonalizationOfferEvent,
+  resetPersonalization,
+  showOffer,
+} from "@/lib/personalization";
 import { createClient } from "./client";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
@@ -181,6 +187,12 @@ const StreamSession = ({
 }) => {
   const [threadId, setThreadId] = useQueryState("threadId");
   const { getThreads, setThreads } = useThreads();
+  // The thread the stream is on, read when an event arrives: a new thread's
+  // id is set mid-run, after the options below were built.
+  const threadIdRef = useRef(threadId);
+  useEffect(() => {
+    threadIdRef.current = threadId;
+  }, [threadId]);
   const [runStatus, setRunStatus] = useState<RunStatusEvent | null>(null);
   const [stopped, setStopped] = useState(false);
   const onStop = useRef<((mutate: StopMutate) => void) | null>(null);
@@ -208,6 +220,12 @@ const StreamSession = ({
         toast.warning(uploadDroppedMessage(event), {
           closeButton: true,
         });
+        return;
+      }
+      if (isPersonalizationOfferEvent(event)) {
+        // After an answer to a question the user's own resources would
+        // change. The agent has already recorded that it asked.
+        showOffer(threadIdRef.current);
         return;
       }
       if (isRunStatusEvent(event)) {
@@ -264,9 +282,19 @@ const StreamSession = ({
     // Every run carries the reader's time zone so event times come back in
     // it. Kept in lastSubmit, so a resend after a check carries it too.
     const timeZone = viewerTimeZone();
-    const options = timeZone
-      ? { ...given, context: { ...given?.context, time_zone: timeZone } }
-      : given;
+    // Allow once covers the rest of this conversation (D8-3124).
+    const once = isAllowedOnce(threadId);
+    const options =
+      timeZone || once
+        ? {
+            ...given,
+            context: {
+              ...given?.context,
+              ...(timeZone && { time_zone: timeZone }),
+              ...(once && { personalize_once: true }),
+            },
+          }
+        : given;
     // A failed check put the question back in the message box, so sending it
     // replaces the bubble left from the first try.
     const stale = turnstileFailed
@@ -314,6 +342,10 @@ const StreamSession = ({
   // No loop: after the reload auth goes unknown -> signed_in.
   const authStatus = useAuthStatus();
   const prevAuthStatus = useRef(authStatus);
+  useEffect(() => {
+    // Someone else may sign in next on this page.
+    if (authStatus === "signed_out") resetPersonalization();
+  }, [authStatus]);
   useEffect(() => {
     if (
       shouldReloadAfterSignIn(

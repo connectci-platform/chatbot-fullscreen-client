@@ -54,14 +54,14 @@ vi.mock("@/hooks/use-agent-auth", () => ({
   useAuthStatus: () => sdk.authStatus,
 }));
 
-function setup() {
+function setup(searchParams = "") {
   vi.stubEnv("NEXT_PUBLIC_API_URL", "http://agent.test/api/v1");
   vi.stubEnv("NEXT_PUBLIC_ASSISTANT_ID", "agent");
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => new Response(null, { status: 200 })),
   );
-  const Nuqs = withNuqsTestingAdapter({ searchParams: "" });
+  const Nuqs = withNuqsTestingAdapter({ searchParams });
   return renderHook(() => useStreamContext(), {
     wrapper: ({ children }: { children: ReactNode }) => (
       <Nuqs>
@@ -440,5 +440,54 @@ describe("stopping a run", () => {
     expect(result.current.stopped).toBe(true);
     act(() => sdk.onThreadId?.("t-2"));
     expect(result.current.stopped).toBe(false);
+  });
+});
+
+describe("personalization (D8-3124)", () => {
+  beforeEach(async () => {
+    sdk.isLoading = false;
+    sdk.error = undefined;
+    sdk.authStatus = "signed_in";
+    sdk.submit.mockClear();
+    const p = await import("@/lib/personalization");
+    p.resetPersonalization();
+  });
+
+  it("shows the agent's offer on the thread it came in on", async () => {
+    const p = await import("@/lib/personalization");
+    setup("?threadId=t1");
+    send({ type: "personalization_offer" });
+    const { result } = renderHook(() => p.usePersonalization());
+    expect(result.current.offerThreadId).toBe("t1");
+  });
+
+  it("sends Allow once with every question in that conversation only", async () => {
+    const p = await import("@/lib/personalization");
+    p.allowOnce("t1");
+    const hook = setup("?threadId=t1");
+    act(() => {
+      hook.result.current.submit({ messages: [] });
+    });
+    expect(sdk.submit.mock.calls[0][1].context).toEqual({
+      time_zone: "America/Chicago",
+      personalize_once: true,
+    });
+
+    sdk.submit.mockClear();
+    const other = setup("?threadId=t2");
+    act(() => {
+      other.result.current.submit({ messages: [] });
+    });
+    expect(sdk.submit.mock.calls[0][1].context).toEqual({
+      time_zone: "America/Chicago",
+    });
+  });
+
+  it("forgets Allow once when the reader is signed out", async () => {
+    const p = await import("@/lib/personalization");
+    p.allowOnce("t1");
+    sdk.authStatus = "signed_out";
+    setup("?threadId=t1");
+    expect(p.isAllowedOnce("t1")).toBe(false);
   });
 });
