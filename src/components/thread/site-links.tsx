@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { program } from "@/config/program";
 
 /**
@@ -17,7 +17,13 @@ export function SiteLinks(): ReactNode {
       {site.acknowledgment && (
         <span className="w-full">
           {site.acknowledgment.text}{" "}
-          <a href={site.acknowledgment.href}>{site.acknowledgment.linkText}</a>
+          {site.acknowledgment.awards.map((award, i, all) => (
+            <Fragment key={award.number}>
+              {i > 0 && (i === all.length - 1 ? " and " : ", ")}
+              <a href={award.href}>#{award.number}</a>
+            </Fragment>
+          ))}
+          .
         </span>
       )}
       {site.links.map((link) => (
