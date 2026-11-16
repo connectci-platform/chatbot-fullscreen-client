@@ -13,6 +13,9 @@ import anvilSet from "./fixtures/compare-resources/gpu-anvil-stampede3-jetstream
 import acesSet from "./fixtures/compare-resources/gpu-aces-deltaai-derecho.json";
 import deltaSet from "./fixtures/compare-resources/gpu-delta-bridges2-expanse.json";
 import ambiguous from "./fixtures/compare-resources/delta-ambiguous.json";
+// compare_resources' shape for a resource with a documentation page but no
+// catalog id, next to one that has an id. Synthetic, so it never goes stale.
+import missingId from "./fixtures/compare-resources/missing-id.json";
 
 const human = (id: string, text = "q"): Message => ({
   id,
@@ -154,6 +157,22 @@ describe("latestResourceComparison", () => {
         tool("c4", { total: 0, items: [], unresolved: [] }),
       ]),
     ).toBeNull();
+  });
+
+  it("keeps a resource that has no catalog id", () => {
+    const view = latestResourceComparison([
+      human("h"),
+      tool("c1", missingId),
+      ai("a"),
+    ]);
+    expect(view?.resources.map((r) => [r.id, r.name])).toEqual([
+      ["name:example testbed", "Example Testbed"],
+      ["example-cluster.example.access-ci.org", "Example Cluster"],
+    ]);
+    expect(view?.resources[0].queues?.map((q) => q.name)).toEqual([
+      "Edge node",
+      "Blade node",
+    ]);
   });
 
   it("ignores other tools' results", () => {
