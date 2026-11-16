@@ -8,7 +8,10 @@ const COMPARE_TOOL = "compare_resources";
  * documentation doesn't cover it, never that the resource lacks it.
  */
 export interface ComparedResource {
-  /** The catalog id, or the name for a resource with only a documentation page. */
+  /**
+   * The catalog id. A resource the catalog has no id for is keyed by its
+   * name, prefixed "name:" so it can't match a real id.
+   */
   id: string;
   name: string;
   organization: string | null;
@@ -101,7 +104,8 @@ function waitTimes(value: unknown): WaitTimes | null {
 function toResource(item: Json): ComparedResource | null {
   const name = text(item.name);
   if (!name) return null;
-  // Some resources, such as Sage, have a documentation page but no catalog id.
+  // A resource can have a documentation page but no catalog id. It still
+  // belongs in the comparison, keyed by name.
   const id = text(item.id) ?? `name:${name.toLowerCase()}`;
   return {
     id,
