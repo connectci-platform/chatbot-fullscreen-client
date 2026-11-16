@@ -9,10 +9,22 @@ describe("SiteLinks", () => {
     const href = (name: string) =>
       within(nav).getByRole("link", { name }).getAttribute("href");
 
-    expect(nav).toHaveTextContent("ACCESS is supported by NSF awards");
-    expect(href("NSF awards")).toBe(
-      "https://access-ci.org/about/acknowledging-access/",
+    // As the site footer: each award number links to its NSF award page.
+    expect(nav).toHaveTextContent(
+      "ACCESS is supported by NSF awards #2138259, #2138286, #2138307, #2137603 and #2138296.",
     );
+    for (const award of [
+      "2138259",
+      "2138286",
+      "2138307",
+      "2137603",
+      "2138296",
+    ]) {
+      expect(href(`#${award}`)).toBe(
+        `https://www.nsf.gov/awardsearch/show-award/?AWD_ID=${award}`,
+      );
+    }
+    expect(within(nav).queryByRole("link", { name: "NSF awards" })).toBeNull();
     expect(href("Contact ACCESS")).toBe("https://access-ci.org/contact/");
     expect(href("Acceptable Use")).toBe(
       "https://access-ci.org/acceptable-use/",

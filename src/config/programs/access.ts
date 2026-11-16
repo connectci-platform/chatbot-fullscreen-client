@@ -48,9 +48,14 @@ export const access: ProgramConfig = {
   siteLinks: {
     label: "ACCESS links",
     acknowledgment: {
-      text: "ACCESS is supported by",
-      linkText: "NSF awards",
-      href: "https://access-ci.org/about/acknowledging-access/",
+      text: "ACCESS is supported by NSF awards",
+      // The awards in the ACCESS site footer, linked the same way.
+      awards: ["2138259", "2138286", "2138307", "2137603", "2138296"].map(
+        (number) => ({
+          number,
+          href: `https://www.nsf.gov/awardsearch/show-award/?AWD_ID=${number}`,
+        }),
+      ),
     },
     links: [
       { label: "Contact ACCESS", href: "https://access-ci.org/contact/" },
