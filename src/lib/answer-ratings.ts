@@ -15,6 +15,15 @@ const loaded = new Map<string, Promise<ThreadRatings>>();
 
 const cacheKey = (apiUrl: string, threadId: string) => `${apiUrl}\n${threadId}`;
 
+/** Drops a deleted conversation's cached ratings, or every one's. */
+export function forgetRatings(threadId?: string): void {
+  for (const key of [...loaded.keys()]) {
+    if (threadId === undefined || key.endsWith(`\n${threadId}`)) {
+      loaded.delete(key);
+    }
+  }
+}
+
 async function agentRequest(
   apiUrl: string,
   path: string,

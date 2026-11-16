@@ -26,6 +26,8 @@ vi.mock("@/providers/Thread", () => ({
   }),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+const forget = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/forget-conversation", () => ({ forgetConversations: forget }));
 vi.mock("@/lib/conversations", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/conversations")>()),
   deleteConversation: api.deleteConversation,
@@ -42,18 +44,17 @@ const thread = (id: string, question: string) => ({
   values: { messages: [{ type: "human", content: question }] },
 });
 
+const onNewChat = vi.fn();
+
 function renderSidebar(searchParams = "") {
-  const onUrlUpdate = vi.fn();
   render(
     <NuqsTestingAdapter
       searchParams={searchParams}
       hasMemory
-      onUrlUpdate={onUrlUpdate}
     >
-      <ThreadHistory onNewChat={vi.fn()} />
+      <ThreadHistory onNewChat={onNewChat} />
     </NuqsTestingAdapter>,
   );
-  return onUrlUpdate;
 }
 
 beforeEach(() => {
@@ -61,6 +62,8 @@ beforeEach(() => {
   threads.setThreads.mockReset();
   api.deleteConversation.mockReset();
   api.deleteAllConversations.mockReset();
+  onNewChat.mockReset();
+  forget.mockReset();
   vi.mocked(toast.success).mockReset();
   vi.mocked(toast.error).mockReset();
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -98,7 +101,7 @@ describe("deleting one conversation from the sidebar", () => {
 
   it("deletes it, drops it from the list, and starts a new chat if it was open", async () => {
     api.deleteConversation.mockResolvedValue(undefined);
-    const onUrlUpdate = renderSidebar("?threadId=t1");
+    renderSidebar("?threadId=t1");
     await userEvent.click(
       await screen.findByRole("button", {
         name: "Delete conversation: GPUs on Delta?",
@@ -119,9 +122,43 @@ describe("deleting one conversation from the sidebar", () => {
       update(threads.list).map((t: { thread_id: string }) => t.thread_id),
     ).toEqual(["t2"]);
     expect(toast.success).toHaveBeenCalledWith("Conversation deleted.");
-    expect(
-      onUrlUpdate.mock.calls.at(-1)?.[0].searchParams.get("threadId"),
-    ).toBeNull();
+    // The thread view's own new chat, which also closes its side panels.
+    expect(onNewChat).toHaveBeenCalledOnce();
+    expect(forget).toHaveBeenCalledWith("t1");
+  });
+
+  it("puts focus on the next conversation after deleting one that wasn't open", async () => {
+    api.deleteConversation.mockResolvedValue(undefined);
+    threads.list = [
+      thread("t1", "GPUs on Delta?"),
+      thread("t2", "Python?"),
+      thread("t3", "Globus?"),
+    ];
+    renderSidebar("?threadId=t3");
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Delete conversation: Python?",
+      }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(onNewChat).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(document.activeElement?.id).toBe("conversation-t3"),
+    );
+  });
+
+  it("shortens a long title in the label and the dialog", async () => {
+    threads.list = [thread("t1", "x".repeat(200))];
+    renderSidebar();
+    const button = await screen.findByRole("button", {
+      name: `Delete conversation: ${"x".repeat(77)}…`,
+    });
+    await userEvent.click(button);
+    expect(screen.getByRole("alertdialog")).toHaveTextContent(
+      `"${"x".repeat(77)}…"`,
+    );
   });
 
   it("keeps the dialog open and says why when deleting fails", async () => {
@@ -159,7 +196,7 @@ describe("deleting all conversations from Settings", () => {
         searchParams="?threadId=t1"
         hasMemory
       >
-        <DeleteAllConversations />
+        <DeleteAllConversations onDeleted={onNewChat} />
       </NuqsTestingAdapter>,
     );
   }
@@ -180,6 +217,8 @@ describe("deleting all conversations from Settings", () => {
       "https://agent.example/api/v1",
     );
     expect(threads.setThreads).toHaveBeenCalledWith([]);
+    expect(forget).toHaveBeenCalledWith();
+    expect(onNewChat).toHaveBeenCalledOnce();
     expect(toast.success).toHaveBeenCalledWith("Deleted 3 conversations.");
   });
 

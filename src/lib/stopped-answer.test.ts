@@ -416,3 +416,16 @@ describe("answers a reload cut off", () => {
     expect(reloadCutOffs().size).toBe(0);
   });
 });
+
+describe("forgetReloadCutOffs", () => {
+  it("drops one conversation's cut-off questions, or all", async () => {
+    const { forgetReloadCutOffs, reloadCutOffs, rememberReloadCutOff } =
+      await import("./stopped-answer");
+    rememberReloadCutOff("t1\nfirst");
+    rememberReloadCutOff("t2\nsecond");
+    forgetReloadCutOffs("t1");
+    expect([...reloadCutOffs()]).toEqual(["t2\nsecond"]);
+    forgetReloadCutOffs();
+    expect([...reloadCutOffs()]).toEqual([]);
+  });
+});

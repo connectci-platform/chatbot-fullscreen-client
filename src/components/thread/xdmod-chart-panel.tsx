@@ -33,6 +33,7 @@ import {
 } from "@/lib/xdmod-table";
 import { useStreamContext } from "@/providers/Stream";
 import { useArtifact, useArtifactOpen } from "./artifact";
+import { loadedRows } from "@/lib/xdmod-table-cache";
 import { SuggestedQuestions } from "./suggested-questions";
 import { XdmodDataTable } from "./xdmod-data-table";
 import {
@@ -161,13 +162,6 @@ function ChartBody({
  */
 type Get = (path: string) => Promise<Response>;
 
-/**
- * Rows of the few tables shown most recently, by stored table id, so
- * switching away and back, or downloading after viewing, doesn't fetch them
- * again. Bounded, since each can be 50,000 rows; the oldest is dropped first.
- * A failed fetch is forgotten so Retry asks again.
- */
-const loadedRows = new Map<string, Promise<TableCell[][]>>();
 const MAX_LOADED_TABLES = 3;
 
 function loadRows(view: TableView, get: Get | null): Promise<TableCell[][]> {

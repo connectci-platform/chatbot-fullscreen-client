@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DeleteError, deleteAllConversations } from "@/lib/conversations";
 import { useThreads } from "@/providers/Thread";
+import { forgetConversations } from "@/lib/forget-conversation";
 import { ConfirmDialog } from "./confirm-dialog";
 import { program } from "@/config/program";
 import { useAuthStatus } from "@/hooks/use-agent-auth";
@@ -114,10 +115,14 @@ export function PersonalizationSwitch(): ReactNode {
 }
 
 /** Deletes every saved conversation, after asking. */
-export function DeleteAllConversations(): ReactNode {
+export function DeleteAllConversations({
+  onDeleted,
+}: {
+  /** Starts a new chat, closing anything from the deleted ones. */
+  onDeleted: () => void;
+}): ReactNode {
   const { apiUrl } = useStreamContext();
   const { setThreads } = useThreads();
-  const [, setThreadId] = useQueryState("threadId");
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -126,7 +131,8 @@ export function DeleteAllConversations(): ReactNode {
     deleteAllConversations(apiUrl)
       .then((count) => {
         setThreads([]);
-        setThreadId(null);
+        forgetConversations();
+        onDeleted();
         setConfirming(false);
         toast.success(
           count === 1
@@ -181,7 +187,12 @@ export function DeleteAllConversations(): ReactNode {
  * The Settings row above the sidebar's footer links, signed in only. It opens
  * the Settings dialog.
  */
-export function SettingsButton(): ReactNode {
+export function SettingsButton({
+  onDeletedAll,
+}: {
+  /** Starts a new chat once every conversation is deleted. */
+  onDeletedAll: () => void;
+}): ReactNode {
   const signedIn = useAuthStatus() === "signed_in";
   const [open, setOpen] = useState(false);
   if (!signedIn) return null;
@@ -234,7 +245,7 @@ export function SettingsButton(): ReactNode {
               Conversations and privacy
             </h3>
             {open && <PersonalizationSwitch />}
-            {open && <DeleteAllConversations />}
+            {open && <DeleteAllConversations onDeleted={onDeletedAll} />}
             <a
               href={program.privacyUrl}
               target="_blank"

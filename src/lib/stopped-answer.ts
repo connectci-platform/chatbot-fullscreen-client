@@ -55,6 +55,21 @@ export function cutOffKey(threadId: string, question: Message): string {
   return `${threadId}\n${textOf(question).trim()}`;
 }
 
+/** Drops a deleted conversation's cut-off questions, or every one's. */
+export function forgetReloadCutOffs(threadId?: string): void {
+  try {
+    const kept =
+      threadId === undefined
+        ? []
+        : [...reloadCutOffs()].filter(
+            (key) => !key.startsWith(`${threadId}\n`),
+          );
+    sessionStorage.setItem(RELOAD_CUT_OFFS, JSON.stringify(kept));
+  } catch {
+    // Storage unavailable: there was nothing kept either.
+  }
+}
+
 /** The questions whose answers this tab's reloads cut off, by `cutOffKey`. */
 export function reloadCutOffs(): Set<string> {
   try {

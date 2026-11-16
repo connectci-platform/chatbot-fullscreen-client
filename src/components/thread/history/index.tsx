@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { useThreads } from "@/providers/Thread";
 import { useStreamContext } from "@/providers/Stream";
 import { DeleteError, deleteConversation } from "@/lib/conversations";
+import { forgetConversations } from "@/lib/forget-conversation";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Thread } from "@langchain/langgraph-sdk";
@@ -39,14 +40,28 @@ function threadTitle(t: Thread): string {
   return t.thread_id;
 }
 
+/** A conversation's name for labels and the dialog, kept short. */
+function shortTitle(t: Thread): string {
+  const title = threadTitle(t);
+  return title.length > 80 ? `${title.slice(0, 77)}…` : title;
+}
+
+function threadButtonId(threadId: string): string {
+  return `conversation-${threadId}`;
+}
+
 function ThreadList({
   threads,
   onThreadClick,
+  onDeletedOpen,
 }: {
   threads: Thread[];
   onThreadClick?: (threadId: string) => void;
+  /** The open conversation was deleted: start a new chat. */
+  onDeletedOpen: () => void;
 }) {
   const [threadId, setThreadId] = useQueryState("threadId");
+  const focusAfterClose = useRef<string | null>(null);
   const { apiUrl } = useStreamContext();
   const { setThreads } = useThreads();
   const [deleting, setDeleting] = useState<Thread | null>(null);
@@ -55,12 +70,20 @@ function ThreadList({
   const confirmDelete = () => {
     if (!deleting) return;
     const id = deleting.thread_id;
+    const at = threads.findIndex((t) => t.thread_id === id);
+    const neighbor = threads[at + 1] ?? threads[at - 1];
     setBusy(true);
     deleteConversation(apiUrl, id)
       .then(() => {
         setThreads((all) => all.filter((t) => t.thread_id !== id));
-        // Deleting the conversation on screen starts a new one.
-        if (id === threadId) setThreadId(null);
+        forgetConversations(id);
+        // Its row is gone: focus the next conversation, or, when the open
+        // one was deleted, the new chat's message box.
+        focusAfterClose.current =
+          id !== threadId && neighbor
+            ? threadButtonId(neighbor.thread_id)
+            : null;
+        if (id === threadId) onDeletedOpen();
         setDeleting(null);
         toast.success("Conversation deleted.");
       })
@@ -87,6 +110,7 @@ function ThreadList({
               className="group flex items-center gap-1"
             >
               <Button
+                id={threadButtonId(t.thread_id)}
                 variant="ghost"
                 aria-current={current ? "page" : undefined}
                 className="aria-[current=page]:bg-accent min-h-11 min-w-0 flex-1 items-center justify-start text-left font-normal"
@@ -102,7 +126,7 @@ function ThreadList({
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label={`Delete conversation: ${itemText}`}
+                aria-label={`Delete conversation: ${shortTitle(t)}`}
                 className="text-muted-foreground size-11 shrink-0 opacity-60 group-hover:opacity-100 focus-visible:opacity-100"
                 onClick={() => setDeleting(t)}
               >
@@ -118,14 +142,21 @@ function ThreadList({
         title="Delete this conversation?"
         description={
           <>
-            {deleting ? `"${threadTitle(deleting)}" ` : ""}and everything kept
-            for it, including files you shared and your ratings, will be
-            deleted. This can't be undone.
+            {deleting ? `"${shortTitle(deleting)}" ` : "This conversation "}
+            will be deleted, with the files you shared in it and your ratings.
+            This can't be undone.
           </>
         }
         confirmLabel="Delete"
         busy={busy}
         onConfirm={confirmDelete}
+        onCloseAutoFocus={(event) => {
+          const target = focusAfterClose.current;
+          focusAfterClose.current = null;
+          if (!target) return;
+          event.preventDefault();
+          document.getElementById(target)?.focus();
+        }}
       />
     </div>
   );
@@ -284,6 +315,7 @@ export default function ThreadHistory({
       <ThreadList
         threads={threads}
         onThreadClick={onThreadClick}
+        onDeletedOpen={onNewChat}
       />
     );
 
@@ -312,7 +344,7 @@ export default function ThreadHistory({
         />
         {list()}
         <div className="mt-auto flex w-full shrink-0 flex-col">
-          <SettingsButton />
+          <SettingsButton onDeletedAll={onNewChat} />
           <SiteLinks />
         </div>
       </aside>
@@ -355,7 +387,7 @@ export default function ThreadHistory({
               setChatHistoryOpen((o) => !o);
             })}
             <div className="mt-auto flex w-full shrink-0 flex-col">
-              <SettingsButton />
+              <SettingsButton onDeletedAll={onNewChat} />
               <SiteLinks />
             </div>
           </SheetContent>
