@@ -44,7 +44,10 @@ vi.mock("@langchain/langgraph-sdk/react", () => ({
   },
 }));
 vi.mock("./Thread", () => ({
-  useThreads: () => ({ getThreads: vi.fn(), setThreads: vi.fn() }),
+  useThreads: () => ({
+    getThreads: vi.fn(async () => []),
+    setThreads: vi.fn(),
+  }),
 }));
 vi.mock("./client", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/time-zone", () => ({

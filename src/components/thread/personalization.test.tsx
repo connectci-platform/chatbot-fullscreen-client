@@ -8,6 +8,8 @@ const agent = vi.hoisted(() => ({
   posted: [] as string[],
 }));
 
+const route = vi.hoisted(() => ({ threadId: null as string | null }));
+vi.mock("nuqs", () => ({ useQueryState: () => [route.threadId, vi.fn()] }));
 vi.mock("@/hooks/use-agent-auth", () => ({
   useAuthStatus: () => auth.status,
 }));
@@ -46,6 +48,7 @@ beforeEach(() => {
   auth.status = "signed_in";
   agent.reply = { consent: "unset" };
   agent.posted = [];
+  route.threadId = null;
 });
 
 describe("Settings", () => {
@@ -56,10 +59,15 @@ describe("Settings", () => {
     expect(screen.queryByRole("button", { name: "Settings" })).toBeNull();
   });
 
-  it("opens to the personalized answers switch, off until allowed", async () => {
+  it("opens a Settings dialog with the personalized answers switch, off until allowed", async () => {
     const { SettingsButton } = await load();
     render(<SettingsButton />);
     await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    const dialog = screen.getByRole("dialog", { name: "Settings" });
+    expect(dialog).toHaveTextContent("Conversations and privacy");
+    expect(
+      screen.getByRole("link", { name: "Privacy Notice" }),
+    ).toHaveAttribute("target", "_blank");
     const toggle = await screen.findByRole("switch", {
       name: "Personalized answers",
     });
@@ -81,6 +89,22 @@ describe("Settings", () => {
       expect(toggle).toHaveAttribute("aria-checked", "false"),
     );
     expect(agent.posted).toEqual(["allow", "deny"]);
+  });
+
+  it("says when this conversation is on through Allow for this conversation", async () => {
+    const { PersonalizationSwitch, p } = await load();
+    route.threadId = "t1";
+    render(<PersonalizationSwitch />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("switch", { name: "Personalized answers" }),
+      ).toBeEnabled(),
+    );
+    expect(screen.queryByText("On for this conversation only.")).toBeNull();
+    act(() => p.allowOnce("t1"));
+    expect(
+      screen.getByText("On for this conversation only."),
+    ).toBeInTheDocument();
   });
 
   it("says when the setting can't be loaded, and can try again", async () => {
@@ -154,8 +178,8 @@ describe("the offer card", () => {
     expect(agent.posted).toEqual(["allow"]);
   });
 
-  it("Allow for this conversation saves nothing and covers this thread", async () => {
-    const { PersonalizationOffer, p } = await load();
+  it("Allow for this conversation saves nothing, covers this thread and says so", async () => {
+    const { PersonalizationOffer, p, toast } = await load();
     act(() => p.showOffer("t1"));
     render(
       <PersonalizationOffer
@@ -169,6 +193,26 @@ describe("the offer card", () => {
     expect(screen.queryByRole("region")).toBeNull();
     expect(p.isAllowedOnce("t1")).toBe(true);
     expect(agent.posted).toEqual([]);
+    expect(toast.success).toHaveBeenCalledWith(
+      "Personalized answers are on for this conversation.",
+    );
+  });
+
+  it("goes away once personalized answers are turned on in Settings", async () => {
+    const { PersonalizationOffer, p } = await load();
+    act(() => p.showOffer("t1"));
+    render(
+      <PersonalizationOffer
+        threadId="t1"
+        busy={false}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "offering personalized answers",
+    );
+    agent.reply = { consent: "allow" };
+    await act(() => p.loadConsent("https://agent.example/api/v1"));
+    expect(screen.queryByRole("region")).toBeNull();
   });
 
   it("Not now just closes it", async () => {

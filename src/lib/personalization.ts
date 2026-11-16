@@ -17,13 +17,20 @@ export interface PersonalizationSnapshot {
   consent: ConsentState | null;
   /** The thread whose last answer came with an offer, until it's answered. */
   offerThreadId: string | null;
+  /**
+   * Conversations where the user chose Allow for this conversation. Kept for
+   * this page only: the choice is for this conversation, and after a reload
+   * the assistant offers again later.
+   */
+  allowedOnce: readonly string[];
 }
 
-let snapshot: PersonalizationSnapshot = { consent: null, offerThreadId: null };
+let snapshot: PersonalizationSnapshot = {
+  consent: null,
+  offerThreadId: null,
+  allowedOnce: [],
+};
 const listeners = new Set<() => void>();
-// Conversations where the user chose Allow once. Kept for this page only:
-// the choice is for this conversation, and a reload asks again later.
-const allowedOnce = new Set<string>();
 
 function set(next: Partial<PersonalizationSnapshot>) {
   snapshot = { ...snapshot, ...next };
@@ -89,7 +96,7 @@ export async function saveConsent(
 
 /** The agent offered personalization after an answer in this thread. */
 export function showOffer(threadId: string | null) {
-  if (!threadId || allowedOnce.has(threadId)) return;
+  if (!threadId || isAllowedOnce(threadId)) return;
   set({ offerThreadId: threadId });
 }
 
@@ -98,19 +105,20 @@ export function dismissOffer() {
 }
 
 export function allowOnce(threadId: string) {
-  allowedOnce.add(threadId);
-  dismissOffer();
+  set({
+    allowedOnce: [...snapshot.allowedOnce, threadId],
+    offerThreadId: null,
+  });
 }
 
 /** Whether the next message in this thread goes out with Allow once. */
 export function isAllowedOnce(threadId: string | null | undefined): boolean {
-  return !!threadId && allowedOnce.has(threadId);
+  return !!threadId && snapshot.allowedOnce.includes(threadId);
 }
 
 /** Signing out forgets the setting and every Allow once. */
 export function resetPersonalization() {
-  allowedOnce.clear();
-  set({ consent: null, offerThreadId: null });
+  set({ consent: null, offerThreadId: null, allowedOnce: [] });
 }
 
 export function isPersonalizationOfferEvent(

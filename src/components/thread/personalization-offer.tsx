@@ -27,9 +27,12 @@ export function PersonalizationOffer({
   busy: boolean;
 }): ReactNode {
   const { apiUrl } = useStreamContext();
-  const { offerThreadId } = usePersonalization();
+  const { consent, offerThreadId } = usePersonalization();
   const [saving, setSaving] = useState(false);
-  if (!threadId || offerThreadId !== threadId) return null;
+  // Turned on in Settings meanwhile: nothing left to offer.
+  if (!threadId || offerThreadId !== threadId || consent === "allow") {
+    return null;
+  }
 
   const allow = () => {
     setSaving(true);
@@ -53,6 +56,14 @@ export function PersonalizationOffer({
       aria-labelledby="personalization-offer-title"
       className="bg-muted flex flex-col gap-3 rounded-md border p-4"
     >
+      {/* The card appears after the answer; say so to a screen reader
+          without moving focus off what the reader is on. */}
+      <p
+        role="status"
+        className="sr-only"
+      >
+        The assistant is offering personalized answers below this answer.
+      </p>
       <h2
         id="personalization-offer-title"
         className="font-semibold"
@@ -81,7 +92,10 @@ export function PersonalizationOffer({
           type="button"
           variant="outline"
           disabled={busy || saving}
-          onClick={() => allowOnce(threadId)}
+          onClick={() => {
+            allowOnce(threadId);
+            toast.success("Personalized answers are on for this conversation.");
+          }}
         >
           Allow for this conversation
         </Button>
