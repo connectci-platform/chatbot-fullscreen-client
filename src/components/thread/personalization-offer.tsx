@@ -29,11 +29,8 @@ export function PersonalizationOffer({
   const { apiUrl } = useStreamContext();
   const { consent, offerThreadId } = usePersonalization();
   const [saving, setSaving] = useState(false);
-  // Turned on in Settings meanwhile: nothing left to offer.
-  if (!threadId || offerThreadId !== threadId || consent === "allow") {
-    return null;
-  }
-
+  const showing =
+    !!threadId && offerThreadId === threadId && consent !== "allow";
   const allow = () => {
     setSaving(true);
     saveConsent(apiUrl, "allow")
@@ -51,63 +48,74 @@ export function PersonalizationOffer({
       .finally(() => setSaving(false));
   };
 
-  return (
-    <section
-      aria-labelledby="personalization-offer-title"
-      className="bg-muted flex flex-col gap-3 rounded-md border p-4"
+  // The live region stays mounted while the card comes and goes, so a screen
+  // reader announces the text when it changes, without moving focus.
+  const announcement = (
+    <p
+      role="status"
+      className="sr-only"
     >
-      {/* The card appears after the answer; say so to a screen reader
-          without moving focus off what the reader is on. */}
-      <p
-        role="status"
-        className="sr-only"
+      {showing
+        ? "The assistant is offering personalized answers below this answer."
+        : ""}
+    </p>
+  );
+  if (!showing || !threadId) return announcement;
+
+  return (
+    <>
+      {announcement}
+      <section
+        aria-labelledby="personalization-offer-title"
+        className="bg-muted flex flex-col gap-3 rounded-md border p-4"
       >
-        The assistant is offering personalized answers below this answer.
-      </p>
-      <h2
-        id="personalization-offer-title"
-        className="font-semibold"
-      >
-        Start from the resources you already have?
-      </h2>
-      <p className="text-sm">
-        {PERSONALIZATION_DESCRIPTION}{" "}
-        <a
-          href={program.privacyUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+        <h2
+          id="personalization-offer-title"
+          className="font-semibold"
         >
-          Privacy Notice
-        </a>
-      </p>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          disabled={busy || saving}
-          onClick={allow}
-        >
-          Allow
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={busy || saving}
-          onClick={() => {
-            allowOnce(threadId);
-            toast.success("Personalized answers are on for this conversation.");
-          }}
-        >
-          Allow for this conversation
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          disabled={saving}
-          onClick={dismissOffer}
-        >
-          Not now
-        </Button>
-      </div>
-    </section>
+          Start from the resources you already have?
+        </h2>
+        <p className="text-sm">
+          {PERSONALIZATION_DESCRIPTION}{" "}
+          <a
+            href={program.privacyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Privacy Notice
+          </a>
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            disabled={busy || saving}
+            onClick={allow}
+          >
+            Allow
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy || saving}
+            onClick={() => {
+              allowOnce(threadId);
+              toast.success(
+                "Personalized answers are on for this conversation.",
+              );
+            }}
+          >
+            Allow for this conversation
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={saving}
+            onClick={dismissOffer}
+          >
+            Not now
+          </Button>
+        </div>
+      </section>
+    </>
   );
 }

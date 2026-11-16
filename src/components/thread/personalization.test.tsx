@@ -107,6 +107,20 @@ describe("Settings", () => {
     ).toBeInTheDocument();
   });
 
+  it("doesn't claim this conversation is on after a deny", async () => {
+    agent.reply = { consent: "deny" };
+    const { PersonalizationSwitch, p } = await load();
+    route.threadId = "t1";
+    act(() => p.allowOnce("t1"));
+    render(<PersonalizationSwitch />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("switch", { name: "Personalized answers" }),
+      ).toBeEnabled(),
+    );
+    expect(screen.queryByText("On for this conversation only.")).toBeNull();
+  });
+
   it("says when the setting can't be loaded, and can try again", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     agent.reply = null;
@@ -258,5 +272,35 @@ describe("the offer card", () => {
     expect(
       screen.getByRole("button", { name: "Allow for this conversation" }),
     ).toBeDisabled();
+  });
+
+  it("keeps its live region mounted, empty, while no card shows", async () => {
+    const { PersonalizationOffer, p } = await load();
+    render(
+      <PersonalizationOffer
+        threadId="t1"
+        busy={false}
+      />,
+    );
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("");
+    act(() => p.showOffer("t1"));
+    // The same element, now with text, is what a screen reader announces.
+    expect(screen.getByRole("status")).toBe(status);
+    expect(status).toHaveTextContent("offering personalized answers");
+  });
+
+  it("doesn't come back after turning on and then off in Settings", async () => {
+    const { PersonalizationOffer, p } = await load();
+    act(() => p.showOffer("t1"));
+    render(
+      <PersonalizationOffer
+        threadId="t1"
+        busy={false}
+      />,
+    );
+    await act(() => p.saveConsent("https://agent.example/api/v1", "allow"));
+    await act(() => p.saveConsent("https://agent.example/api/v1", "deny"));
+    expect(screen.queryByRole("region")).toBeNull();
   });
 });

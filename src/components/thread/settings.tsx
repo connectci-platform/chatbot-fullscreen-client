@@ -82,7 +82,7 @@ export function PersonalizationSwitch(): ReactNode {
           />
         </button>
       </div>
-      {!on && !!threadId && allowedOnce.includes(threadId) && (
+      {consent === "unset" && !!threadId && allowedOnce.includes(threadId) && (
         <p className="text-muted-foreground text-[13px]">
           On for this conversation only.
         </p>

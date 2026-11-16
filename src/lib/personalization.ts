@@ -90,7 +90,9 @@ export async function saveConsent(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ consent: choice }),
   });
-  set({ consent });
+  // A choice made in Settings answers any card still showing, so it can't
+  // come back offering Allow after a switch-off.
+  set({ consent, offerThreadId: null });
   return consent;
 }
 
