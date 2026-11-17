@@ -408,6 +408,38 @@ describe("answerWithSources", () => {
     ).toBe("Use Globus.");
   });
 
+  it("drops a closing see-more line whose links are all chips", () => {
+    expect(
+      shown(
+        `Use Globus.\n\nSee the Bridges-2 user guide for more on job management: ${GUIDE}`,
+      ),
+    ).toBe("Use Globus.");
+    expect(
+      shown(
+        `Use Globus.\n\nFor full details, see the [Bridges-2 User Guide](${GUIDE}).`,
+      ),
+    ).toBe("Use Globus.");
+    expect(
+      shown(`Use Globus.\n\n**For more details, see:** ${GUIDE} and ${DELTA}`),
+    ).toBe("Use Globus.");
+  });
+
+  it("keeps a closing line that says more than where to read, or links a page no chip covers", () => {
+    const other = "https://allocations.access-ci.org/current-projects";
+    for (const text of [
+      `Use Globus.\n\nSee ${other} for current projects.`,
+      `Use Globus.\n\nSee the guide: ${GUIDE}. Then log in with your ACCESS ID.`,
+      `Use Globus.\n\nSee the guide: ${GUIDE} and run \`module load globus\`.`,
+      `Use Globus.\n\nYour transfer will start at ${GUIDE}`,
+      `See the guide: ${GUIDE}`,
+    ]) {
+      expect(shown(text)).toBe(text);
+    }
+    // The pointer must be the last paragraph.
+    const middle = `Use Globus.\n\nSee the guide: ${GUIDE}\n\nThen log in.`;
+    expect(shown(middle)).toBe(middle);
+  });
+
   it("drops the list and adds the pages it links that aren't chips", () => {
     const other =
       "https://docs.ncsa.illinois.edu/systems/delta/en/latest/user_guide/software.html";

@@ -321,7 +321,7 @@ describe("Thread layout", () => {
         .closest(".overflow-y-scroll")!;
       // Scrolls away with the messages instead of holding a row of its own.
       expect(scroller.firstElementChild).toContainElement(bar);
-      expect(bar).toHaveClass("@min-[71rem]/pane:hidden");
+      expect(bar).toHaveClass("@min-[86rem]/pane:hidden");
       expect(bar.className).not.toMatch(/\bbg-/);
       expect(bar.className).not.toMatch(/\b(sticky|absolute|fixed)\b/);
       expect(
@@ -432,8 +432,8 @@ describe("Top bar placement", () => {
       const float = screen.getByTestId("thread-top-bar-float");
       const inline = screen.getByTestId("thread-top-bar");
       expect(pane()).toContainElement(float);
-      expect(float).toHaveClass("hidden", "@min-[71rem]/pane:flex");
-      expect(inline).toHaveClass("@min-[71rem]/pane:hidden");
+      expect(float).toHaveClass("hidden", "@min-[86rem]/pane:flex");
+      expect(inline).toHaveClass("@min-[86rem]/pane:hidden");
       // Nothing about the top bar follows the screen's width any more.
       for (const bar of [float, inline]) {
         expect(bar.className).not.toMatch(/(^|\s)xl:/);

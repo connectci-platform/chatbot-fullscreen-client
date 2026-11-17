@@ -415,6 +415,45 @@ export function splitSourcesSection(
   return { text: kept, extra };
 }
 
+/**
+ * A closing pointer to more reading: "See the Bridges-2 user guide for more
+ * on job management:", "For full details, see the [guide](…)."
+ */
+const POINTER_LEAD =
+  /^(?:\*\*|__)?(?:see\b|for (?:more|full|further|additional|complete)\b|more (?:details|information)\b|(?:learn|read) more\b|full details\b)/i;
+
+/**
+ * Splits off a closing "see more" line whose every link is a chip, such as
+ * "See the full Delta job guide: https://…", so the answer shows its
+ * sources once, as chips. Only the last paragraph is considered, only when
+ * it is that one line and one sentence, and never when something else is
+ * left: a line with a link no chip covers, or with code, stays.
+ */
+export function splitPointerLine(
+  text: string,
+  sources: AnswerSource[],
+): string {
+  if (!sources.length) return text;
+  const trimmed = text.replace(/\s+$/, "");
+  const at = trimmed.lastIndexOf("\n\n");
+  const line = trimmed.slice(at + 1).trim();
+  const kept = at < 0 ? "" : trimmed.slice(0, at).replace(/\s+$/, "");
+  if (!kept || line.includes("\n") || !POINTER_LEAD.test(line)) return text;
+  if (line.replace(CODE, "") !== line) return text;
+  const links = linksIn(line);
+  if (!links.length) return text;
+  const pages = new Set(sources.map((s) => pageKey(s.url)));
+  if (!links.every((link) => pages.has(pageKey(link.url)))) return text;
+  // One sentence: no sentence break before the end, once links are out.
+  const prose = line
+    .replace(MARKDOWN_LINK, "$1")
+    .replace(/<https?:\/\/[^\s>]+>/g, "")
+    // A bare URL's match takes the sentence's closing punctuation with it.
+    .replace(BARE_URL, (url) => url.match(/[.,;:!?*_~]+$/)?.[0] ?? "");
+  if (/[.!?]\s+\S/.test(prose.trim())) return text;
+  return kept;
+}
+
 /** What separates a site or resource name from the rest of a heading. */
 const PREFIX_END = / [—–|-] |: | › /g;
 
@@ -480,9 +519,10 @@ export function answerWithSources(
   let view: AnswerView | null = null;
   if (linked) {
     const split = splitSourcesSection(text, linked);
+    const sources = [...linked, ...split.extra];
     view = {
-      text: split.text,
-      sources: distinctLabels([...linked, ...split.extra]),
+      text: splitPointerLine(split.text, sources),
+      sources: distinctLabels(sources),
     };
   }
   views.set(message, { text, turn, view });

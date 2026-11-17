@@ -474,8 +474,9 @@ export function Thread() {
         >
           {/* Where this pane is wide enough, the bar floats over its top
               corners, beside the centered 768px conversation. That takes
-              71rem (1136px): the labeled Conversations toggle (148px, 16px
-              in) and New chat (116px) each with 16px to spare beside it.
+              86rem (1376px): the labeled Conversations toggle (148px, 16px
+              in) and New chat (116px) side by side, 8px apart, with 16px to
+              spare before the conversation.
               The pane's width decides, not the screen's, since the sidebar
               and the chart panel narrow it. Narrower, the bar is the first
               row of the conversation and scrolls away with it. */}
@@ -483,12 +484,14 @@ export function Thread() {
             ref={floatingBar}
             {...{ [TOP_BAR_ATTR]: "" }}
             data-testid="thread-top-bar-float"
-            className="pointer-events-none absolute inset-x-0 top-0 z-10 hidden items-center justify-between gap-3 p-2 pl-4 @min-[71rem]/pane:flex"
+            className="pointer-events-none absolute inset-x-0 top-0 z-10 hidden items-center justify-between gap-3 p-2 pl-4 @min-[86rem]/pane:flex"
           >
-            <div className="pointer-events-auto">
+            {/* New chat stays beside the toggle, as it sits beside Hide in
+                the open sidebar. */}
+            <div className="pointer-events-auto flex items-center gap-2">
               <ConversationsToggle labelled />
+              {newChat}
             </div>
-            {newChat}
           </div>
 
           {showOfficeHours && isXlScreen && (
@@ -521,12 +524,12 @@ export function Thread() {
                   ref={inlineBar}
                   {...{ [TOP_BAR_ATTR]: "" }}
                   data-testid="thread-top-bar"
-                  className="-mx-2 flex items-center justify-between gap-3 py-2 @min-[71rem]/pane:hidden"
+                  className="-mx-2 flex items-center justify-between gap-3 py-2 @min-[86rem]/pane:hidden"
                 >
-                  <div>
+                  <div className="flex items-center gap-2">
                     <ConversationsToggle />
+                    {newChat}
                   </div>
-                  {newChat}
                 </div>
               </div>
               <div
