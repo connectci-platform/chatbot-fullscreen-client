@@ -17,6 +17,9 @@ vi.mock("@/hooks/use-agent-auth", () => ({
   useAuthStatus: () => auth.status,
 }));
 
+const openSignIn = vi.fn();
+vi.mock("@/lib/sign-in", () => ({ openSignIn: () => openSignIn() }));
+
 vi.mock("@/providers/Stream", () => ({
   useStreamContext: () => ({ apiUrl: "https://agent.example/api/v1" }),
 }));
@@ -92,13 +95,22 @@ describe("ThreadHistory", () => {
     expect(screen.queryByText("No conversations yet.")).toBeNull();
   });
 
-  it("asks a signed-out person to sign in", () => {
+  it("asks a signed-out person to sign in, with a button that opens sign-in", async () => {
     auth.status = "signed_out";
+    openSignIn.mockClear();
     renderHistory();
     expect(
       screen.getByText("Sign in to see and resume your conversations."),
     ).toBeTruthy();
     expect(screen.queryByText("No conversations yet.")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(openSignIn).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers Sign in only to a signed-out person", () => {
+    auth.status = "signed_in";
+    renderHistory();
+    expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
   });
 
   it("shows neither message while the sign-in state is unknown", () => {
@@ -166,7 +178,12 @@ describe("ThreadHistory", () => {
     });
     const newChat = within(sidebar).getByRole("button", { name: "New chat" });
     expect(newChat).toHaveTextContent("New chat");
-    expect(newChat).toHaveClass("bg-brand-dark", "text-white");
+    // Styled like Hide beside it, not as a filled button.
+    expect(newChat).toHaveClass("h-11", "px-3");
+    expect(newChat).not.toHaveClass("bg-brand-dark");
+    expect(newChat.className).toBe(
+      screen.getByRole("button", { name: "Hide conversations" }).className,
+    );
     expect(newChat.querySelector(".lucide-message-square-plus")).not.toBeNull();
     await userEvent.click(newChat);
     expect(onNewChat).toHaveBeenCalledOnce();

@@ -22,8 +22,8 @@ export const CONVERSATIONS_SIDEBAR_ID = "conversations-sidebar";
 export const CONVERSATIONS_HIDE_ID = "conversations-hide";
 
 /**
- * Starts a new conversation. Labeled, in the ACCESS dark teal, at least
- * 44px tall for touch.
+ * Starts a new conversation. Labeled, and styled like the Conversations
+ * toggle and Hide beside it, at least 44px tall for touch.
  */
 export const NewChatButton = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, ...props }, ref) => (
@@ -31,11 +31,8 @@ export const NewChatButton = forwardRef<HTMLButtonElement, ButtonProps>(
       {...{ [NEW_CHAT_ATTR]: "" }}
       ref={ref}
       type="button"
-      variant="brand"
-      className={cn(
-        "bg-brand-dark border-brand-dark hover:bg-brand-dark/90 focus-visible:ring-ring h-11 rounded-none px-4 text-sm font-semibold text-white focus-visible:ring-[3px] focus-visible:ring-offset-2",
-        className,
-      )}
+      variant="ghost"
+      className={cn("h-11 px-3 hover:bg-gray-100", className)}
       {...props}
     >
       <MessageSquarePlus

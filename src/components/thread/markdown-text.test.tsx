@@ -19,7 +19,8 @@ describe("MarkdownText code", () => {
     const block = screen.getByTestId("highlighted-bash");
     expect(block.textContent).toBe("module load anaconda3");
     expect(screen.getByRole("button", { name: "Copy" })).toBeTruthy();
-    expect(screen.getByText("code")).toBeTruthy();
+    expect(screen.getByText("bash")).toBeTruthy();
+    expect(screen.queryByText("code")).toBeNull();
   });
 
   it("keeps a labeled block's language", () => {
@@ -29,6 +30,16 @@ describe("MarkdownText code", () => {
     expect(screen.getByTestId("highlighted-python")).toBeTruthy();
     expect(container.querySelector("pre")).toBeNull();
     expect(screen.getByText("python")).toBeTruthy();
+  });
+
+  it("draws blocks in the program's darkened brand color, not black", () => {
+    const { container } = render(<MarkdownText>{"```\nls\n```"}</MarkdownText>);
+    const block = container.querySelector(".bg-code");
+    expect(block).toBeTruthy();
+    expect(container.querySelector(".bg-black")).toBeNull();
+    expect(container.querySelector(".bg-code-header")).toHaveTextContent(
+      "bash",
+    );
   });
 
   it("leaves inline code alone", () => {
@@ -192,29 +203,28 @@ describe("MarkdownText headings", () => {
       );
   });
 
-  it("renders # at 36px medium and ## at 24px bold, both in the heading ink", () => {
+  it("renders # and ## at 18px bold in the heading ink, no bigger than an answer needs", () => {
     render(<MarkdownText>{md}</MarkdownText>);
-    expect(classes("One")).toContain("text-4xl");
-    expect(classes("One")).toContain("font-medium");
-    expect(classes("One")).not.toContain("font-bold");
-    expect(classes("Two")).toContain("text-2xl");
-    expect(classes("Two")).toContain("font-bold");
-    for (const n of ["One", "Two"])
+    for (const n of ["One", "Two"]) {
+      expect(classes(n)).toContain("text-lg");
+      expect(classes(n)).toContain("font-bold");
       expect(classes(n)).toContain("text-heading");
+      expect(classes(n)).not.toMatch(/text-(xl|[2-9]xl)/);
+    }
   });
 
-  it("renders ### in the dark teal subsection style", () => {
+  it("renders ### at 16px in the dark teal subsection style", () => {
     render(<MarkdownText>{md}</MarkdownText>);
-    expect(classes("Three")).toContain("text-xl");
+    expect(classes("Three")).toContain("text-base");
     expect(classes("Three")).toContain("text-brand-dark");
   });
 
-  it("renders #### at 18px and ##### / ###### at 16px, all bold", () => {
+  it("renders #### to ###### at 16px, all bold", () => {
     render(<MarkdownText>{md}</MarkdownText>);
-    expect(classes("Four")).toContain("text-lg");
-    for (const n of ["Five", "Six"]) expect(classes(n)).toContain("text-base");
-    for (const n of ["Four", "Five", "Six"])
+    for (const n of ["Four", "Five", "Six"]) {
+      expect(classes(n)).toContain("text-base");
       expect(classes(n)).toContain("font-bold");
+    }
   });
 });
 

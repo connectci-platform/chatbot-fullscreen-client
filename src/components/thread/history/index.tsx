@@ -14,6 +14,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useAuthStatus } from "@/hooks/use-agent-auth";
+import { openSignIn } from "@/lib/sign-in";
 import {
   CONVERSATIONS_HIDE_ID,
   CONVERSATIONS_SIDEBAR_ID,
@@ -174,8 +175,18 @@ function ThreadListEmpty({ loadFailed }: { loadFailed: boolean }) {
         : null;
 
   return (
-    <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-1 px-6 text-center">
+    <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
       {message && <p className="text-muted-foreground text-sm">{message}</p>}
+      {!loadFailed && authStatus === "signed_out" && (
+        <Button
+          type="button"
+          variant="brand"
+          className="bg-brand-dark border-brand-dark hover:bg-brand-dark/90 h-11 px-6 font-semibold text-white"
+          onClick={() => openSignIn()}
+        >
+          Sign in
+        </Button>
+      )}
     </div>
   );
 }

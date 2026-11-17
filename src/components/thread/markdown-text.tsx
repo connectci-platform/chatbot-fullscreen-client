@@ -57,7 +57,7 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
   };
 
   return (
-    <div className="flex items-center justify-between gap-4 rounded-t-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white">
+    <div className="bg-code-header flex items-center justify-between gap-4 rounded-t-lg px-4 py-2 text-sm font-semibold text-white">
       <span className="lowercase [&>span]:text-xs">{language}</span>
       <TooltipIconButton
         tooltip="Copy"
@@ -95,7 +95,7 @@ const defaultComponents: any = {
   h1: ({ className, ...props }: { className?: string }) => (
     <h1
       className={cn(
-        "text-heading mt-6 mb-3 scroll-m-20 text-4xl leading-[1.2] font-medium first:mt-0 last:mb-0",
+        "text-heading mt-6 mb-3 scroll-m-20 text-lg leading-[1.3] font-bold first:mt-0 last:mb-0",
         className,
       )}
       {...props}
@@ -104,7 +104,7 @@ const defaultComponents: any = {
   h2: ({ className, ...props }: { className?: string }) => (
     <h2
       className={cn(
-        "text-heading mt-6 mb-3 scroll-m-20 text-2xl leading-[1.2] font-bold first:mt-0 last:mb-0",
+        "text-heading mt-6 mb-3 scroll-m-20 text-lg leading-[1.3] font-bold first:mt-0 last:mb-0",
         className,
       )}
       {...props}
@@ -113,7 +113,7 @@ const defaultComponents: any = {
   h3: ({ className, ...props }: { className?: string }) => (
     <h3
       className={cn(
-        "text-brand-dark mt-5 mb-3 scroll-m-20 text-xl leading-[1.2] font-bold first:mt-0 last:mb-0",
+        "text-brand-dark mt-5 mb-2 scroll-m-20 text-base leading-[1.3] font-bold first:mt-0 last:mb-0",
         className,
       )}
       {...props}
@@ -122,7 +122,7 @@ const defaultComponents: any = {
   h4: ({ className, ...props }: { className?: string }) => (
     <h4
       className={cn(
-        "text-heading mt-4 mb-2 scroll-m-20 text-lg leading-[1.2] font-bold first:mt-0 last:mb-0",
+        "text-heading mt-4 mb-2 scroll-m-20 text-base leading-[1.3] font-bold first:mt-0 last:mb-0",
         className,
       )}
       {...props}
@@ -265,12 +265,13 @@ const defaultComponents: any = {
     const code = String(text ?? "").replace(/\n$/, "");
 
     return (
-      <div className="max-w-4xl overflow-x-auto rounded-lg bg-black text-white">
+      <div className="bg-code max-w-4xl overflow-x-auto rounded-lg text-white">
+        {/* Answers here are mostly commands, so an unlabeled block is shell,
+            and says so as it's highlighted. */}
         <CodeHeader
-          language={label ?? "code"}
+          language={label ?? "bash"}
           code={code}
         />
-        {/* Answers here are mostly commands, so unlabeled blocks are shell. */}
         <SyntaxHighlighter
           language={label ?? "bash"}
           className={className}
