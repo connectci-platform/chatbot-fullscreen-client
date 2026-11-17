@@ -86,7 +86,7 @@ export function ConversationsToggle({
     >
       <Icon
         aria-hidden
-        className={compact ? "size-4" : "size-6"}
+        className={compact ? COMPACT_ICON_CLASSES : "size-6"}
       />
       {labelled && !compact && "Conversations"}
     </Button>
@@ -95,12 +95,16 @@ export function ConversationsToggle({
 }
 
 /**
- * The compact buttons' size: a 24px target in the disclaimer's 16px line,
- * the extra 4px above and below taken from the space around it so the line
- * stays as tall as its text.
+ * The compact buttons' size. With a mouse, a 24px target in the
+ * disclaimer's 16px line, the extra 4px above and below taken from the
+ * space around it so the line stays as tall as its text. On a phone or
+ * touch screen, a 44px target, which the line makes room for.
  */
 const COMPACT_CLASSES =
-  "text-muted-foreground hover:text-foreground focus-visible:ring-ring -my-1 size-6 shrink-0 rounded-none p-0 focus-visible:ring-2";
+  "text-muted-foreground hover:text-foreground focus-visible:ring-ring -my-1 size-6 shrink-0 rounded-none p-0 focus-visible:ring-2 max-sm:my-0 max-sm:size-11 pointer-coarse:my-0 pointer-coarse:size-11";
+
+/** The compact buttons' icon: 16px, and 20px where the button is 44px. */
+const COMPACT_ICON_CLASSES = "size-4 max-sm:size-5 pointer-coarse:size-5";
 
 function WithTooltip({
   label,
@@ -168,7 +172,7 @@ export function ConversationShortcuts({
           >
             <MessageSquarePlus
               aria-hidden
-              className="size-4"
+              className={COMPACT_ICON_CLASSES}
             />
           </Button>
         </WithTooltip>

@@ -38,11 +38,10 @@ export type ProgramConfig = {
   supportUrl: string;
   privacyUrl: string;
   /**
-   * The line under the message box, before the Privacy Notice link. On a
-   * line too narrow to hold all of it beside the conversation buttons,
-   * `droppable` (which comes first) is left out and `text` stays.
+   * The line under the message box, before the Privacy Notice link: `lead`
+   * then `text`. Both always show, wrapping on a narrow screen.
    */
-  disclaimer: { droppable?: string; text: string };
+  disclaimer: { lead?: string; text: string };
   features: { fileUploads: boolean; siteHeader: boolean };
   /**
    * Questions offered on the empty screen. Clicking one sends it as typed, so

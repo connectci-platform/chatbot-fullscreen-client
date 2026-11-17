@@ -3,35 +3,27 @@ import { program } from "@/config/program";
 
 /**
  * The line under the message box. `controls` go at its left (the
- * conversation buttons, while the top bar is out of view). The line is one
- * 16px row of text where it fits, and the controls fit in it without making
- * it taller.
+ * conversation buttons, while the top bar is out of view). The whole
+ * disclaimer always shows, wrapping where it has to.
  *
- * The program's droppable sentence shows only where the line is at least
- * 26rem wide: below that, the rest of the disclaimer and the buttons beside
- * it would wrap onto one more line than the whole disclaimer did alone.
- * It's the line's width that decides, not whether the buttons are showing,
- * so the words don't change as the conversation scrolls. Below 19rem the
- * rest still takes two lines beside the buttons, so the line keeps two
- * lines' height without them too.
+ * The line is as tall with the buttons as without them, so the message box
+ * doesn't move as they come and go. With a mouse they're 24px and sit in
+ * the text's 16px rows, and below 26rem the text beside them takes two rows,
+ * so the line keeps two rows' height there. On a phone or touch screen
+ * they're 44px, and the text beside them can take three 16px rows, so the
+ * line keeps 48px there.
  */
 export function ChatDisclaimer({
   controls,
 }: {
   controls?: ReactNode;
 }): ReactNode {
-  const { droppable, text } = program.disclaimer;
+  const { lead, text } = program.disclaimer;
   return (
-    <div className="@container/disclaimer mt-1.5 flex items-center gap-2">
+    <div className="@container/disclaimer mt-1.5 flex items-center gap-2 max-sm:min-h-12 pointer-coarse:min-h-12">
       {controls}
-      {/* Two lines where the buttons would push it onto a second one, so
-          the message box doesn't move when they come and go. */}
-      <p className="text-muted-foreground min-h-8 min-w-0 flex-1 text-center text-[11px] leading-4 @min-[19rem]/disclaimer:min-h-0">
-        {droppable && (
-          <span className="hidden @min-[26rem]/disclaimer:inline">
-            {droppable}{" "}
-          </span>
-        )}
+      <p className="text-muted-foreground min-h-8 min-w-0 flex-1 text-center text-[11px] leading-4 @min-[26rem]/disclaimer:min-h-0">
+        {lead && <span>{lead} </span>}
         <span>{text}</span>{" "}
         <a
           href={program.privacyUrl}
