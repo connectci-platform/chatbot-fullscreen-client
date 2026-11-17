@@ -17,6 +17,10 @@ vi.mock("@/hooks/use-agent-auth", () => ({
   useAuthStatus: () => auth.status,
 }));
 
+vi.mock("@/providers/Stream", () => ({
+  useStreamContext: () => ({ apiUrl: "https://agent.example/api/v1" }),
+}));
+
 vi.mock("@/providers/Thread", () => ({
   useThreads: () => ({
     getThreads: () => threadsApi.getThreads(),

@@ -22,6 +22,12 @@ const loaded = new Map<string, Promise<StoredImage>>();
 // Loaded images, so a remount shows one on its first render.
 const settled = new Map<string, StoredImage>();
 
+/** Drops every cached image, after a conversation is deleted. */
+export function forgetStoredImages(): void {
+  loaded.clear();
+  settled.clear();
+}
+
 /** Marks a key as just used, and drops the least recently used past the cap. */
 function remember(key: string, pending: Promise<StoredImage>) {
   loaded.delete(key);

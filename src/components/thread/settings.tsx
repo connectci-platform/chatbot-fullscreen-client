@@ -5,6 +5,11 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { SettingsIcon, XIcon } from "lucide-react";
 import { useQueryState } from "nuqs";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { DeleteError, deleteAllConversations } from "@/lib/conversations";
+import { useThreads } from "@/providers/Thread";
+import { forgetConversations } from "@/lib/forget-conversation";
+import { ConfirmDialog } from "./confirm-dialog";
 import { program } from "@/config/program";
 import { useAuthStatus } from "@/hooks/use-agent-auth";
 import { useStreamContext } from "@/providers/Stream";
@@ -109,11 +114,85 @@ export function PersonalizationSwitch(): ReactNode {
   );
 }
 
+/** Deletes every saved conversation, after asking. */
+export function DeleteAllConversations({
+  onDeleted,
+}: {
+  /** Starts a new chat, closing anything from the deleted ones. */
+  onDeleted: () => void;
+}): ReactNode {
+  const { apiUrl } = useStreamContext();
+  const { setThreads } = useThreads();
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const confirm = () => {
+    setBusy(true);
+    deleteAllConversations(apiUrl)
+      .then((count) => {
+        setThreads([]);
+        forgetConversations();
+        onDeleted();
+        setConfirming(false);
+        toast.success(
+          count === 1
+            ? "Deleted 1 conversation."
+            : `Deleted ${count} conversations.`,
+        );
+      })
+      .catch((error: unknown) =>
+        toast.error(
+          error instanceof DeleteError
+            ? error.message
+            : "Couldn't delete. Try again.",
+          { closeButton: true },
+        ),
+      )
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-[15px] font-semibold">
+          Delete all conversations
+        </span>
+        <span className="text-muted-foreground text-[13px]">
+          Removes every saved conversation, with the files you shared and your
+          ratings.
+        </span>
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        className="shrink-0"
+        onClick={() => setConfirming(true)}
+      >
+        Delete…
+      </Button>
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title="Delete all conversations?"
+        description="Every saved conversation, the files you shared in them and your ratings will be deleted. This can't be undone."
+        confirmLabel="Delete all"
+        busy={busy}
+        onConfirm={confirm}
+      />
+    </div>
+  );
+}
+
 /**
  * The Settings row above the sidebar's footer links, signed in only. It opens
  * the Settings dialog.
  */
-export function SettingsButton(): ReactNode {
+export function SettingsButton({
+  onDeletedAll,
+}: {
+  /** Starts a new chat once every conversation is deleted. */
+  onDeletedAll: () => void;
+}): ReactNode {
   const signedIn = useAuthStatus() === "signed_in";
   const [open, setOpen] = useState(false);
   if (!signedIn) return null;
@@ -166,6 +245,7 @@ export function SettingsButton(): ReactNode {
               Conversations and privacy
             </h3>
             {open && <PersonalizationSwitch />}
+            {open && <DeleteAllConversations onDeleted={onDeletedAll} />}
             <a
               href={program.privacyUrl}
               target="_blank"

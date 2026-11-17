@@ -13,6 +13,9 @@ vi.mock("nuqs", () => ({ useQueryState: () => [route.threadId, vi.fn()] }));
 vi.mock("@/hooks/use-agent-auth", () => ({
   useAuthStatus: () => auth.status,
 }));
+vi.mock("@/providers/Thread", () => ({
+  useThreads: () => ({ setThreads: vi.fn() }),
+}));
 vi.mock("@/providers/Stream", () => ({
   useStreamContext: () => ({ apiUrl: "https://agent.example/api/v1" }),
 }));
@@ -55,13 +58,13 @@ describe("Settings", () => {
   it("isn't shown to a signed-out reader", async () => {
     auth.status = "signed_out";
     const { SettingsButton } = await load();
-    render(<SettingsButton />);
+    render(<SettingsButton onDeletedAll={vi.fn()} />);
     expect(screen.queryByRole("button", { name: "Settings" })).toBeNull();
   });
 
   it("opens a Settings dialog with the personalized answers switch, off until allowed", async () => {
     const { SettingsButton } = await load();
-    render(<SettingsButton />);
+    render(<SettingsButton onDeletedAll={vi.fn()} />);
     await userEvent.click(screen.getByRole("button", { name: "Settings" }));
     const dialog = screen.getByRole("dialog", { name: "Settings" });
     expect(dialog).toHaveTextContent("Conversations and privacy");
