@@ -178,7 +178,12 @@ describe("ThreadHistory", () => {
     });
     const newChat = within(sidebar).getByRole("button", { name: "New chat" });
     expect(newChat).toHaveTextContent("New chat");
-    expect(newChat).toHaveClass("bg-brand-dark", "text-white");
+    // Styled like Hide beside it, not as a filled button.
+    expect(newChat).toHaveClass("h-11", "px-3");
+    expect(newChat).not.toHaveClass("bg-brand-dark");
+    expect(newChat.className).toBe(
+      screen.getByRole("button", { name: "Hide conversations" }).className,
+    );
     expect(newChat.querySelector(".lucide-message-square-plus")).not.toBeNull();
     await userEvent.click(newChat);
     expect(onNewChat).toHaveBeenCalledOnce();
