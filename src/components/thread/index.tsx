@@ -64,6 +64,7 @@ import { useFirstTokenReceived } from "@/hooks/use-first-token-received";
 import { ContentBlocksPreview } from "./ContentBlocksPreview";
 import { useArtifactOpen, useArtifactContext } from "./artifact";
 import { ConfirmCard } from "./confirm-card";
+import { PersonalizationOffer } from "./personalization-offer";
 import { pendingPreviews, type ConfirmBlock } from "@/lib/confirm";
 import { isAttachmentRef, type AttachmentRef } from "@/lib/upload-blocks";
 import { RegistrationPanel } from "./registration-panel";
@@ -611,6 +612,10 @@ export function Thread() {
                     }}
                   />
                 )}
+                <PersonalizationOffer
+                  threadId={threadId}
+                  busy={isLoading}
+                />
                 <StoppedNote
                   turn={unanswered}
                   retryRef={retryButton}

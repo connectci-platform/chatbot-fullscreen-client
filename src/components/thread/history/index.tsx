@@ -18,6 +18,7 @@ import {
 import { focusConversationsToggle } from "../control-focus";
 import { useConversationsOpen } from "@/hooks/use-conversations-open";
 import { focusComposer } from "../composer";
+import { SettingsButton } from "../settings";
 import { SiteLinks } from "../site-links";
 
 function ThreadList({
@@ -248,7 +249,10 @@ export default function ThreadHistory({
           Heading="h2"
         />
         {list()}
-        <SiteLinks />
+        <div className="mt-auto flex w-full shrink-0 flex-col">
+          <SettingsButton />
+          <SiteLinks />
+        </div>
       </aside>
       <div className="lg:hidden">
         <Sheet
@@ -288,7 +292,10 @@ export default function ThreadHistory({
               focusComposerOnClose.current = true;
               setChatHistoryOpen((o) => !o);
             })}
-            <SiteLinks />
+            <div className="mt-auto flex w-full shrink-0 flex-col">
+              <SettingsButton />
+              <SiteLinks />
+            </div>
           </SheetContent>
         </Sheet>
       </div>
