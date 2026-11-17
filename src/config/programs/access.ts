@@ -27,7 +27,7 @@ export const access: ProgramConfig = {
   supportUrl: "https://support.access-ci.org",
   privacyUrl: "https://support.access-ci.org/tools/access-qa-tool/privacy",
   disclaimer: {
-    droppable: "AI can make mistakes.",
+    lead: "AI can make mistakes.",
     text: "Don't share passwords or secrets.",
   },
   features: { fileUploads: true, siteHeader: false },

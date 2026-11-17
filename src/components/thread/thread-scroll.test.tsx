@@ -517,13 +517,19 @@ describe("Conversation buttons under the message box", () => {
     expect(shortcuts()).toBeNull();
   });
 
-  it("are small icons with a tooltip, a visible focus ring and a 24px target that doesn't make the line taller", () => {
+  it("are small icons with a tooltip, a visible focus ring, and a 24px target with a mouse or 44px on a phone or touch screen", () => {
     renderThread();
     scrollTopBarAway();
     for (const button of within(shortcuts()!).getAllByRole("button")) {
       expect(button).toHaveTextContent(/^$/);
       // 24px, pulled into the line's 16px with negative margins.
       expect(button).toHaveClass("size-6", "-my-1", "focus-visible:ring-ring");
+      expect(button).toHaveClass(
+        "max-sm:size-11",
+        "max-sm:my-0",
+        "pointer-coarse:size-11",
+        "pointer-coarse:my-0",
+      );
       expect(button).toHaveAttribute("data-slot", "tooltip-trigger");
     }
   });
