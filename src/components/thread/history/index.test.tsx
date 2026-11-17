@@ -328,7 +328,7 @@ describe("ThreadHistory", () => {
       name: "ACCESS links",
     });
     for (const name of [
-      "NSF awards",
+      "#2138259",
       "Contact ACCESS",
       "Acceptable Use",
       "Code of Conduct",

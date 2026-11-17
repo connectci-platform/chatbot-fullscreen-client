@@ -62,8 +62,14 @@ export type ProgramConfig = {
   siteLinks: {
     /** Names the row for screen readers. */
     label: string;
-    /** The funding acknowledgment: `text` then a link. */
-    acknowledgment: { text: string; linkText: string; href: string } | null;
+    /**
+     * The funding acknowledgment: `text`, then each award number linked to
+     * its page, as the program's site footer shows them.
+     */
+    acknowledgment: {
+      text: string;
+      awards: { number: string; href: string }[];
+    } | null;
     links: { label: string; href: string }[];
   } | null;
   colors: {

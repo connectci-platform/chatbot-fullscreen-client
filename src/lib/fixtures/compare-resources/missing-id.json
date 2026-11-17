@@ -1,0 +1,59 @@
+{
+  "total": 2,
+  "items": [
+    {
+      "id": null,
+      "name": "Example Testbed",
+      "organization": null,
+      "type": null,
+      "status": null,
+      "mfa_required": false,
+      "account_required": true,
+      "ondemand_url": null,
+      "ssh_hosts": null,
+      "transfer_methods": ["HTTP API"],
+      "queues": [
+        {
+          "name": "Edge node",
+          "summary": "1 GPU, ARM64, 8 GB RAM",
+          "max_wall_time_hours": null
+        },
+        {
+          "name": "Blade node",
+          "summary": "1 GPU, ARM64, 32 GB RAM",
+          "max_wall_time_hours": null
+        }
+      ],
+      "wait_times": null,
+      "filesystems": null,
+      "software_url": null,
+      "citation_url": "https://example.org/documentation/resources/example-testbed",
+      "details_available": true
+    },
+    {
+      "id": "example-cluster.example.access-ci.org",
+      "name": "Example Cluster",
+      "organization": "Example University",
+      "type": "Compute",
+      "status": "production",
+      "mfa_required": true,
+      "account_required": false,
+      "ondemand_url": null,
+      "ssh_hosts": null,
+      "transfer_methods": ["Globus"],
+      "queues": [
+        {
+          "name": "cpu",
+          "summary": "10 nodes, 128-core, 256 GB RAM",
+          "max_wall_time_hours": null
+        }
+      ],
+      "wait_times": null,
+      "filesystems": null,
+      "software_url": null,
+      "citation_url": "https://example.org/documentation/resources/example-cluster",
+      "details_available": true
+    }
+  ],
+  "unresolved": []
+}
